@@ -37,13 +37,10 @@ void main() {
     expect(PlayViewCodec.unframe(framed), List<int>.filled(3, 7));
   });
 
-  test('压缩响应与残缺帧都报错', () {
-    expect(
-      () => PlayViewCodec.unframe([1, 0, 0, 0, 5, 1, 2, 3, 4, 5]),
-      throwsFormatException,
-    );
+  test('残缺帧报错（压缩帧的 gzip 分支在 http1_test 里覆盖）', () {
     expect(() => PlayViewCodec.unframe([0, 0, 0, 0, 9, 1, 2]), throwsFormatException);
     expect(() => PlayViewCodec.unframe(<int>[]), throwsFormatException);
+    expect(() => PlayViewCodec.unframe([0, 0, 0, 0, 0]), throwsFormatException);
   });
 
   test('PlayViewReply 还原成 dash 结构，129 带地址、80 只列档位', () {
