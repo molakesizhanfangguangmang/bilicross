@@ -109,6 +109,69 @@ jobs:
           print('Android manifest patched')
           PY
 
+      - name: Configure release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "缺少 ANDROID_KEYSTORE_* secrets，拒绝出包：否则会用临时 debug 密钥签名，装不上去。" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/biliharbor-release.p12"
+          keytool -importkeystore -noprompt \
+            -srckeystore "$RUNNER_TEMP/biliharbor-release.p12" -srcstoretype PKCS12 \
+            -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" -srckeypass "$KEYSTORE_PASSWORD" \
+            -destkeystore android/app/release.jks -deststoretype JKS \
+            -deststorepass "$KEYSTORE_PASSWORD" -destalias "$KEY_ALIAS" -destkeypass "$KEYSTORE_PASSWORD"
+          cat > android/key.properties <<PROPS
+          storeFile=release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEYSTORE_PASSWORD
+          PROPS
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/app/build.gradle.kts')
+          if not path.exists():
+              raise SystemExit('Android Gradle 脚本不存在，无法注入签名配置')
+          text = path.read_text()
+          if 'biliharborSigning' in text:
+              raise SystemExit('发布签名配置已存在')
+          text += """
+          // 由 CI 注入：用仓库 secrets 里的固定发布密钥签名，保证升级安装可用。
+          val biliharborKeystoreFile = rootProject.file("key.properties")
+          if (biliharborKeystoreFile.exists()) {
+              val biliharborKeystore = java.util.Properties()
+              biliharborKeystoreFile.inputStream().use { biliharborKeystore.load(it) }
+              android {
+                  signingConfigs {
+                      create("biliharborSigning") {
+                          storeFile = file(biliharborKeystore["storeFile"] as String)
+                          storePassword = biliharborKeystore["storePassword"] as String
+                          keyAlias = biliharborKeystore["keyAlias"] as String
+                          keyPassword = biliharborKeystore["keyPassword"] as String
+                      }
+                  }
+                  buildTypes {
+                      getByName("release") {
+                          signingConfig = signingConfigs.getByName("biliharborSigning")
+                      }
+                  }
+              }
+          }
+          """
+          path.write_text(text)
+          written = path.read_text()
+          for needle in ('biliharborSigning', 'getByName("release")', 'storeFile = file('):
+              if needle not in written:
+                  raise SystemExit(f'签名配置注入失败：缺少 {needle}')
+          print('Release signing configured from CI secrets')
+          PY
+          keytool -list -keystore android/app/release.jks -storepass "$KEYSTORE_PASSWORD" | sed -n '1,12p'
+
       - name: Check and test
         shell: bash
         run: |
@@ -132,6 +195,21 @@ jobs:
             exit 1
           fi
           sha256sum "$apk" | tee "$apk.sha256"
+
+      - name: Verify APK signing
+        shell: bash
+        run: |
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          tools=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$tools" ] || [ ! -x "$tools/apksigner" ]; then
+            echo '未找到 apksigner，跳过签名核对' >&2
+            exit 0
+          fi
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | grep -Ei 'Verified using|certificate DN|SHA-256 digest'
+          if "$tools/apksigner" verify --print-certs "$apk" | grep -qi 'CN=Android Debug'; then
+            echo 'APK 仍由 debug 密钥签名，发布密钥没有生效' >&2
+            exit 1
+          fi
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
