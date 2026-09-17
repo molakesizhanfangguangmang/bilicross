@@ -42,8 +42,9 @@
 ## 贡献者
 
 - tricky — 作者，需求与验收
-- Copilot（QwenPaw agent）— 开发
-- 致谢：BBDownNext（KaiHuaDou）提供行为参考，bilibili-API-collect（SocialSisterYi）提供接口资料
+
+致谢：BBDownNext（KaiHuaDou）、neo-BBDown（bili-vd-bak，BBDown 的 Deno 实现）提供行为参考；
+bilibili-API-collect（SocialSisterYi）提供接口资料。
 
 ## 说明
 
