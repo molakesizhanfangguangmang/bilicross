@@ -192,7 +192,7 @@ class StreamDownloader {
       if (!android) 'Referer': kSiteReferer,
       if (!android) 'Origin': 'https://www.bilibili.com',
       'Accept': '*/*',
-      if (range != null) 'Range': range,
+      'Range': ?range,
     };
   }
 
