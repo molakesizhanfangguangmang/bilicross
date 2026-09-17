@@ -185,7 +185,9 @@ Future<void> _awaitConnectReply(Socket socket, {required Duration timeout}) asyn
       if (!done.isCompleted && _headerEnd(buffer) >= 0) done.complete();
     },
     onError: (Object error) {
-      if (!done.isCompleted) done.completeError(Http1Exception('代理隧道出错：$error'));
+      if (!done.isCompleted) {
+        done.completeError(Http1Exception('代理隧道出错：$error'));
+      }
     },
     onDone: () {
       if (!done.isCompleted) {
@@ -241,7 +243,9 @@ Future<Http1Response> readHttp1Response(
     body = await _readChunked(source, trailers, readTimeout);
   } else if (length != null) {
     body = await source.take(length, readTimeout);
-    if (body.length != length) throw const Http1Exception('正文短于 Content-Length');
+    if (body.length != length) {
+      throw const Http1Exception('正文短于 Content-Length');
+    }
   } else {
     body = await source.takeRest(readTimeout);
   }
