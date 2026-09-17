@@ -173,29 +173,74 @@ class _DownloadPageState extends State<DownloadPage> {
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: !canStart
-                ? null
-                : () {
-                    state.enqueue(
-                      video: videoIndex >= 0 ? media.videos[videoIndex] : null,
-                      audio: audioIndex >= 0 ? media.audios[audioIndex] : null,
-                      engine: 'dart',
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已加入任务队列')),
-                    );
-                    state.pumpQueue();
-                  },
-            icon: const Icon(Icons.download),
-            label: Text(
-              canStart
-                  ? '加入任务（${videoIndex >= 0 && audioIndex >= 0 ? '视频 + 音频' : videoIndex >= 0 ? '只有视频' : '只有音频'}）'
-                  : '至少要选一条轨道',
-            ),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // 「加入任务」只入队：队列要人去任务页点「开始任务」才跑。
+              FilledButton.icon(
+                onPressed: !canStart
+                    ? null
+                    : () => _submit(
+                          context,
+                          state,
+                          media,
+                          videoIndex,
+                          audioIndex,
+                          startNow: false,
+                        ),
+                icon: const Icon(Icons.playlist_add),
+                label: Text(
+                  canStart
+                      ? '加入任务（${videoIndex >= 0 && audioIndex >= 0 ? '视频 + 音频' : videoIndex >= 0 ? '只有视频' : '只有音频'}）'
+                      : '至少要选一条轨道',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: !canStart
+                    ? null
+                    : () => _submit(
+                          context,
+                          state,
+                          media,
+                          videoIndex,
+                          audioIndex,
+                          startNow: true,
+                        ),
+                icon: const Icon(Icons.download),
+                label: const Text('立即开始下载'),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  /// 入队与开跑分开：入队本身不动网络，只有「立即开始下载」顺带把队列跑起来。
+  void _submit(
+    BuildContext context,
+    AppState state,
+    ParsedMedia media,
+    int videoIndex,
+    int audioIndex, {
+    required bool startNow,
+  }) {
+    state.enqueue(
+      video: videoIndex >= 0 ? media.videos[videoIndex] : null,
+      audio: audioIndex >= 0 ? media.audios[audioIndex] : null,
+      engine: 'dart',
+    );
+    if (startNow) {
+      state.pumpQueue();
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          startNow ? '已加入任务队列，开始下载' : '已加入任务队列，去「任务」页点开始任务',
+        ),
+      ),
     );
   }
 }

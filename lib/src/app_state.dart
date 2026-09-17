@@ -249,16 +249,57 @@ class AppState extends ChangeNotifier {
         cookie: cookie,
         token: token ?? _emptyToken,
       );
-      notice = parsed!.guestLimited ? '当前未登录或无可用 Token，清晰度受限' : '';
-      if (parsed!.guestLimited) {
-        LogStore.instance.add('解析', '清晰度受限：实际最高档位低于请求档位');
-      }
+      // 档位够不够不再提示：片源没有这一档是常态（设置里选的是最高档），
+      // 界面把实际拿到的流列出来就是事实，不需要额外说一句。
+      notice = '';
+      final media = parsed!;
+      LogStore.instance.add(
+        '解析',
+        '通道 ${media.channel}｜视频档位 ${media.videos.map((item) => item.id).join('/')}'
+        '｜音频档位 ${media.audios.map((item) => item.id).join('/')}'
+        '｜请求档位 ${settings.preferredQuality}',
+      );
     } on Exception catch (error) {
-      notice = '$error';
+      notice = authNotice(error) ?? '$error';
       LogStore.instance.add('解析', '解析失败：$error');
     }
     busy = false;
     notifyListeners();
+  }
+
+  /// 凭据失效只认明确的「未登录 / 未授权」信号：REST 的 `-101`，或 gRPC 的
+  /// UNAUTHENTICATED（`grpc-status=16`）。风控 `-352`、参数错误、网络失败都不算，
+  /// 否则会把人往「重新登录」上引，而重新登录并不能解决那些问题。
+  /// 本来就没有的凭据也谈不上失效，所以只在这条凭据存在时才报。
+  ///
+  /// 纯函数，方便离线自测；要读当前 cookie/token 状态的调用点用 [authNotice]。
+  static String? authNoticeFor(
+    Object error, {
+    required bool hasCookie,
+    required bool hasToken,
+  }) {
+    final text = '$error';
+    final code = error is BiliException ? error.code : null;
+    final grpcUnauthorized =
+        text.contains('grpc-status=16') || text.contains('UNAUTHENTICATED');
+    if (code != -101 && !grpcUnauthorized) return null;
+    // gRPC 只有 APP Token 一条路；REST 的 -101 优先归给 Cookie，没有才看 Token。
+    if (grpcUnauthorized) return hasToken ? 'APP Token 已失效，请重新登录' : null;
+    if (hasCookie) return 'Cookie 已失效，请重新登录';
+    if (hasToken) return 'APP Token 已失效，请重新登录';
+    return null;
+  }
+
+  String? authNotice(Object error) {
+    final text = authNoticeFor(
+      error,
+      hasCookie: cookie.isNotEmpty,
+      hasToken: token?.accessToken.isNotEmpty ?? false,
+    );
+    if (text != null) {
+      LogStore.instance.add('账号', '$text｜原因：$error');
+    }
+    return text;
   }
 
   static const AppToken _emptyToken = AppToken(
@@ -306,8 +347,15 @@ class AppState extends ChangeNotifier {
     );
     tasks.insert(0, task);
     unawaited(store.saveTasks(tasks));
+    LogStore.instance.add('任务', '入队：${task.title}（等待开始）');
     notifyListeners();
   }
+
+  /// 有没有等着开跑的活。任务页的「开始任务」按这个决定能不能点。
+  int get pendingCount =>
+      tasks.where((task) => task.stage == TaskStage.pending).length;
+
+  bool get hasPending => pendingCount > 0;
 
   void removeTask(String id) {
     tasks.removeWhere((task) => task.id == id);
@@ -530,6 +578,10 @@ class AppState extends ChangeNotifier {
     } on Exception catch (error) {
       task.stage = TaskStage.failed;
       task.message = '$error';
+      // 下载途中撞到凭据失效（多半是重解析地址那一步）也提示一句，
+      // 不然只看到任务失败，不知道是登录过期还是片源没了。
+      final expired = authNotice(error);
+      if (expired != null) notice = expired;
       LogStore.instance.add('任务', '失败：${task.title}：$error');
       notifyListeners();
     } finally {
