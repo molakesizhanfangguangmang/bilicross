@@ -1,5 +1,3 @@
-import 'dart:async';
-
 /// 中断下载的两种意图：暂停要留分片，强制结束不留。
 enum AbortReason { pause, stop }
 
