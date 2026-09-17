@@ -252,7 +252,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _pickDirectory() async {
-    final path = await FilePicker.platform.getDirectoryPath();
+    final path = await FilePicker.getDirectoryPath();
     if (path == null || path.isEmpty) return;
     _dir.text = path;
     setState(() {});

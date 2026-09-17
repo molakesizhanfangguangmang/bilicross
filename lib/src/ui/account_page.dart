@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -206,17 +205,10 @@ class AccountPage extends StatelessWidget {
   }
 
   Future<void> _importCookieFile(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.first;
-    String? content;
-    final bytes = file.bytes;
-    if (bytes != null) {
-      content = utf8.decode(bytes, allowMalformed: true);
-    } else if (file.path != null) {
-      content = await File(file.path!).readAsString();
-    }
-    if (content == null || content.trim().isEmpty) {
+    final files = await FilePicker.pickFiles();
+    if (files.isEmpty) return;
+    final bytes = await files.first.readAsBytes();
+    if (bytes.isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('文件内容为空')),
@@ -224,7 +216,7 @@ class AccountPage extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
-    await _apply(context, content);
+    await _apply(context, utf8.decode(bytes, allowMalformed: true));
   }
 
   Future<void> _apply(BuildContext context, String text) async {

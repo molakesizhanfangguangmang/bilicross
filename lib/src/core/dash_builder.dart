@@ -60,11 +60,14 @@ class DashBuilder {
     final dash = data['dash'];
     if (dash is! Map) return const [];
     final collected = <Map<String, dynamic>>[];
+    // dash.audio 与 dash.dolby.audio 是数组，dash.flac.audio 是单个对象。
     void absorb(Object? raw) {
       if (raw is List) {
         for (final item in raw.whereType<Map>()) {
           collected.add(item.cast<String, dynamic>());
         }
+      } else if (raw is Map) {
+        collected.add(raw.cast<String, dynamic>());
       }
     }
 
