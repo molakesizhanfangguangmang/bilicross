@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/log_store.dart';
 import '../core/models.dart';
+import 'about_dialog.dart';
 import 'log_page.dart';
 import 'widgets.dart';
 
@@ -332,6 +333,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   onPressed: _save,
                   icon: const Icon(Icons.save_outlined),
                   label: const Text('保存设置'),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('关于'),
+                  subtitle: const Text(
+                    '版本号、项目地址与检测更新',
+                    style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showAppAboutDialog(context),
                 ),
               ),
             ],
