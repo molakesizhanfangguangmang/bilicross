@@ -1,14 +1,14 @@
 import 'dart:io';
 
-import 'package:biliharbor/src/core/downloader.dart';
-import 'package:biliharbor/src/core/models.dart';
+import 'package:bilicross/src/core/downloader.dart';
+import 'package:bilicross/src/core/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   late Directory dir;
 
   setUp(() {
-    dir = Directory.systemTemp.createTempSync('biliharbor_cleanup');
+    dir = Directory.systemTemp.createTempSync('bilicross_cleanup');
   });
 
   tearDown(() {

@@ -58,7 +58,7 @@ class LogStore {
       if (!root.existsSync()) {
         await root.create(recursive: true);
       }
-      final file = File('${root.path}${Platform.pathSeparator}biliharbor.log');
+      final file = File('${root.path}${Platform.pathSeparator}bilicross.log');
       _fileBytes = file.existsSync() ? await file.length() : 0;
       _file = file;
     } on FileSystemException {

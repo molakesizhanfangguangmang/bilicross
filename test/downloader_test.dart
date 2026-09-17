@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:biliharbor/src/core/downloader.dart';
+import 'package:bilicross/src/core/downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -112,7 +112,7 @@ void main() {
   late http.Client client;
 
   setUp(() async {
-    work = await Directory.systemTemp.createTemp('biliharbor-dl');
+    work = await Directory.systemTemp.createTemp('bilicross-dl');
     client = http.Client();
   });
 

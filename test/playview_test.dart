@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:biliharbor/src/core/dash_builder.dart';
-import 'package:biliharbor/src/core/playview.dart';
+import 'package:bilicross/src/core/dash_builder.dart';
+import 'package:bilicross/src/core/playview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 请求字节的 golden：用与宿主机 python 实测完全相同的一串参数编出来，

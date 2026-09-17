@@ -39,7 +39,7 @@ class AppState extends ChangeNotifier {
       }
     }
     await LogStore.instance.attach(store.root);
-    LogStore.instance.add('启动', 'BiliHarbor 启动');
+    LogStore.instance.add('启动', '逸轨 启动');
     LogStore.instance.add(
       '启动',
       '默认画质 ${settings.preferredQuality}｜并发 ${settings.maxParallelTasks}'

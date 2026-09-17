@@ -1,5 +1,5 @@
-import 'package:biliharbor/src/core/downloader.dart';
-import 'package:biliharbor/src/core/models.dart';
+import 'package:bilicross/src/core/downloader.dart';
+import 'package:bilicross/src/core/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 MediaStream _video(int id, String codecs) => MediaStream(

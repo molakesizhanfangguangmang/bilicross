@@ -1,7 +1,7 @@
-import 'package:biliharbor/src/core/bili_url.dart';
-import 'package:biliharbor/src/core/dash_builder.dart';
-import 'package:biliharbor/src/core/models.dart';
-import 'package:biliharbor/src/core/signing.dart';
+import 'package:bilicross/src/core/bili_url.dart';
+import 'package:bilicross/src/core/dash_builder.dart';
+import 'package:bilicross/src/core/models.dart';
+import 'package:bilicross/src/core/signing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const String _imgKey = '7cd084941338484aae1ad9425b84077c';

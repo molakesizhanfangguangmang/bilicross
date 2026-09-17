@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:biliharbor/src/core/http1.dart';
-import 'package:biliharbor/src/core/playview.dart';
+import 'package:bilicross/src/core/http1.dart';
+import 'package:bilicross/src/core/playview.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
