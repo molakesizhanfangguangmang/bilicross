@@ -30,12 +30,25 @@ class TasksPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '并发 ${state.settings.maxParallelTasks} · 队列${state.queueRunning ? '运行中' : '空闲'}',
-                  style: const TextStyle(color: Color(0xff6d716f), fontSize: 12),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '并发 ${state.settings.maxParallelTasks}'
+                      ' · 队列${state.queueRunning ? '运行中' : '空闲'}'
+                      ' · 等待 ${state.pendingCount} 条',
+                      style: const TextStyle(color: Color(0xff6d716f), fontSize: 12),
+                    ),
+                  ),
+                  // 队列跑起来之后，新入队的任务会自己跟上，不用再点一次。
+                  FilledButton.icon(
+                    onPressed: state.queueRunning || !state.hasPending
+                        ? null
+                        : () => state.pumpQueue(),
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text(state.queueRunning ? '运行中' : '开始任务'),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               for (final task in state.tasks) ...[
