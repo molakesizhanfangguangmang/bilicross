@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/downloader.dart';
 import '../core/models.dart';
 import 'widgets.dart';
 
@@ -55,6 +56,10 @@ class _TaskCard extends StatelessWidget {
   final AppState state;
   final DownloadTask task;
 
+  /// 分片都还在时允许单独重跑合并。
+  bool get _canMerge =>
+      task.audioPath.isNotEmpty && hasUsableFile(task.videoPath) && hasUsableFile(task.audioPath);
+
   int get _tone => switch (task.stage) {
         TaskStage.done => 1,
         TaskStage.failed => 3,
@@ -100,6 +105,11 @@ class _TaskCard extends StatelessWidget {
                 onPressed: running ? null : () => state.retryTask(task.id),
                 child: const Text('重试'),
               ),
+              if (!task.merged && _canMerge)
+                OutlinedButton(
+                  onPressed: running ? null : () => state.retryMerge(task.id),
+                  child: const Text('重试合并'),
+                ),
               OutlinedButton(
                 onPressed: running ? null : () => state.removeTask(task.id),
                 child: const Text('移除'),

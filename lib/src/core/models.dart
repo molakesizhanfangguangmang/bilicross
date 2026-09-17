@@ -463,6 +463,8 @@ class AppSettings {
     this.maxParallelTasks = 2,
     this.autoMux = true,
     this.preferAppApi = false,
+    this.partsPerFile = 4,
+    this.preferFfmpegMux = true,
   });
 
   String downloadDir;
@@ -478,6 +480,12 @@ class AppSettings {
   bool autoMux;
   bool preferAppApi;
 
+  /// 单文件并发连接数（1 表示单连接）。
+  int partsPerFile;
+
+  /// 合并时是否优先使用已找到的 ffmpeg。
+  bool preferFfmpegMux;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -491,6 +499,8 @@ class AppSettings {
         'max_parallel_tasks': maxParallelTasks,
         'auto_mux': autoMux,
         'prefer_app_api': preferAppApi,
+        'parts_per_file': partsPerFile,
+        'prefer_ffmpeg_mux': preferFfmpegMux,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -506,6 +516,8 @@ class AppSettings {
         maxParallelTasks: (json['max_parallel_tasks'] as num?)?.toInt() ?? 2,
         autoMux: json['auto_mux'] as bool? ?? true,
         preferAppApi: json['prefer_app_api'] as bool? ?? false,
+        partsPerFile: (json['parts_per_file'] as num?)?.toInt() ?? 4,
+        preferFfmpegMux: json['prefer_ffmpeg_mux'] as bool? ?? true,
       );
 }
 

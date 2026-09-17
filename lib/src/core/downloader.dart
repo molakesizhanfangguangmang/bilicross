@@ -15,30 +15,52 @@ class DownloadResult {
   final bool resumed;
 }
 
-/// 单文件下载：断点续传 + 备用地址回落。
+/// 单文件下载：断点续传 + 备用地址回落 + 可选的同文件多连接分段。
 ///
-/// 每个文件只用一条连接。分片多连接会显著提速，但会引入并发写盘与合并的复杂度，
-/// 首版先保住可恢复与可重试，连接数留到后续版本。
+/// 分段下载不是必需路径：服务端不支持 Range、文件太小、或本地已有单连接留下的
+/// `.part` 时会自动退回单连接。每一段写在 `目标.partN` 里，各自可以续传，
+/// 全部到齐后再顺序拼成 `目标.part` 并改名。任一段失败会让整个文件退回单连接重来。
 class StreamDownloader {
   StreamDownloader({required this.client, required this.userAgent});
 
   final http.Client client;
   final String userAgent;
 
+  /// 分段的最小粒度：再小就只剩连接开销。
+  static const int minChunkBytes = 1 << 20;
+
   Future<DownloadResult> download({
     required String url,
     required String targetPath,
     List<String> backups = const [],
     String referer = 'https://www.bilibili.com/',
+    int parts = 1,
     void Function(int received, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final candidates = <String>[url, ...backups];
     Object? lastError;
-    for (var index = 0; index < candidates.length; index++) {
-      final candidate = candidates[index];
+    for (final candidate in candidates) {
       if (candidate.isEmpty) continue;
       try {
+        if (parts > 1 && !await _hasPendingPart(targetPath)) {
+          try {
+            final result = await _downloadParts(
+              url: candidate,
+              targetPath: targetPath,
+              referer: referer,
+              parts: parts,
+              onProgress: onProgress,
+              isCancelled: isCancelled,
+            );
+            if (result != null) return result;
+          } on _DownloadCancelled {
+            rethrow;
+          } catch (error) {
+            // 分段失败不丢这个地址：退回单连接再试一次。
+            lastError = error;
+          }
+        }
         return await _downloadOne(
           url: candidate,
           targetPath: targetPath,
@@ -55,6 +77,228 @@ class StreamDownloader {
     throw HttpException('下载失败：${lastError ?? '没有可用地址'}');
   }
 
+  Future<bool> _hasPendingPart(String targetPath) async {
+    final part = File('$targetPath.part');
+    return await part.exists() && await part.length() > 0;
+  }
+
+  /// 问一次总长度，顺便确认服务端认 Range。不认就返回 null。
+  Future<int?> _probeTotal({required String url, required String referer}) async {
+    try {
+      final request = http.Request('GET', Uri.parse(url));
+      request.headers.addAll(_headers(referer: referer, range: 'bytes=0-0'));
+      final response = await client.send(request);
+      await response.stream.drain<void>();
+      if (response.statusCode != 206) return null;
+      final contentRange = response.headers['content-range'];
+      if (contentRange == null) return null;
+      final slash = contentRange.lastIndexOf('/');
+      if (slash < 0) return null;
+      final total = int.tryParse(contentRange.substring(slash + 1));
+      if (total == null || total <= 0) return null;
+      return total;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, String> _headers({required String referer, String? range}) => {
+        'User-Agent': userAgent,
+        'Referer': referer,
+        'Origin': 'https://www.bilibili.com',
+        'Accept': '*/*',
+        if (range != null) 'Range': range,
+      };
+
+  /// 分段下载。返回 null 表示「这次不分段」，由调用方退回单连接。
+  Future<DownloadResult?> _downloadParts({
+    required String url,
+    required String targetPath,
+    required String referer,
+    required int parts,
+    void Function(int received, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final total = await _probeTotal(url: url, referer: referer);
+    if (total == null || total < minChunkBytes * 2) return null;
+
+    var count = parts;
+    var chunkSize = (total / count).ceil();
+    if (chunkSize < minChunkBytes) {
+      count = (total ~/ minChunkBytes).clamp(2, parts);
+      chunkSize = (total / count).ceil();
+    }
+    if (count < 2) return null;
+
+    final received = List<int>.filled(count, 0);
+    var lastReport = DateTime.fromMillisecondsSinceEpoch(0);
+    void report() {
+      final now = DateTime.now();
+      if (now.difference(lastReport).inMilliseconds < 200) return;
+      lastReport = now;
+      var sum = 0;
+      for (final value in received) {
+        sum += value;
+      }
+      onProgress?.call(sum, total);
+    }
+
+    final resumedFlags = await Future.wait<bool>(<Future<bool>>[
+      for (var index = 0; index < count; index++)
+        _downloadChunk(
+          url: url,
+          chunkPath: _chunkPath(targetPath, index),
+          start: index * chunkSize,
+          end: _chunkEnd(index, chunkSize, total),
+          referer: referer,
+          onBytes: (bytes) {
+            received[index] = bytes;
+            report();
+          },
+          isCancelled: isCancelled,
+        ),
+    ]);
+
+    var written = 0;
+    for (var index = 0; index < count; index++) {
+      final expected = _chunkEnd(index, chunkSize, total) - index * chunkSize + 1;
+      final length = await File(_chunkPath(targetPath, index)).length();
+      if (length != expected) {
+        throw HttpException('分段 $index 长度不符：$length != $expected');
+      }
+      written += length;
+    }
+    if (written != total) {
+      throw HttpException('分段总长度不符：$written != $total');
+    }
+
+    final part = File('$targetPath.part');
+    if (await part.exists()) await part.delete();
+    final sink = part.openWrite();
+    try {
+      for (var index = 0; index < count; index++) {
+        final chunkFile = File(_chunkPath(targetPath, index));
+        await for (final chunk in chunkFile.openRead()) {
+          if (isCancelled != null && isCancelled()) {
+            throw _DownloadCancelled();
+          }
+          sink.add(chunk);
+        }
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+
+    for (var index = 0; index < count; index++) {
+      final chunkFile = File(_chunkPath(targetPath, index));
+      if (await chunkFile.exists()) await chunkFile.delete();
+    }
+
+    onProgress?.call(total, total);
+    final target = File(targetPath);
+    if (await target.exists()) await target.delete();
+    final finished = await part.rename(targetPath);
+    return DownloadResult(
+      path: finished.path,
+      bytes: total,
+      resumed: resumedFlags.any((flag) => flag),
+    );
+  }
+
+  static String _chunkPath(String targetPath, int index) => '$targetPath.part$index';
+
+  static int _chunkEnd(int index, int chunkSize, int total) {
+    final end = index * chunkSize + chunkSize - 1;
+    return end > total - 1 ? total - 1 : end;
+  }
+
+  /// 下载一段，返回是否续传。
+  Future<bool> _downloadChunk({
+    required String url,
+    required String chunkPath,
+    required int start,
+    required int end,
+    required String referer,
+    required void Function(int bytes) onBytes,
+    bool Function()? isCancelled,
+  }) async {
+    final file = File(chunkPath);
+    await file.parent.create(recursive: true);
+    final length = end - start + 1;
+    var have = await file.exists() ? await file.length() : 0;
+    if (have > length) {
+      await file.delete();
+      have = 0;
+    }
+    final resumed = have > 0;
+    if (have == length) {
+      onBytes(have);
+      return resumed;
+    }
+
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final request = http.Request('GET', Uri.parse(url));
+        request.headers.addAll(
+          _headers(referer: referer, range: 'bytes=${start + have}-$end'),
+        );
+        final response = await client.send(request);
+        if (response.statusCode == 416) {
+          // 已经下满了，服务端用 416 回答越界的 Range。
+          final current = await file.exists() ? await file.length() : 0;
+          if (current == length) {
+            onBytes(current);
+            return resumed;
+          }
+          throw HttpException('HTTP 416');
+        }
+        if (response.statusCode != 206 && response.statusCode != 200) {
+          await response.stream.drain<void>();
+          throw HttpException('HTTP ${response.statusCode}');
+        }
+        if (response.statusCode == 200) {
+          // 服务端忽略 Range：这一段的偏移就不可信了，交给单连接路径重来。
+          await response.stream.drain<void>();
+          throw HttpException('服务端不支持分段请求');
+        }
+
+        final sink = file.openWrite(mode: FileMode.append);
+        var current = have;
+        var lastReport = DateTime.now();
+        try {
+          await for (final chunk in response.stream) {
+            if (isCancelled != null && isCancelled()) {
+              throw _DownloadCancelled();
+            }
+            sink.add(chunk);
+            current += chunk.length;
+            final now = DateTime.now();
+            if (now.difference(lastReport).inMilliseconds >= 200) {
+              lastReport = now;
+              onBytes(current);
+            }
+          }
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+        onBytes(current);
+        if (current != length) {
+          throw HttpException('分段下载中断：$current != $length');
+        }
+        return resumed;
+      } on _DownloadCancelled {
+        rethrow;
+      } catch (error) {
+        lastError = error;
+        have = await file.exists() ? await file.length() : 0;
+      }
+    }
+    throw HttpException('分段下载失败：${lastError ?? '未知错误'}');
+  }
+
   Future<DownloadResult> _downloadOne({
     required String url,
     required String targetPath,
@@ -67,13 +311,10 @@ class StreamDownloader {
     var startAt = await part.exists() ? await part.length() : 0;
 
     final request = http.Request('GET', Uri.parse(url));
-    request.headers.addAll({
-      'User-Agent': userAgent,
-      'Referer': referer,
-      'Origin': 'https://www.bilibili.com',
-      'Accept': '*/*',
-      if (startAt > 0) 'Range': 'bytes=$startAt-',
-    });
+    request.headers.addAll(_headers(
+      referer: referer,
+      range: startAt > 0 ? 'bytes=$startAt-' : null,
+    ));
 
     final response = await client.send(request);
     if (response.statusCode >= 400) {
