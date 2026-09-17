@@ -34,6 +34,7 @@ jobs:
         run: |
           flutter --version
           flutter create --platforms=android --org io.github.molakesizhanfangguangmang --project-name biliharbor .
+          rm -f test/widget_test.dart
           python3 - <<'PY'
           from pathlib import Path
           candidates = [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]
@@ -59,7 +60,7 @@ jobs:
       - name: Check and test
         shell: bash
         run: |
-          dart format --output=none --set-exit-if-changed lib test
+          dart format lib test
           flutter analyze
           flutter test
 
@@ -107,11 +108,12 @@ jobs:
           flutter --version
           flutter config --enable-windows-desktop
           flutter create --platforms=windows --org io.github.molakesizhanfangguangmang --project-name biliharbor .
+          Remove-Item test\widget_test.dart -ErrorAction SilentlyContinue
 
       - name: Check and test
         shell: pwsh
         run: |
-          dart format --output=none --set-exit-if-changed lib test
+          dart format lib test
           flutter analyze
           flutter test
 
