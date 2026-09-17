@@ -49,10 +49,34 @@ jobs:
               }
               for old, new in replacements.items():
                   text = text.replace(old, new)
+              if path.suffix == '.kts':
+                  text = re.sub(
+                      r'(android\s*\{\n)',
+                      r'\1    packaging {\n'
+                      r'        jniLibs {\n'
+                      r'            excludes += listOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")\n'
+                      r'        }\n'
+                      r'    }\n',
+                      text,
+                      count=1,
+                  )
+              else:
+                  text = re.sub(
+                      r'(android\s*\{\n)',
+                      r'\1    packagingOptions {\n'
+                      r'        jniLibs {\n'
+                      r"            excludes += ['**/armeabi-v7a/**', '**/x86/**', '**/x86_64/**']\n"
+                      r'        }\n'
+                      r'    }\n',
+                      text,
+                      count=1,
+                  )
               path.write_text(text)
               if 'minSdk = 26' not in text and 'minSdkVersion 26' not in text:
                   raise SystemExit(f'Failed to set Android minSdk 26 in {path}')
-              print(f'Configured {path} for Android 8.0+')
+              if 'jniLibs' not in text:
+                  raise SystemExit(f'Failed to exclude non-arm64 ABIs in {path}')
+              print(f'Configured {path} for Android 8.0+ and arm64-v8a only')
               break
           else:
               raise SystemExit('Android Gradle app file not found')
@@ -102,8 +126,9 @@ jobs:
           apk=build/app/outputs/flutter-apk/app-release.apk
           test -s "$apk"
           unzip -l "$apk" | grep -q 'lib/arm64-v8a/libflutter.so'
-          if unzip -l "$apk" | grep -Eq 'lib/(armeabi-v7a|x86|x86_64)/libflutter.so'; then
-            echo 'Unexpected non-arm64 Flutter library in APK' >&2
+          if unzip -l "$apk" | grep -Eq 'lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo 'Unexpected non-arm64 native library in APK' >&2
+            unzip -l "$apk" | grep -E 'lib/' >&2
             exit 1
           fi
           sha256sum "$apk" | tee "$apk.sha256"
