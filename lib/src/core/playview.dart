@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show gzip;
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -94,12 +95,6 @@ class PlayViewCodec {
 
   /// 去掉帧头，返回 protobuf 正文；压缩响应与残缺帧直接报错。
   static Uint8List unframe(List<int> payload) {
-    if (payload.isEmpty) {
-      throw const FormatException('gRPC 响应为空');
-    }
-    if (payload[0] != 0) {
-      throw FormatException('gRPC 响应使用了压缩（标志 ${payload[0]}）');
-    }
     if (payload.length < 5) {
       throw const FormatException('gRPC 响应缺少帧头');
     }
@@ -107,7 +102,16 @@ class PlayViewCodec {
     if (length <= 0 || length + 5 > payload.length) {
       throw FormatException('gRPC 帧长度不合法（$length）');
     }
-    return Uint8List.fromList(payload.sublist(5, 5 + length));
+    final data = Uint8List.fromList(payload.sublist(5, 5 + length));
+    switch (payload[0]) {
+      case 0:
+        return data;
+      case 1:
+        // 实测服务端回的是未压缩帧（标志 0），这里留着 gzip 分支做兜底。
+        return Uint8List.fromList(gzip.decode(data));
+      default:
+        throw FormatException('gRPC 响应用了不认识的压缩标志（${payload[0]}）');
+    }
   }
 
   /// x-bili-*-bin 头：值是 protobuf 的 base64（gRPC 规定 -bin 头走 base64）。

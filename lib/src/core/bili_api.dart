@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
+import 'http1.dart';
 import 'models.dart';
 import 'log_store.dart';
 import 'playview.dart';
@@ -427,10 +428,15 @@ class BiliApi {
       'gRPC PlayView 请求：aid=$aid cid=$cid qn=$qn'
       ' fnval=${PlayViewCodec.fnvalVivid} access_key=${accessToken.isEmpty ? '无' : '有'}',
     );
-    final http.Response response;
+    // 这条请求不走 dart:io 的 HttpClient：响应是 chunked 且终止块后面还带 trailer，
+    // dart:io 的解析器读到 trailer 首字节就抛
+    // `Failed to parse HTTP, 98 does not match 13`（详见 http1.dart）。
+    final Http1Response response;
     try {
-      response = await client.post(
-        Uri.parse('https://${PlayViewCodec.host}${PlayViewCodec.method}'),
+      response = await http1Post(
+        host: PlayViewCodec.host,
+        path: PlayViewCodec.method,
+        proxy: settings.proxy,
         headers: {
           'User-Agent': PlayViewCodec.userAgent,
           'Content-Type': 'application/grpc+proto',
@@ -450,9 +456,21 @@ class BiliApi {
       LogStore.instance.add('接口', 'gRPC PlayView 失败：HTTP ${response.statusCode}');
       throw BiliException('gRPC 返回 HTTP ${response.statusCode}');
     }
+    final grpcStatus = response.trailers['grpc-status'] ?? '0';
+    LogStore.instance.add(
+      '接口',
+      'gRPC PlayView 传输完成：正文 ${response.body.length} 字节｜grpc-status=$grpcStatus'
+      '${response.trailers['bili-trace-id'] == null ? '' : '｜trace=${response.trailers['bili-trace-id']}'}',
+      detail: true,
+    );
+    if (grpcStatus != '0') {
+      final grpcMessage = response.trailers['grpc-message'] ?? '';
+      LogStore.instance.add('接口', 'gRPC PlayView 被拒：grpc-status=$grpcStatus $grpcMessage');
+      throw BiliException('gRPC 返回 grpc-status=$grpcStatus${grpcMessage.isEmpty ? '' : '（$grpcMessage）'}');
+    }
     final Map<String, dynamic> data;
     try {
-      data = PlayViewCodec.decodeReply(PlayViewCodec.unframe(response.bodyBytes));
+      data = PlayViewCodec.decodeReply(PlayViewCodec.unframe(response.body));
     } on FormatException catch (error) {
       LogStore.instance.add('接口', 'gRPC PlayView 响应无法解析：$error');
       throw BiliException('gRPC 响应解析失败：$error');
@@ -461,9 +479,12 @@ class BiliApi {
     final downloadable = dash is Map && dash['video'] is List
         ? (dash['video']! as List).length
         : 0;
+    final qualities = data['accept_quality'];
+    final vivid = qualities is List && qualities.contains(129);
     LogStore.instance.add(
       '解析',
       'gRPC PlayView 成功：可下载档位 $downloadable 条'
+      '｜129 HDR Vivid ${vivid ? '有' : '无'}'
       '｜档位表 ${PlayViewCodec.describe(data)}',
       detail: true,
     );
