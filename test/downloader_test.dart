@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:bilicross/src/core/abort.dart';
 import 'package:bilicross/src/core/downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 
 Uint8List _payload(int length) {
   final bytes = Uint8List(length);
@@ -23,6 +23,14 @@ class _Server {
   final List<int> rangeStarts = <int>[];
   int pieceSize = 1 << 20;
   Duration pieceDelay = Duration.zero;
+
+  /// 写出这么多字节后就停住：不写、不关、也不发 FIN，用来复现「卡在最后一点」。
+  int? stallAfter;
+
+  /// 声明完整长度，但只写这么多字节就关流，用来复现「服务端提前关流」。
+  int? truncateAfter;
+
+  bool supportRangeFlag = true;
 
   String get origin => 'http://${server.address.host}:${server.port}';
 
@@ -70,11 +78,22 @@ class _Server {
     unawaited(() async {
       try {
         var cursor = start;
+        var written = 0;
         while (cursor <= last) {
           final stop = cursor + pieceSize - 1 > last ? last : cursor + pieceSize - 1;
-          response.add(bytes.sublist(cursor, stop + 1));
+          final slice = bytes.sublist(cursor, stop + 1);
+          response.add(slice);
           await response.flush();
+          written += slice.length;
           cursor = stop + 1;
+          if (truncateAfter != null && written >= truncateAfter!) {
+            await response.close();
+            return;
+          }
+          if (stallAfter != null && written >= stallAfter!) {
+            // 保持连接开着，什么都不做。
+            return;
+          }
           if (pieceDelay > Duration.zero) {
             await Future<void>.delayed(pieceDelay);
           }
@@ -90,8 +109,6 @@ class _Server {
       }
     }());
   }
-
-  bool supportRangeFlag = true;
 
   Future<void> stop() => server.close(force: true);
 }
@@ -109,29 +126,29 @@ Future<List<String>> _leftovers(Directory dir) async {
 
 void main() {
   late Directory work;
-  late http.Client client;
 
   setUp(() async {
     work = await Directory.systemTemp.createTemp('bilicross-dl');
-    client = http.Client();
   });
 
   tearDown(() async {
-    client.close();
     if (await work.exists()) {
       await work.delete(recursive: true);
     }
   });
 
+  String target_(String name) => '${work.path}${Platform.pathSeparator}$name';
+
   test('单连接下载写入目标文件并清掉临时分片', () async {
     final server = await _Server.start(_payload(3 << 20));
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
 
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 1,
     );
 
@@ -144,13 +161,14 @@ void main() {
   test('多连接分段下载结果与源一致', () async {
     final server = await _Server.start(_payload(3 << 20));
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
     final progress = <int>[];
 
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
       onProgress: (received, total) => progress.add(received),
     );
@@ -167,12 +185,13 @@ void main() {
     final server = await _Server.start(_payload(3 << 20));
     server.supportRangeFlag = false;
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
 
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
     );
 
@@ -184,12 +203,13 @@ void main() {
   test('文件太小就不分片', () async {
     final server = await _Server.start(_payload(512 << 10));
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
 
     await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
     );
 
@@ -201,14 +221,15 @@ void main() {
     final bytes = _payload(2 << 20);
     final server = await _Server.start(bytes);
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
+    final target = target_('video.m4s');
     final head = 700 << 10;
     await File('$target.part').writeAsBytes(bytes.sublist(0, head));
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final downloader = StreamDownloader(userAgent: 'test');
 
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
     );
 
@@ -221,14 +242,15 @@ void main() {
     final bytes = _payload(3 << 20);
     final server = await _Server.start(bytes);
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
     final head = 512 << 10;
     await File('$target.part0').writeAsBytes(bytes.sublist(0, head));
 
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
     );
 
@@ -238,38 +260,142 @@ void main() {
     expect(await _leftovers(work), ['video.m4s']);
   });
 
-  test('中途取消后重跑能补齐', () async {
+  test('暂停保留分片，继续后按断点补齐', () async {
     final bytes = _payload(4 << 20);
     final server = await _Server.start(bytes);
     server.pieceSize = 32 << 10;
     server.pieceDelay = const Duration(milliseconds: 20);
     addTearDown(server.stop);
-    final target = '${work.path}${Platform.pathSeparator}video.m4s';
-    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
+    final control = AbortControl();
 
-    var cancelled = false;
     await expectLater(
       downloader.download(
         url: '${server.origin}/file',
         targetPath: target,
+        control: control,
         parts: 4,
         onProgress: (received, total) {
-          if (received > 0) cancelled = true;
+          if (received > 0 && !control.aborted) control.pause();
         },
-        isCancelled: () => cancelled,
       ),
-      throwsA(isA<Exception>()),
+      throwsA(isA<TaskAborted>()),
     );
+
+    expect(control.reason, AbortReason.pause);
+    expect(await File(target).exists(), isFalse);
+    final stopped = await _leftovers(work);
+    expect(stopped, isNotEmpty);
+    expect(stopped.where((name) => name.contains('.part')), isNotEmpty);
 
     server.pieceDelay = Duration.zero;
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
+      control: AbortControl(),
       parts: 4,
     );
 
     expect(result.bytes, (4 << 20));
     expect(await _read(target), bytes);
     expect(await _leftovers(work), ['video.m4s']);
+  });
+
+  test('卡住的连接能被强制结束掐断', () async {
+    final server = await _Server.start(_payload(2 << 20));
+    server.pieceSize = 64 << 10;
+    server.stallAfter = 64 << 10;
+    addTearDown(server.stop);
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(
+      userAgent: 'test',
+      idleTimeout: const Duration(seconds: 30),
+    );
+    final control = AbortControl();
+
+    final future = downloader.download(
+      url: '${server.origin}/file',
+      targetPath: target,
+      control: control,
+      parts: 1,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    expect(await File('$target.part').exists(), isTrue);
+
+    final watch = Stopwatch()..start();
+    control.stop();
+    await expectLater(
+      future.timeout(const Duration(seconds: 8)),
+      throwsA(isA<TaskAborted>()),
+    );
+    watch.stop();
+    // 不是靠 30 秒的空闲超时收场的，是掐连接当场断的。
+    expect(watch.elapsed, lessThan(const Duration(seconds: 8)));
+  });
+
+  test('连接卡住不发数据时靠空闲超时断开，不永久等待', () async {
+    final server = await _Server.start(_payload(2 << 20));
+    server.pieceSize = 64 << 10;
+    server.stallAfter = 64 << 10;
+    addTearDown(server.stop);
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(
+      userAgent: 'test',
+      idleTimeout: const Duration(milliseconds: 500),
+    );
+
+    // 每次重连都在同一个位置停住，所以最终失败；关键是它自己退出来了，没挂着。
+    await expectLater(
+      downloader.download(
+        url: '${server.origin}/file',
+        targetPath: target,
+        control: AbortControl(),
+        parts: 1,
+      ),
+      throwsA(isA<HttpException>()),
+    );
+    expect(await File(target).exists(), isFalse);
+    expect(await File('$target.part').length(), greaterThanOrEqualTo(64 << 10));
+  });
+
+  test('服务端提前关流不算完成，留下分片待续传', () async {
+    final bytes = _payload(2 << 20);
+    final server = await _Server.start(bytes);
+    server.pieceSize = 64 << 10;
+    server.truncateAfter = 64 << 10;
+    addTearDown(server.stop);
+    final target = target_('video.m4s');
+    final downloader = StreamDownloader(userAgent: 'test');
+
+    await expectLater(
+      downloader.download(
+        url: '${server.origin}/file',
+        targetPath: target,
+        control: AbortControl(),
+        parts: 1,
+      ),
+      throwsA(isA<HttpException>()),
+    );
+
+    // 半截文件不再被当成成品改名收工。
+    expect(await File(target).exists(), isFalse);
+    final part = File('$target.part');
+    expect(await part.exists(), isTrue);
+    expect(await part.length(), lessThan(bytes.length));
+  });
+
+  test('清理残留会删掉成品与全部分片', () async {
+    final target = target_('video.m4s');
+    await File(target).writeAsBytes(_payload(16));
+    await File('$target.part').writeAsBytes(_payload(16));
+    await File('$target.part0').writeAsBytes(_payload(16));
+    await File('$target.part3').writeAsBytes(_payload(16));
+    await File(target_('keep.m4s')).writeAsBytes(_payload(16));
+
+    final removed = await removeArtifacts(target);
+
+    expect(removed, 4);
+    expect(await _leftovers(work), ['keep.m4s']);
   });
 }

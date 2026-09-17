@@ -404,7 +404,7 @@ class AccountState {
   }
 }
 
-enum TaskStage { pending, resolving, downloading, muxing, done, failed }
+enum TaskStage { pending, resolving, downloading, muxing, paused, stopped, done, failed }
 
 extension TaskStageLabel on TaskStage {
   String get label => switch (this) {
@@ -412,6 +412,8 @@ extension TaskStageLabel on TaskStage {
         TaskStage.resolving => '解析',
         TaskStage.downloading => '下载',
         TaskStage.muxing => '合并',
+        TaskStage.paused => '暂停',
+        TaskStage.stopped => '已结束',
         TaskStage.done => '完成',
         TaskStage.failed => '失败',
       };

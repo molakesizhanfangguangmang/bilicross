@@ -66,7 +66,9 @@ class _TaskCard extends StatelessWidget {
   int get _tone => switch (task.stage) {
         TaskStage.done => 1,
         TaskStage.failed => 3,
+        TaskStage.stopped => 3,
         TaskStage.pending => 2,
+        TaskStage.paused => 2,
         _ => 0,
       };
 
@@ -104,6 +106,22 @@ class _TaskCard extends StatelessWidget {
           Wrap(
             spacing: 8,
             children: [
+              // 下载中可以暂停（分片留着，继续时按断点接）；合并中没有暂停点，只有强制结束。
+              if (task.stage == TaskStage.downloading)
+                OutlinedButton(
+                  onPressed: () => state.pauseTask(task.id),
+                  child: const Text('暂停'),
+                ),
+              if (running)
+                OutlinedButton(
+                  onPressed: () => _stop(context, state, task),
+                  child: const Text('强制结束'),
+                ),
+              if (task.stage == TaskStage.paused)
+                OutlinedButton(
+                  onPressed: () => state.resumeTask(task.id),
+                  child: const Text('继续'),
+                ),
               OutlinedButton(
                 onPressed: running ? null : () => state.retryTask(task.id),
                 child: const Text('重试'),
@@ -114,6 +132,8 @@ class _TaskCard extends StatelessWidget {
                   child: const Text('重试合并'),
                 ),
               if (task.stage == TaskStage.failed ||
+                  task.stage == TaskStage.stopped ||
+                  task.stage == TaskStage.paused ||
                   (task.stage == TaskStage.done && !task.merged && !task.singleTrack))
                 OutlinedButton(
                   onPressed: running ? null : () => _cleanup(context, state, task),
@@ -128,6 +148,36 @@ class _TaskCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// 强制结束会连分片一起删掉，删了就续不回来，所以先确认一次。
+  Future<void> _stop(
+    BuildContext context,
+    AppState state,
+    DownloadTask task,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('强制结束'),
+        content: Text(
+          '将停止「${task.title}」，并删除它已经下载的分片与半成品。'
+          '删掉之后不能续传，只能重新下载。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('强制结束'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    state.stopTask(task.id);
   }
 
   /// 删掉这个任务留下的成品与分片，并把任务从列表里去掉。

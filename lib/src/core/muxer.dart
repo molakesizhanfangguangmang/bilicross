@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'abort.dart';
 import 'bili_api.dart';
 import 'fmp4.dart';
 import 'log_store.dart';
@@ -43,10 +45,14 @@ class Muxer {
     return null;
   }
 
-  static Future<void> remux({    required String ffmpeg,
+  /// 合并用 `Process.start` 而不是 `Process.run`：只有拿到进程句柄，
+  /// 「强制结束」才能真的把 ffmpeg 掐掉，否则它会在后台把文件写完。
+  static Future<void> remux({
+    required String ffmpeg,
     required String videoPath,
     required String audioPath,
     required String outputPath,
+    AbortControl? control,
   }) async {
     if (!File(videoPath).existsSync()) {
       throw BiliException('视频分片不存在：$videoPath');
@@ -54,7 +60,7 @@ class Muxer {
     if (!File(audioPath).existsSync()) {
       throw BiliException('音频分片不存在：$audioPath');
     }
-    final result = await Process.run(ffmpeg, [
+    final process = await Process.start(ffmpeg, [
       '-y',
       '-hide_banner',
       '-loglevel',
@@ -71,9 +77,21 @@ class Muxer {
       'copy',
       outputPath,
     ]);
-    if (result.exitCode != 0) {
-      final stderr = result.stderr.toString().trim();
-      throw BiliException('合并失败：${stderr.isEmpty ? 'ffmpeg 退出码 ${result.exitCode}' : stderr}');
+    final stderrText = process.stderr.transform(utf8.decoder).join();
+    final stdoutDrain = process.stdout.drain<void>();
+    control?.bind(() => process.kill());
+    final int exitCode;
+    try {
+      exitCode = await process.exitCode;
+    } finally {
+      control?.unbind();
+    }
+    final stderr = await stderrText;
+    await stdoutDrain;
+    if (exitCode != 0) {
+      throw BiliException(
+        '合并失败：${stderr.trim().isEmpty ? 'ffmpeg 退出码 $exitCode' : stderr.trim()}',
+      );
     }
     if (!File(outputPath).existsSync()) {
       throw BiliException('合并后没有生成文件');
@@ -82,12 +100,16 @@ class Muxer {
 
   /// 合并音视频。默认先试 ffmpeg（输出标准 MP4，兼容性最好），
   /// 没有 ffmpeg 或 ffmpeg 失败时改用内置分片合并；两条都失败才报错。
+  ///
+  /// 传入 [control] 后，强制结束会杀掉正在跑的 ffmpeg（或在下一个内置合并
+  /// 检查点停下），并且不再往下试第二条路径。
   static Future<MuxOutcome> merge({
     required String ffmpegPath,
     required bool preferFfmpeg,
     required String videoPath,
     required String audioPath,
     required String outputPath,
+    AbortControl? control,
     void Function(int written, int total)? onProgress,
   }) async {
     final hasFfmpeg = ffmpegPath.trim().isNotEmpty;
@@ -98,6 +120,7 @@ class Muxer {
     ];
     final failures = <String>[];
     for (final engine in engines) {
+      control?.throwIfAborted();
       final label = engine == 'ffmpeg' ? 'ffmpeg' : '内置合并';
       try {
         if (engine == 'ffmpeg') {
@@ -106,6 +129,7 @@ class Muxer {
             videoPath: videoPath,
             audioPath: audioPath,
             outputPath: outputPath,
+            control: control,
           );
           final bytes = await File(outputPath).length();
           LogStore.instance.add('合并', 'ffmpeg 合并完成：$bytes 字节');
@@ -119,7 +143,11 @@ class Muxer {
           videoPath: videoPath,
           audioPath: audioPath,
           outputPath: outputPath,
-          onProgress: onProgress,
+          onProgress: (written, total) {
+            // 内置合并是纯 Dart 循环，检查点就放在进度回调里。
+            control?.throwIfAborted();
+            onProgress?.call(written, total);
+          },
         );
         LogStore.instance.add('合并', '内置合并完成：${result.bytes} 字节');
         return MuxOutcome(
@@ -128,6 +156,10 @@ class Muxer {
           durationSeconds: result.durationSeconds,
         );
       } catch (error) {
+        // 取消不是失败：不换下一条路径，也不要把它写成「合并失败」。
+        if (control != null && control.aborted) {
+          throw TaskAborted(control.reason!);
+        }
         failures.add('$label：${error is BiliException ? error.message : error}');
         LogStore.instance.add(
           '合并',

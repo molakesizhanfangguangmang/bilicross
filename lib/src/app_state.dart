@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'core/abort.dart';
 import 'core/bili_api.dart';
 import 'core/downloader.dart';
 import 'core/log_store.dart';
@@ -16,7 +17,10 @@ class AppState extends ChangeNotifier {
   AppState._(this.store, this.settings, this.cookie, this.token, this.tasks) {
     api = _buildApi();
     parseService = ParseService(api: api, settings: settings);
-    downloader = StreamDownloader(client: api.client, userAgent: settings.userAgent);
+    downloader = StreamDownloader(
+      userAgent: settings.userAgent,
+      proxy: settings.proxy,
+    );
   }
 
   static Future<AppState> load() async {
@@ -34,6 +38,12 @@ class AppState extends ChangeNotifier {
         task.stage = TaskStage.pending;
         task.message = '上次退出时中断，等待继续';
         // CDN 地址带时效，续传前必须重新解析，不能沿用上次的地址。
+        task.videoUrl = '';
+        task.audioUrl = '';
+      } else if (task.stage == TaskStage.paused) {
+        // 暂停的任务留在暂停态：分片还在，等着用户点「继续」。
+        // 地址同样过期，继续时会重新解析，分片照样按断点接。
+        task.message = '上次退出时暂停，点「继续」从断点接';
         task.videoUrl = '';
         task.audioUrl = '';
       }
@@ -56,6 +66,10 @@ class AppState extends ChangeNotifier {
   WebCookie cookie;
   AppToken? token;
   final List<DownloadTask> tasks;
+
+  /// 正在运行的任务各自的取消句柄。暂停/强制结束按任务 id 找它，
+  /// 它同时握着当前连接，取消时先掐连接再让各层按取消收场。
+  final Map<String, AbortControl> _controls = <String, AbortControl>{};
 
   late BiliApi api;
   late ParseService parseService;
@@ -80,7 +94,10 @@ class AppState extends ChangeNotifier {
     api.close();
     api = _buildApi();
     parseService = ParseService(api: api, settings: settings);
-    downloader = StreamDownloader(client: api.client, userAgent: settings.userAgent);
+    downloader = StreamDownloader(
+      userAgent: settings.userAgent,
+      proxy: settings.proxy,
+    );
   }
 
   // ---------- 设置 ----------
@@ -306,11 +323,7 @@ class AppState extends ChangeNotifier {
     final index = tasks.indexWhere((task) => task.id == id);
     if (index < 0) return 0;
     final task = tasks[index];
-    if (task.stage == TaskStage.downloading ||
-        task.stage == TaskStage.muxing ||
-        task.stage == TaskStage.resolving) {
-      return 0;
-    }
+    if (_isRunning(task.stage)) return 0;
     var removed = await removeArtifacts(task.videoPath);
     removed += await removeArtifacts(task.audioPath);
     if (!task.merged) {
@@ -323,12 +336,71 @@ class AppState extends ChangeNotifier {
     return removed;
   }
 
+  /// 正在跑的状态：这几种状态下任务握着取消句柄，文件也还在动。
+  bool _isRunning(TaskStage stage) =>
+      stage == TaskStage.downloading ||
+      stage == TaskStage.muxing ||
+      stage == TaskStage.resolving;
+
+  /// 暂停：停掉当前这一轮，分片原样留着，继续时按断点接。
+  ///
+  /// 只在下载阶段可暂停。合并阶段没有检查点之外的落点，只能强制结束。
+  void pauseTask(String id) {
+    final index = tasks.indexWhere((task) => task.id == id);
+    if (index < 0) return;
+    final task = tasks[index];
+    if (task.stage != TaskStage.downloading) return;
+    final control = _controls[id];
+    if (control == null) return;
+    task.message = '正在暂停…';
+    notifyListeners();
+    control.pause();
+  }
+
+  /// 强制结束：停下当前这一轮，并把它留下的分片与半成品一起删掉。
+  /// 删除交由下载/合并那一侧退出后再做，避免删着文件那边还在写。
+  void stopTask(String id) {
+    final index = tasks.indexWhere((task) => task.id == id);
+    if (index < 0) return;
+    final task = tasks[index];
+    if (!_isRunning(task.stage)) return;
+    task.message = '正在强制结束…';
+    notifyListeners();
+    final control = _controls[id];
+    if (control == null) {
+      // 状态显示在跑、却已经没有活着的句柄：直接按结束处理。
+      unawaited(_finishAborted(task, const TaskAborted(AbortReason.stop)));
+      return;
+    }
+    control.stop();
+  }
+
+  /// 继续：保留分片与档位，回队列重新跑。地址带时效，沿途会重新解析一次。
+  void resumeTask(String id) => retryTask(id, message: '继续下载（从断点接）');
+
+  /// 取消之后的收尾：暂停留分片，强制结束删干净。
+  Future<void> _finishAborted(DownloadTask task, TaskAborted abort) async {
+    if (abort.isPause) {
+      task.stage = TaskStage.paused;
+      task.message = '已暂停，分片已保留，点「继续」从断点接';
+      LogStore.instance.add('任务', '${task.title}：已暂停');
+    } else {
+      var removed = await removeArtifacts(task.videoPath);
+      removed += await removeArtifacts(task.audioPath);
+      removed += await removeArtifacts(task.outputPath);
+      task.stage = TaskStage.stopped;
+      task.message = '已强制结束，已删除 $removed 个残留文件';
+      LogStore.instance.add('任务', '${task.title}：强制结束，已删除 $removed 个残留文件');
+    }
+    notifyListeners();
+  }
+
   /// 重试保留原来的档位与编码：只清掉可能过期的 CDN 地址，重新解析时按原档位取，
-  /// 用户不必回到解析页重选一次。
-  void retryTask(String id) {
+  /// 用户不必回到解析页重选一次。分片留在盘上，「重试」与「继续」走的都是这条路。
+  void retryTask(String id, {String message = '等待重试'}) {
     final task = tasks.firstWhere((item) => item.id == id);
     task.stage = TaskStage.pending;
-    task.message = '等待重试';
+    task.message = message;
     task.receivedBytes = 0;
     task.totalBytes = 0;
     task.merged = false;
@@ -364,6 +436,8 @@ class AppState extends ChangeNotifier {
       '开始：${task.title}｜引擎 ${task.engine}'
       '｜通道 ${task.channel.isEmpty ? '未记录' : task.channel}',
     );
+    final control = AbortControl();
+    _controls[task.id] = control;
     try {
       if (task.engine != 'dart') {
         throw BiliException('BBDownNext 兼容引擎尚未接入，请改用 Dart 内置引擎');
@@ -394,34 +468,44 @@ class AppState extends ChangeNotifier {
       task.outputPath = '${dir.path}$separator$base.${wantsVideo ? 'mp4' : 'm4a'}';
 
       task.stage = TaskStage.downloading;
+      // 已经落盘的流不再重下：暂停后继续、合并失败后重试都靠这一条，
+      // 否则「继续」会把已经下好的另一半从头再拉一遍。
       if (wantsVideo) {
-        task.message = '下载视频流';
-        task.receivedBytes = 0;
-        task.totalBytes = 0;
-        notifyListeners();
-        await downloader.download(
-          url: task.videoUrl,
-          backups: task.videoBackups,
-          targetPath: task.videoPath,
-          parts: settings.partsPerFile,
-          onProgress: (received, total) => _pushProgress(task, received, total),
-          isCancelled: () => task.stage == TaskStage.failed,
-        );
+        if (await _streamReady(task.videoPath)) {
+          LogStore.instance.add('任务', '${task.title}：视频流已在本地，跳过下载');
+        } else {
+          task.message = '下载视频流';
+          task.receivedBytes = 0;
+          task.totalBytes = 0;
+          notifyListeners();
+          await downloader.download(
+            url: task.videoUrl,
+            backups: task.videoBackups,
+            targetPath: task.videoPath,
+            control: control,
+            parts: settings.partsPerFile,
+            onProgress: (received, total) => _pushProgress(task, received, total),
+          );
+        }
       }
 
       if (wantsAudio) {
-        task.message = '下载音频流';
-        task.receivedBytes = 0;
-        task.totalBytes = 0;
-        notifyListeners();
-        await downloader.download(
-          url: task.audioUrl,
-          backups: task.audioBackups,
-          targetPath: task.audioPath,
-          parts: settings.partsPerFile,
-          onProgress: (received, total) => _pushProgress(task, received, total),
-          isCancelled: () => task.stage == TaskStage.failed,
-        );
+        if (await _streamReady(task.audioPath)) {
+          LogStore.instance.add('任务', '${task.title}：音频流已在本地，跳过下载');
+        } else {
+          task.message = '下载音频流';
+          task.receivedBytes = 0;
+          task.totalBytes = 0;
+          notifyListeners();
+          await downloader.download(
+            url: task.audioUrl,
+            backups: task.audioBackups,
+            targetPath: task.audioPath,
+            control: control,
+            parts: settings.partsPerFile,
+            onProgress: (received, total) => _pushProgress(task, received, total),
+          );
+        }
       }
 
       if (wantsVideo && wantsAudio) {
@@ -431,7 +515,7 @@ class AppState extends ChangeNotifier {
         if (!hasUsableFile(task.audioPath)) {
           throw BiliException('音频分片为空');
         }
-        await _muxTask(task);
+        await _muxTask(task, control: control);
         return;
       }
 
@@ -441,12 +525,15 @@ class AppState extends ChangeNotifier {
         throw BiliException(wantsVideo ? '视频分片为空' : '音频分片为空');
       }
       await _finalizeSingle(task, source);
+    } on TaskAborted catch (abort) {
+      await _finishAborted(task, abort);
     } on Exception catch (error) {
       task.stage = TaskStage.failed;
       task.message = '$error';
       LogStore.instance.add('任务', '失败：${task.title}：$error');
       notifyListeners();
     } finally {
+      _controls.remove(task.id);
       await store.saveTasks(tasks);
       notifyListeners();
     }
@@ -475,6 +562,15 @@ class AppState extends ChangeNotifier {
     return removed;
   }
 
+  /// 流已经完整落盘：下载成功后分片会改名成 `.m4s`，看到它且非空就当已就绪。
+  /// 单连接与分段两条路径都在确认收满字节之后才改名，所以这不算「猜」。
+  Future<bool> _streamReady(String path) async {
+    if (path.isEmpty) return false;
+    final file = File(path);
+    if (!await file.exists()) return false;
+    return await file.length() > 0;
+  }
+
   /// 单轨任务的落定：把分片改名成最终产物，不给用户留一个 .m4s。
   /// 只下视频得到无声 mp4，只下音频得到 m4a，两者都不合并。
   Future<void> _finalizeSingle(DownloadTask task, String sourcePath) async {
@@ -497,7 +593,8 @@ class AppState extends ChangeNotifier {
 
   /// 合并音视频。ffmpeg 在就用 ffmpeg，没有就走内置分片合并；
   /// 两条路都失败时保留分片并把原因写进任务消息，界面可以单独重试合并。
-  Future<void> _muxTask(DownloadTask task) async {
+  /// 合并期间「强制结束」会掐掉正在跑的 ffmpeg；取消异常交给调用方收尾。
+  Future<void> _muxTask(DownloadTask task, {AbortControl? control}) async {
     task.stage = TaskStage.muxing;
     task.message = '合并音视频';
     notifyListeners();
@@ -508,6 +605,7 @@ class AppState extends ChangeNotifier {
         videoPath: task.videoPath,
         audioPath: task.audioPath,
         outputPath: task.outputPath,
+        control: control,
         onProgress: (written, total) {
           task.receivedBytes = written;
           task.totalBytes = total;
@@ -519,6 +617,8 @@ class AppState extends ChangeNotifier {
       final removed = await _removeSources(task);
       task.message = '完成（${outcome.engineLabel}）：${task.outputPath}'
           '${removed > 0 ? '（已清理 $removed 个分片）' : ''}';
+    } on TaskAborted {
+      rethrow;
     } on Exception catch (error) {
       task.merged = false;
       task.stage = TaskStage.done;
@@ -531,11 +631,7 @@ class AppState extends ChangeNotifier {
   /// 只重跑合并，不重新下载。
   Future<void> retryMerge(String id) async {
     final task = tasks.firstWhere((item) => item.id == id);
-    if (task.stage == TaskStage.downloading ||
-        task.stage == TaskStage.muxing ||
-        task.stage == TaskStage.resolving) {
-      return;
-    }
+    if (_isRunning(task.stage)) return;
     if (task.videoQualityId == 0 || task.audioQualityId == 0) {
       task.message = '该任务只下了一条轨道，没有可合并的分片';
       notifyListeners();
@@ -546,7 +642,15 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await _muxTask(task);
+    final control = AbortControl();
+    _controls[task.id] = control;
+    try {
+      await _muxTask(task, control: control);
+    } on TaskAborted catch (abort) {
+      await _finishAborted(task, abort);
+    } finally {
+      _controls.remove(task.id);
+    }
     await store.saveTasks(tasks);
   }
 
@@ -620,6 +724,11 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _authTimer?.cancel();
+    // 退出前把还在跑的任务掐断，别让它们在进程收尾时继续写文件。
+    for (final control in _controls.values) {
+      control.stop();
+    }
+    _controls.clear();
     api.close();
     super.dispose();
   }
