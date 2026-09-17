@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../core/bili_api.dart';
+import 'web_login.dart';
 import 'widgets.dart';
 
 class AccountPage extends StatelessWidget {
@@ -54,6 +55,12 @@ class AccountPage extends StatelessWidget {
                           icon: const Icon(Icons.file_open),
                           label: const Text('导入 cookie.txt'),
                         ),
+                        if (WebLoginPage.isSupported)
+                          OutlinedButton.icon(
+                            onPressed: () => _webLogin(context),
+                            icon: const Icon(Icons.public),
+                            label: const Text('网页登录'),
+                          ),
                         OutlinedButton.icon(
                           onPressed: () => _refresh(context),
                           icon: const Icon(Icons.refresh),
@@ -67,9 +74,11 @@ class AccountPage extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      '嵌入网页登录尚未接入，本版本请用粘贴或导入 cookie.txt。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff8a5b4a)),
+                    Text(
+                      WebLoginPage.isSupported
+                          ? '网页登录会在应用内打开登录页，登录完成后自动取 Cookie；也可以继续用粘贴或导入。'
+                          : '本平台没有内置浏览器，请用粘贴或导入 cookie.txt。',
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
                 ),
@@ -167,6 +176,20 @@ class AccountPage extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(state.account.message)),
     );
+  }
+
+  Future<void> _webLogin(BuildContext context) async {
+    String? captured;
+    await Navigator.of(context).push(
+      MaterialPageRoute<bool>(
+        builder: (routeContext) => WebLoginPage(
+          onCookie: (text) => captured = text,
+        ),
+      ),
+    );
+    final text = captured;
+    if (text == null || !context.mounted) return;
+    await _apply(context, text);
   }
 
   Future<void> _pasteCookie(BuildContext context) async {

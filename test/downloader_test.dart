@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -19,6 +20,9 @@ class _Server {
   final HttpServer server;
   final Uint8List bytes;
   int rangeRequests = 0;
+  final List<int> rangeStarts = <int>[];
+  int pieceSize = 1 << 20;
+  Duration pieceDelay = Duration.zero;
 
   String get origin => 'http://${server.address.host}:${server.port}';
 
@@ -49,17 +53,42 @@ class _Server {
         return;
       }
       final last = end < bytes.length - 1 ? end : bytes.length - 1;
+      rangeStarts.add(start);
       request.response.statusCode = 206;
       request.response.headers.set('content-range', 'bytes $start-$last/${bytes.length}');
       request.response.headers.contentLength = last - start + 1;
-      request.response.add(bytes.sublist(start, last + 1));
-      request.response.close();
+      _writePieces(request.response, start, last);
       return;
     }
     request.response.statusCode = 200;
     request.response.headers.contentLength = bytes.length;
-    request.response.add(bytes);
-    request.response.close();
+    _writePieces(request.response, 0, bytes.length - 1);
+  }
+
+  /// 分片写出，可以按 [pieceDelay] 放慢，用来制造「传到一半」的时机。
+  void _writePieces(HttpResponse response, int start, int last) {
+    unawaited(() async {
+      try {
+        var cursor = start;
+        while (cursor <= last) {
+          final stop = cursor + pieceSize - 1 > last ? last : cursor + pieceSize - 1;
+          response.add(bytes.sublist(cursor, stop + 1));
+          await response.flush();
+          cursor = stop + 1;
+          if (pieceDelay > Duration.zero) {
+            await Future<void>.delayed(pieceDelay);
+          }
+        }
+        await response.close();
+      } catch (_) {
+        // 客户端中途断开是这类测试的预期，忽略即可。
+        try {
+          await response.close();
+        } catch (_) {
+          // 连接已经断了。
+        }
+      }
+    }());
   }
 
   bool supportRangeFlag = true;
@@ -188,9 +217,32 @@ void main() {
     expect(await _leftovers(work), ['video.m4s']);
   });
 
-  test('分段下载中断后重跑能补齐', () async {
+  test('分段下载能从已有分段文件继续', () async {
+    final bytes = _payload(3 << 20);
+    final server = await _Server.start(bytes);
+    addTearDown(server.stop);
+    final target = '${work.path}${Platform.pathSeparator}video.m4s';
+    final downloader = StreamDownloader(client: client, userAgent: 'test');
+    final head = 512 << 10;
+    await File('$target.part0').writeAsBytes(bytes.sublist(0, head));
+
+    final result = await downloader.download(
+      url: '${server.origin}/file',
+      targetPath: target,
+      parts: 4,
+    );
+
+    expect(result.resumed, isTrue);
+    expect(server.rangeStarts, contains(head));
+    expect(await _read(target), bytes);
+    expect(await _leftovers(work), ['video.m4s']);
+  });
+
+  test('中途取消后重跑能补齐', () async {
     final bytes = _payload(4 << 20);
     final server = await _Server.start(bytes);
+    server.pieceSize = 32 << 10;
+    server.pieceDelay = const Duration(milliseconds: 20);
     addTearDown(server.stop);
     final target = '${work.path}${Platform.pathSeparator}video.m4s';
     final downloader = StreamDownloader(client: client, userAgent: 'test');
@@ -202,13 +254,14 @@ void main() {
         targetPath: target,
         parts: 4,
         onProgress: (received, total) {
-          if (received > (1 << 20)) cancelled = true;
+          if (received > 0) cancelled = true;
         },
         isCancelled: () => cancelled,
       ),
       throwsA(isA<Exception>()),
     );
 
+    server.pieceDelay = Duration.zero;
     final result = await downloader.download(
       url: '${server.origin}/file',
       targetPath: target,
