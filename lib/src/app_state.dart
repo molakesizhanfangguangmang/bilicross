@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'core/bili_api.dart';
 import 'core/downloader.dart';
+import 'core/log_store.dart';
 import 'core/models.dart';
 import 'core/muxer.dart';
 import 'core/parser.dart';
@@ -37,9 +38,19 @@ class AppState extends ChangeNotifier {
         task.audioUrl = '';
       }
     }
+    await LogStore.instance.attach(store.root);
+    LogStore.instance.add('启动', 'BiliHarbor 启动');
+    LogStore.instance.add(
+      '启动',
+      '默认画质 ${settings.preferredQuality}｜并发 ${settings.maxParallelTasks}'
+      '｜分段 ${settings.partsPerFile}｜优先 APP ${settings.preferAppApi ? '开' : '关'}'
+      '｜WEB Cookie ${credentials.cookie.isEmpty ? '无' : '有'}'
+      '｜APP Token ${credentials.token == null ? '无' : '有'}'
+      '｜代理 ${settings.proxy.trim().isEmpty ? '直连' : '已配置'}'
+      '｜日志文件 ${LogStore.instance.filePath ?? '不可用'}',
+    );
     return AppState._(store, settings, credentials.cookie, credentials.token, tasks);
   }
-
   final Store store;
   AppSettings settings;
   WebCookie cookie;
@@ -95,6 +106,12 @@ class AppState extends ChangeNotifier {
     }
     cookie = parsedCookie;
     await store.saveCredentials(CredentialBundle(cookie: cookie, token: token));
+    LogStore.instance.add(
+      '账号',
+      'WEB Cookie 已写入：SESSDATA ${parsedCookie.sessData.length} 字符'
+      '｜bili_jct ${parsedCookie.biliJct.isEmpty ? '无' : '有'}'
+      '｜DedeUserID ${parsedCookie.dedeUserId.isEmpty ? '无' : '有'}',
+    );
     notice = parsedCookie.isComplete
         ? '已写入 WEB Cookie'
         : '已写入 WEB Cookie，但缺少 ${parsedCookie.biliJct.isEmpty ? 'bili_jct ' : ''}${parsedCookie.dedeUserId.isEmpty ? 'DedeUserID' : ''}';
@@ -106,6 +123,7 @@ class AppState extends ChangeNotifier {
     cookie = const WebCookie.empty();
     await store.saveCredentials(CredentialBundle(cookie: cookie, token: token));
     account = const AccountState(loggedIn: false, message: '已清除 WEB Cookie');
+    LogStore.instance.add('账号', 'WEB Cookie 已清除');
     notifyListeners();
   }
 
@@ -119,8 +137,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       account = await api.fetchAccount(cookie.raw);
+      if (account.loggedIn) {
+        LogStore.instance.add(
+          '账号',
+          'WEB 账号：${account.uname}（mid=${account.mid}）'
+          '｜大会员 ${account.vipStatus == 1 ? '是' : '否'}'
+          '（WEB 账号状态，最终以 APP 模式解析为准）',
+        );
+      } else {
+        LogStore.instance.add('账号', 'WEB 账号不可用：${account.message}');
+      }
     } on Exception catch (error) {
       account = AccountState(loggedIn: false, message: '$error');
+      LogStore.instance.add('账号', 'WEB 账号检测失败：$error');
     }
     busy = false;
     notifyListeners();
@@ -169,6 +198,11 @@ class AppState extends ChangeNotifier {
           _authTimer = null;
           pendingAuth = null;
           authStatus = 'APP Token 已获取';
+          LogStore.instance.add(
+            '账号',
+            'APP Token 已获取：mid=${token?.mid ?? 0}'
+            '｜有效期 ${token?.expiresIn ?? 0} 秒',
+          );
           notifyListeners();
         case AppPollStatus.expired:
         case AppPollStatus.failed:
@@ -190,6 +224,7 @@ class AppState extends ChangeNotifier {
     busy = true;
     parsed = null;
     notice = '';
+    LogStore.instance.add('解析', '地址：$input');
     notifyListeners();
     try {
       parsed = await parseService.parseTarget(
@@ -198,8 +233,12 @@ class AppState extends ChangeNotifier {
         token: token ?? _emptyToken,
       );
       notice = parsed!.guestLimited ? '当前未登录或无可用 Token，清晰度受限' : '';
+      if (parsed!.guestLimited) {
+        LogStore.instance.add('解析', '清晰度受限：实际最高档位低于请求档位');
+      }
     } on Exception catch (error) {
       notice = '$error';
+      LogStore.instance.add('解析', '解析失败：$error');
     }
     busy = false;
     notifyListeners();
@@ -217,7 +256,7 @@ class AppState extends ChangeNotifier {
 
   void enqueue({
     required MediaStream video,
-    required MediaStream audio,
+    required MediaStream? audio,
     required String engine,
   }) {
     final media = parsed;
@@ -237,9 +276,9 @@ class AppState extends ChangeNotifier {
       engine: engine,
       channel: media.channel,
       videoUrl: video.url,
-      audioUrl: audio.url,
+      audioUrl: audio?.url ?? '',
       videoBackups: video.backupUrls,
-      audioBackups: audio.backupUrls,
+      audioBackups: audio?.backupUrls ?? const [],
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     tasks.insert(0, task);
@@ -253,11 +292,38 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 清理一个任务留下的文件（成品与全部分片），并把任务从列表移除。
+  ///
+  /// 只在用户点了「清理残留」时才删：失败任务的半截分片还能续传，
+  /// 自动删掉等于把已经下好的部分扔掉。返回删掉的文件数。
+  Future<int> cleanupTask(String id) async {
+    final index = tasks.indexWhere((task) => task.id == id);
+    if (index < 0) return 0;
+    final task = tasks[index];
+    if (task.stage == TaskStage.downloading ||
+        task.stage == TaskStage.muxing ||
+        task.stage == TaskStage.resolving) {
+      return 0;
+    }
+    var removed = await removeArtifacts(task.videoPath);
+    removed += await removeArtifacts(task.audioPath);
+    if (!task.merged) {
+      removed += await removeArtifacts(task.outputPath);
+    }
+    tasks.removeAt(index);
+    await store.saveTasks(tasks);
+    LogStore.instance.add('任务', '${task.title}：已清理 $removed 个残留文件');
+    notifyListeners();
+    return removed;
+  }
+
   void retryTask(String id) {
     final task = tasks.firstWhere((item) => item.id == id);
     task.stage = TaskStage.pending;
     task.message = '等待重试';
     task.receivedBytes = 0;
+    task.totalBytes = 0;
+    task.merged = false;
     task.videoUrl = '';
     task.audioUrl = '';
     unawaited(store.saveTasks(tasks));
@@ -285,6 +351,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _runTask(DownloadTask task) async {
+    LogStore.instance.add(
+      '任务',
+      '开始：${task.title}｜引擎 ${task.engine}'
+      '｜通道 ${task.channel.isEmpty ? '未记录' : task.channel}',
+    );
     try {
       if (task.engine != 'dart') {
         throw BiliException('BBDownNext 兼容引擎尚未接入，请改用 Dart 内置引擎');
@@ -313,26 +384,21 @@ class AppState extends ChangeNotifier {
         backups: task.videoBackups,
         targetPath: task.videoPath,
         parts: settings.partsPerFile,
-        onProgress: (received, total) {
-          task.receivedBytes = received;
-          task.totalBytes = total;
-        },
+        onProgress: (received, total) => _pushProgress(task, received, total),
         isCancelled: () => task.stage == TaskStage.failed,
       );
 
       if (task.audioUrl.isNotEmpty) {
         task.message = '下载音频流';
         task.receivedBytes = 0;
+        task.totalBytes = 0;
         notifyListeners();
         await downloader.download(
           url: task.audioUrl,
           backups: task.audioBackups,
           targetPath: task.audioPath,
           parts: settings.partsPerFile,
-          onProgress: (received, total) {
-            task.receivedBytes = received;
-            task.totalBytes = total;
-          },
+          onProgress: (received, total) => _pushProgress(task, received, total),
           isCancelled: () => task.stage == TaskStage.failed,
         );
       }
@@ -353,11 +419,35 @@ class AppState extends ChangeNotifier {
     } on Exception catch (error) {
       task.stage = TaskStage.failed;
       task.message = '$error';
+      LogStore.instance.add('任务', '失败：${task.title}：$error');
       notifyListeners();
     } finally {
       await store.saveTasks(tasks);
       notifyListeners();
     }
+  }
+
+  /// 进度回调一秒能来几十次，节流到 100ms 一次再通知界面。
+  /// 之前这里只写字段不通知，界面上进度就一直是 0，直到换阶段才跳一下。
+  DateTime _progressPushedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _pushProgress(DownloadTask task, int received, int total) {
+    task.receivedBytes = received;
+    task.totalBytes = total;
+    final now = DateTime.now();
+    if (now.difference(_progressPushedAt).inMilliseconds < 100) return;
+    _progressPushedAt = now;
+    notifyListeners();
+  }
+
+  /// 合并成功后原始分片就没用了，顺手清掉，别让下载目录越堆越大。
+  Future<int> _removeSources(DownloadTask task) async {
+    var removed = await removeArtifacts(task.videoPath);
+    removed += await removeArtifacts(task.audioPath);
+    if (removed > 0) {
+      LogStore.instance.add('合并', '${task.title}：已清理 $removed 个分片');
+    }
+    return removed;
   }
 
   /// 合并音视频。ffmpeg 在就用 ffmpeg，没有就走内置分片合并；
@@ -381,11 +471,14 @@ class AppState extends ChangeNotifier {
       );
       task.merged = true;
       task.stage = TaskStage.done;
-      task.message = '完成（${outcome.engineLabel}）：${task.outputPath}';
+      final removed = await _removeSources(task);
+      task.message = '完成（${outcome.engineLabel}）：${task.outputPath}'
+          '${removed > 0 ? '（已清理 $removed 个分片）' : ''}';
     } on Exception catch (error) {
       task.merged = false;
       task.stage = TaskStage.done;
       task.message = '合并失败，两个分片已保留，可稍后重试：$error';
+      LogStore.instance.add('合并', '${task.title}：两条路径都失败，保留分片：$error');
     }
     notifyListeners();
   }
@@ -409,6 +502,7 @@ class AppState extends ChangeNotifier {
 
   /// 断点续传前先补地址：旧任务里的 CDN 地址可能已经过期。
   Future<void> _refreshTaskUrls(DownloadTask task) async {
+    LogStore.instance.add('任务', '${task.title}：地址已失效，重新解析');
     final media = await parseService.parseTarget(
       task.source,
       cookie: cookie,

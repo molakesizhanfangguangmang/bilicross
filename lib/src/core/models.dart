@@ -10,6 +10,18 @@ const String kWebUserAgent =
 /// APP 通道使用移动端 UA，网页通道使用 [kWebUserAgent]。
 const String kAppUserAgent = 'Mozilla/5.0 BiliDroid/1.0.0 (bbcallen@gmail.com)';
 
+/// playurl 的 fnval 位：16 DASH + 64 HDR + 128 4K + 256 杜比音频 + 512 杜比视界
+/// + 1024 8K + 2048 AV1。UGC 端点用这一组。
+const int kFnvalDash = 4048;
+
+/// 番剧/课程走 /pgc/、/pugv/ 端点，额外接受 8192（智能修复）。
+/// UGC 端点带上这位会直接 -400，所以两边必须分开。
+const int kFnvalDashPgc = 4048 | 8192;
+
+/// APP 端点再加 16384（HDR Vivid）。该位只有 APP 接口认，且需要大会员；
+/// 网页端点带上会被拒，故只加在 APP 通道。
+const int kFnvalDashApp = 4048 | 16384;
+
 /// 视频清晰度编号 -> 展示名。仅列首版会遇到的档位，其余回落到编号本身。
 const Map<int, String> kQualityNames = {
   6: '240P',
@@ -26,7 +38,21 @@ const Map<int, String> kQualityNames = {
   125: 'HDR',
   126: '杜比视界',
   127: '8K',
+  129: 'HDR Vivid',
 };
+
+/// 展示顺序，从高到低。不能按编号排：HDR Vivid 的编号（129）比 8K（127）大，
+/// 档位却比 4K（120）低，与 B 站播放器一致的是这张表。
+const List<int> kQualityRank = [
+  127, 126, 125, 129, 120, 117, 116, 112, 100, 80, 74, 64, 48, 32, 16, 6, 5,
+];
+
+/// 越小越高。未登记的档位排在所有已登记档位之后，彼此再按编号从大到小。
+int qualityRank(int id) {
+  final index = kQualityRank.indexOf(id);
+  if (index >= 0) return index;
+  return kQualityRank.length + (0x7fffffff - (id & 0x7fffffff));
+}
 
 /// 音频编号 -> 展示名。
 const Map<int, String> kAudioNames = {

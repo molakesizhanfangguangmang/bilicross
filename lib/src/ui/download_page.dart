@@ -164,7 +164,8 @@ class _DownloadPageState extends State<DownloadPage> {
             onPressed: () {
               state.enqueue(
                 video: media.videos[videoIndex],
-                audio: audioIndex >= 0 ? media.audios[audioIndex] : media.videos[videoIndex],
+                // 没有独立音频流时不能拿视频流顶替，否则会把同一个流下两遍再去合并。
+                audio: audioIndex >= 0 ? media.audios[audioIndex] : null,
                 engine: 'dart',
               );
               ScaffoldMessenger.of(context).showSnackBar(

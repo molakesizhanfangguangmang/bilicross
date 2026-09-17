@@ -2,7 +2,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/log_store.dart';
 import '../core/models.dart';
+import 'log_page.dart';
 import 'widgets.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -37,6 +39,17 @@ class _SettingsPageState extends State<SettingsPage> {
     _appKey.dispose();
     _appSec.dispose();
     super.dispose();
+  }
+
+  /// 下拉项固定一组预设，但存盘里可能是旧值或手工改过的值。
+  /// 当前值不在预设里就补进列表，否则 DropdownButton 取不到匹配项会断言失败。
+  List<int> _choices(List<int> presets, int current, {bool byQuality = false}) {
+    if (presets.contains(current)) return presets;
+    final merged = <int>[...presets, current];
+    if (byQuality) {
+      merged.sort((left, right) => qualityRank(left).compareTo(qualityRank(right)));
+    }
+    return merged;
   }
 
   @override
@@ -77,7 +90,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         prefixIcon: Icon(Icons.high_quality_outlined),
                       ),
                       items: [
-                        for (final entry in const [112, 80, 74, 64, 32, 16])
+                        for (final entry in _choices(
+                          const [129, 127, 126, 125, 120, 116, 112, 80, 74, 64, 32, 16],
+                          settings.preferredQuality,
+                          byQuality: true,
+                        ))
                           DropdownMenuItem(
                             value: entry,
                             child: Text('${qualityLabel(entry)}（$entry）'),
@@ -97,7 +114,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         prefixIcon: Icon(Icons.graphic_eq),
                       ),
                       items: [
-                        for (final entry in const [30280, 30232, 30216, 30251, 30250])
+                        for (final entry in _choices(
+                          const [30280, 30232, 30216, 30251, 30250],
+                          settings.preferredAudio,
+                        ))
                           DropdownMenuItem(
                             value: entry,
                             child: Text('${audioLabel(entry)}（$entry）'),
@@ -267,6 +287,25 @@ class _SettingsPageState extends State<SettingsPage> {
                       style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              SectionCard(
+                title: '诊断',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('运行日志'),
+                  subtitle: Text(
+                    LogStore.instance.filePath == null
+                        ? '解析走了哪条通道、为什么回退、下载与合并的细节'
+                        : '记录文件：${LogStore.instance.filePath}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (context) => const LogPage()),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),

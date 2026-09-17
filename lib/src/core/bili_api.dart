@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'models.dart';
+import 'log_store.dart';
 import 'signing.dart';
 
 class BiliException implements Exception {
@@ -62,12 +63,23 @@ class BiliApi {
     String cookie = '',
     String? userAgent,
   }) async {
-    final response = await client.get(uri, headers: {
-      'User-Agent': userAgent ?? settings.userAgent,
-      'Referer': 'https://www.bilibili.com/',
-      if (cookie.isNotEmpty) 'Cookie': cookie,
-    });
-    return _decode(response);
+    LogStore.instance.add(
+      '接口',
+      'GET $uri${cookie.isEmpty ? '' : '（带 Cookie）'}',
+      detail: true,
+    );
+    final http.Response response;
+    try {
+      response = await client.get(uri, headers: {
+        'User-Agent': userAgent ?? settings.userAgent,
+        'Referer': 'https://www.bilibili.com/',
+        if (cookie.isNotEmpty) 'Cookie': cookie,
+      });
+    } on Exception catch (error) {
+      LogStore.instance.add('接口', 'GET ${uri.path} 网络失败：$error');
+      rethrow;
+    }
+    return _decode(response, 'GET ${uri.path}');
   }
 
   Future<Map<String, dynamic>> postForm(
@@ -75,20 +87,28 @@ class BiliApi {
     String body, {
     String? userAgent,
   }) async {
-    final response = await client.post(
-      uri,
-      headers: {
-        'User-Agent': userAgent ?? settings.userAgent,
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        'Referer': 'https://www.bilibili.com/',
-      },
-      body: body,
-    );
-    return _decode(response);
+    LogStore.instance.add('接口', 'POST $uri body=$body', detail: true);
+    final http.Response response;
+    try {
+      response = await client.post(
+        uri,
+        headers: {
+          'User-Agent': userAgent ?? settings.userAgent,
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'Referer': 'https://www.bilibili.com/',
+        },
+        body: body,
+      );
+    } on Exception catch (error) {
+      LogStore.instance.add('接口', 'POST ${uri.path} 网络失败：$error');
+      rethrow;
+    }
+    return _decode(response, 'POST ${uri.path}');
   }
 
-  Map<String, dynamic> _decode(http.Response response) {
+  Map<String, dynamic> _decode(http.Response response, String label) {
     if (response.statusCode != 200) {
+      LogStore.instance.add('接口', '$label 失败：接口返回 HTTP ${response.statusCode}');
       throw BiliException('接口返回 HTTP ${response.statusCode}');
     }
     final text = utf8.decode(response.bodyBytes);
@@ -96,11 +116,14 @@ class BiliApi {
     try {
       decoded = jsonDecode(text);
     } on FormatException {
+      LogStore.instance.add('接口', '$label 失败：返回的不是 JSON');
       throw BiliException('接口返回的不是 JSON');
     }
     if (decoded is! Map<String, dynamic>) {
+      LogStore.instance.add('接口', '$label 失败：返回结构不是对象');
       throw BiliException('接口返回结构不是对象');
     }
+    LogStore.instance.add('接口', '$label -> code=${decoded['code']}', detail: true);
     return decoded;
   }
 
@@ -108,6 +131,7 @@ class BiliApi {
     final code = (json['code'] as num?)?.toInt() ?? -1;
     if (code != 0) {
       final message = json['message'] as String? ?? '未知错误';
+      LogStore.instance.add('接口', '$action 失败：$message（code=$code）');
       throw BiliException('$action失败：$message（code=$code）', code: code);
     }
   }
@@ -261,12 +285,13 @@ class BiliApi {
     required int epId,
     required int qn,
   }) async {
+    final fnval = bangumi ? kFnvalDashPgc : kFnvalDash;
     final params = <String, String>{
       'support_multi_audio': 'true',
       'from_client': 'BROWSER',
       'avid': '$aid',
       'cid': '$cid',
-      'fnval': '4048',
+      'fnval': '$fnval',
       'fnver': '0',
       'fourk': '1',
       'otype': 'json',
@@ -292,6 +317,11 @@ class BiliApi {
       query = buildQuery(params);
     }
     final path = bangumi ? '/pgc/player/web/v2/playurl' : '/x/player/wbi/playurl';
+    LogStore.instance.add(
+      '解析',
+      '网页通道请求：qn=$qn fnval=$fnval${bangumi ? '（番剧端点）' : ''}'
+      ' Cookie=${cookie.isEmpty ? '无' : '有'}',
+    );
     final json = await getJson(
       Uri.parse('https://api.bilibili.com$path?$query'),
       cookie: cookie,
@@ -305,17 +335,51 @@ class BiliApi {
   }
 
   /// APP 通道 playurl：appkey + 签名，access_key 可选。
+  ///
+  /// 先带 HDR Vivid 位（16384）请求，该位只有 APP 端点认；万一被拒，去掉这一位再试一次，
+  /// 别因为多要一个档位把整条 APP 通道弄丢。
   Future<Map<String, dynamic>> fetchPlayUrlApp({
     required String accessToken,
     required int aid,
     required int cid,
     required int qn,
   }) async {
+    try {
+      return await _requestAppPlayurl(
+        accessToken: accessToken,
+        aid: aid,
+        cid: cid,
+        qn: qn,
+        fnval: kFnvalDashApp,
+      );
+    } on BiliException catch (error) {
+      LogStore.instance.add(
+        '解析',
+        'APP 通道带 HDR Vivid 位（$kFnvalDashApp）失败：${error.message}，'
+        '改用 fnval=$kFnvalDash 再试',
+      );
+    }
+    return _requestAppPlayurl(
+      accessToken: accessToken,
+      aid: aid,
+      cid: cid,
+      qn: qn,
+      fnval: kFnvalDash,
+    );
+  }
+
+  Future<Map<String, dynamic>> _requestAppPlayurl({
+    required String accessToken,
+    required int aid,
+    required int cid,
+    required int qn,
+    required int fnval,
+  }) async {
     final params = <String, String>{
       'appkey': settings.appKey,
       'avid': '$aid',
       'cid': '$cid',
-      'fnval': '4048',
+      'fnval': '$fnval',
       'fnver': '0',
       'fourk': '1',
       'mobi_app': 'android',
@@ -328,6 +392,11 @@ class BiliApi {
         .map((entry) => '${entry.key}=${encodeComponent(entry.value)}')
         .join('&');
     final sign = appSign(query: entries, appSecret: settings.appSec);
+    LogStore.instance.add(
+      '解析',
+      'APP 通道请求：qn=$qn fnval=$fnval'
+      ' access_key=${accessToken.isEmpty ? '无' : '有'}',
+    );
     final json = await getJson(
       Uri.parse('https://api.bilibili.com/x/player/playurl?$entries&sign=$sign'),
       userAgent: kAppUserAgent,
