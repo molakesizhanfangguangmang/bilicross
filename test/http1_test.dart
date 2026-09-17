@@ -173,7 +173,9 @@ void main() {
   group('gRPC 帧', () {
     test('压缩帧按 gzip 解', () {
       final data = utf8.encode('playview payload');
-      final frame = <int>[1, ...data.length.toBytes(4), ...gzip.encode(data)];
+      // 帧头里的长度是压缩后的长度（gRPC 规定），不是解压后的。
+      final compressed = gzip.encode(data);
+      final frame = <int>[1, ...compressed.length.toBytes(4), ...compressed];
       expect(PlayViewCodec.unframe(frame), data);
     });
 
