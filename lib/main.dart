@@ -7,16 +7,16 @@ import 'src/ui/settings_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/widgets.dart';
 
-void main() => runApp(const BiliHarborApp());
+void main() => runApp(const BiliCrossApp());
 
-class BiliHarborApp extends StatefulWidget {
-  const BiliHarborApp({super.key});
+class BiliCrossApp extends StatefulWidget {
+  const BiliCrossApp({super.key});
 
   @override
-  State<BiliHarborApp> createState() => _BiliHarborAppState();
+  State<BiliCrossApp> createState() => _BiliCrossAppState();
 }
 
-class _BiliHarborAppState extends State<BiliHarborApp> {
+class _BiliCrossAppState extends State<BiliCrossApp> {
   final Future<AppState> _loading = AppState.load();
 
   @override
@@ -24,7 +24,7 @@ class _BiliHarborAppState extends State<BiliHarborApp> {
     const seed = Color(0xff2f6f65);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'BiliHarbor',
+      title: '逸轨',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
@@ -117,7 +117,7 @@ class _AppShellState extends State<AppShell> {
             final wide = constraints.maxWidth >= 760;
             return Scaffold(
               appBar: AppBar(
-                title: const Text('BiliHarbor'),
+                title: const Text('逸轨'),
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 16),

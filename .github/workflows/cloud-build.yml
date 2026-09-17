@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           flutter --version
-          flutter create --platforms=android --org io.github.molakesizhanfangguangmang --project-name biliharbor .
+          flutter create --platforms=android --org io.github.molakesizhanfangguangmang --project-name bilicross .
           rm -f test/widget_test.dart
           python3 - <<'PY'
           import re
@@ -107,6 +107,41 @@ jobs:
               if needle not in written:
                   raise SystemExit(f'Failed to inject {needle}')
           print('Android manifest patched')
+
+          # 应用标识沿用首版包名：项目更名不改应用身份，旧版可以直接覆盖安装，
+          # 应用私有目录里的设置、凭据、任务与已下载文件都留在原处。
+          gradle = Path('android/app/build.gradle.kts')
+          text, pinned = re.subn(
+              r'applicationId = "[^"]*"',
+              'applicationId = "io.github.molakesizhanfangguangmang.biliharbor"',
+              gradle.read_text(),
+          )
+          if pinned != 1:
+              raise SystemExit('未能锁定 Android applicationId')
+          gradle.write_text(text)
+
+          # 图标与显示名：仓库里的 packaging/android/res 覆盖模板图标（含自适应图标）。
+          import shutil
+          source = Path('packaging/android/res')
+          dest = Path('android/app/src/main/res')
+          for folder in sorted(source.iterdir()):
+              target = dest / folder.name
+              target.mkdir(parents=True, exist_ok=True)
+              for item in sorted(folder.iterdir()):
+                  shutil.copy2(item, target / item.name)
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text, named = re.subn(r'android:label="[^"]*"', 'android:label="逸轨"', manifest.read_text())
+          if named != 1:
+              raise SystemExit('未能设置应用显示名')
+          manifest.write_text(text)
+          for needle in ('android:label="逸轨"', '@color/ic_launcher_background'):
+              present = needle in manifest.read_text() or needle in Path(
+                  'android/app/src/main/res/values/colors.xml'
+              ).read_text()
+              if not present:
+                  raise SystemExit(f'图标或显示名注入失败：缺少 {needle}')
+          print('图标、显示名与包名标识已写入')
           PY
 
       - name: Configure release signing
@@ -120,9 +155,9 @@ jobs:
             echo "缺少 ANDROID_KEYSTORE_* secrets，拒绝出包：否则会用临时 debug 密钥签名，装不上去。" >&2
             exit 1
           fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/biliharbor-release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/bilicross-release.p12"
           keytool -importkeystore -noprompt \
-            -srckeystore "$RUNNER_TEMP/biliharbor-release.p12" -srcstoretype PKCS12 \
+            -srckeystore "$RUNNER_TEMP/bilicross-release.p12" -srcstoretype PKCS12 \
             -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" -srckeypass "$KEYSTORE_PASSWORD" \
             -destkeystore android/app/release.jks -deststoretype JKS \
             -deststorepass "$KEYSTORE_PASSWORD" -destalias "$KEY_ALIAS" -destkeypass "$KEYSTORE_PASSWORD"
@@ -138,32 +173,32 @@ jobs:
           if not path.exists():
               raise SystemExit('Android Gradle 脚本不存在，无法注入签名配置')
           text = path.read_text()
-          if 'biliharborSigning' in text:
+          if 'bilicrossSigning' in text:
               raise SystemExit('发布签名配置已存在')
           text += """
           // 由 CI 注入：用仓库 secrets 里的固定发布密钥签名，保证升级安装可用。
           // 不引 java.util.Properties：脚本里 java 是 Gradle 的 java 扩展，会把包名遮掉。
-          val biliharborSigningFile = rootProject.file("key.properties")
-          if (biliharborSigningFile.exists()) {
-              val biliharborSigning = mutableMapOf<String, String>()
-              biliharborSigningFile.readLines().forEach { line ->
+          val bilicrossSigningFile = rootProject.file("key.properties")
+          if (bilicrossSigningFile.exists()) {
+              val bilicrossSigning = mutableMapOf<String, String>()
+              bilicrossSigningFile.readLines().forEach { line ->
                   val cut = line.indexOf('=')
                   if (cut > 0) {
-                      biliharborSigning[line.substring(0, cut).trim()] = line.substring(cut + 1).trim()
+                      bilicrossSigning[line.substring(0, cut).trim()] = line.substring(cut + 1).trim()
                   }
               }
               android {
                   signingConfigs {
-                      create("biliharborSigning") {
-                          storeFile = file(biliharborSigning.getValue("storeFile"))
-                          storePassword = biliharborSigning.getValue("storePassword")
-                          keyAlias = biliharborSigning.getValue("keyAlias")
-                          keyPassword = biliharborSigning.getValue("keyPassword")
+                      create("bilicrossSigning") {
+                          storeFile = file(bilicrossSigning.getValue("storeFile"))
+                          storePassword = bilicrossSigning.getValue("storePassword")
+                          keyAlias = bilicrossSigning.getValue("keyAlias")
+                          keyPassword = bilicrossSigning.getValue("keyPassword")
                       }
                   }
                   buildTypes {
                       getByName("release") {
-                          signingConfig = signingConfigs.getByName("biliharborSigning")
+                          signingConfig = signingConfigs.getByName("bilicrossSigning")
                       }
                   }
               }
@@ -171,7 +206,7 @@ jobs:
           """
           path.write_text(text)
           written = path.read_text()
-          for needle in ('biliharborSigning', 'getByName("release")', 'storeFile = file('):
+          for needle in ('bilicrossSigning', 'getByName("release")', 'storeFile = file('):
               if needle not in written:
                   raise SystemExit(f'签名配置注入失败：缺少 {needle}')
           print('Release signing configured from CI secrets')
@@ -220,7 +255,7 @@ jobs:
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliHarbor-android-arm64
+          name: BiliCross-android-arm64
           path: |
             build/app/outputs/flutter-apk/app-release.apk
             build/app/outputs/flutter-apk/app-release.apk.sha256
@@ -244,8 +279,20 @@ jobs:
         run: |
           flutter --version
           flutter config --enable-windows-desktop
-          flutter create --platforms=windows --org io.github.molakesizhanfangguangmang --project-name biliharbor .
+          flutter create --platforms=windows --org io.github.molakesizhanfangguangmang --project-name bilicross .
           Remove-Item test\widget_test.dart -ErrorAction SilentlyContinue
+
+      - name: Apply icon and window title
+        shell: pwsh
+        run: |
+          Copy-Item packaging\windows\app_icon.ico windows\runner\resources\app_icon.ico -Force
+          if (-not (Test-Path windows\runner\resources\app_icon.ico)) { throw '图标未写入' }
+          $main = 'windows\runner\main.cpp'
+          $text = Get-Content $main -Raw
+          $text = $text -replace 'window\.Create\(L"[^"]*"', 'window.Create(L"\u9038\u8f68"'
+          Set-Content $main $text -NoNewline -Encoding utf8
+          if (-not (Select-String -Path $main -SimpleMatch 'u9038')) { throw '未能设置窗口标题' }
+          Select-String -Path $main -Pattern 'window\.Create'
 
       - name: Check and test
         shell: pwsh
@@ -262,16 +309,16 @@ jobs:
         shell: pwsh
         run: |
           $source = 'build\windows\x64\runner\Release'
-          if (-not (Test-Path "$source\biliharbor.exe")) { throw 'Windows executable not found' }
-          Compress-Archive -Path "$source\*" -DestinationPath BiliHarbor-windows-x64.zip
-          $hash = (Get-FileHash BiliHarbor-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  BiliHarbor-windows-x64.zip" | Set-Content BiliHarbor-windows-x64.zip.sha256 -Encoding ascii
+          if (-not (Test-Path "$source\bilicross.exe")) { throw 'Windows executable not found' }
+          Compress-Archive -Path "$source\*" -DestinationPath BiliCross-windows-x64.zip
+          $hash = (Get-FileHash BiliCross-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-x64.zip" | Set-Content BiliCross-windows-x64.zip.sha256 -Encoding ascii
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliHarbor-windows-x64
+          name: BiliCross-windows-x64
           path: |
-            BiliHarbor-windows-x64.zip
-            BiliHarbor-windows-x64.zip.sha256
+            BiliCross-windows-x64.zip
+            BiliCross-windows-x64.zip.sha256
           if-no-files-found: error

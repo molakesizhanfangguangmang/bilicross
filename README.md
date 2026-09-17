@@ -1,78 +1,50 @@
-# BiliHarbor
+# 逸轨（BiliCross）
 
-BiliHarbor is a Flutter client for local Bilibili media workflows.
+<img src="packaging/icon/app_icon.png" width="120" alt="逸轨">
 
-Current stage: first-version features are wired into the app and the cloud build
-produces installable Windows and Android artifacts. Everything runs locally on the
-device; there is no remote service.
+逸轨是一个本地运行的 B 站媒体下载与整理客户端。界面用 Flutter 写，核心能力用 Dart 实现，
+解析、下载、合并都在本机完成，不依赖外部服务。
 
-## Initial targets
+当前版本：1.0.0（正式版）。
+
+## 平台
 
 - Windows x64
-- Android arm64-v8a, Android 8.0 (API 26) or newer
-- iOS unsigned IPA later
+- Android arm64-v8a，最低 Android 8.0（API 26）
 
-## What works now
+## 能做什么
 
-- Address recognition for `BV`/`av` videos, `b23.tv` short links, bangumi `ep`/`ss`
-  and cheese episodes, including multi-part `?p=` selection.
-- Two parsing channels: the WBI-signed web channel (`/x/player/wbi/playurl`) and the
-  signed APP channel (`/x/player/playurl`). The APP channel is used first when
-  `preferAppApi` is enabled and an APP token exists; a failed channel falls back to the
-  other one and the channel actually used is recorded on the task.
-- Stream selection from the DASH payload: video tracks sorted by quality then codec
-  preference (AVC first), audio tracks including FLAC and Dolby entries.
-- WEB Cookie handling: paste, `cookie.txt` import (Netscape and request-header forms),
-  `/x/web-interface/nav` validation, account and VIP display. Only field presence and
-  masked values are shown.
-- APP token: WEB Cookie -> `auth_code` -> system browser authorization -> poll every
-  2 seconds -> token written only after a complete response. Old tokens are kept when
-  acquisition fails.
-- Downloads: per file up to 8 parallel `Range` connections (splitting into chunks under
-  `.partN` files that each resume on their own), falling back to a single connection when
-  the server ignores `Range`, when the file is small, or when a partially written `.part`
-  is already there. Backup URL fallback, queue with a configurable parallel limit, task
-  persistence and restart recovery. Stale CDN URLs are re-resolved before resuming.
-- Merging without external tools: `Fmp4Merger`, the built-in merge, rebuilds one `moov` with
-  both tracks (the audio track gets a fresh `track_ID`), rewrites the audio fragments'
-  `tfhd` accordingly, and interleaves `moof`+`mdat` pairs by `tfdt` decode time. Sample
-  data is copied as is: no re-encode, no rebuild of the sample tables, and `trun` data
-  offsets stay valid because `base_data_offset`, when present, is recomputed relative to
-  the new `moof` position.
-- Merging with ffmpeg: when an `ffmpeg` binary is configured or found on `PATH`, it is
-  used first (`-c copy`, no transcoding) because it emits a plain MP4. The built-in merge
-  is the fallback, and the engine actually used is written into the task message.
-- Failed merges keep both parts and say why in the task message; a separate "retry merge"
-  action re-runs only the merge step.
+- 识别 `BV`/`av` 号、`b23.tv` 短链、番剧 `ep`/`ss` 与课程地址，支持分 P 选择。
+- 两条解析通道：WBI 签名的网页通道与 APP 签名通道；APP 通道需要 Token。一条失败自动回退，
+  实际用的通道记在任务上。
+- 档位可选，顺序为 8K、HDR Vivid、杜比视界、HDR、4K……视频轨与音频轨可以各自保留或取消。
+- 下载：单文件最多 8 个 Range 分片并行，断点续传，队列限流；地址过期时按任务原本的档位重新解析。
+- 合并：优先用 ffmpeg 流复制；没有 ffmpeg 时用内置 fMP4 合并，按 `moof`/`mdat` 拼接，不重编码。
+- 账号：网页 Cookie（粘贴或导入 `cookie.txt`）与 APP Token，凭据只保存在本机并留有备份。
 
-## Not wired yet
+## 从哪拿安装包
 
-- Embedded web login (a web view that captures cookies). Use paste or `cookie.txt`.
-- Bundled FFmpeg binary. It is not required any more: the built-in merge covers machines
-  without `ffmpeg`.
-- BBDownNext compatibility engine (bundled `serve` on Windows) and the engine switch.
-- Secure credential storage: settings, cookies and tasks are stored as JSON under the
-  application support directory, with timestamped backups for credentials.
+云编译产物在 Actions 的 `Cloud build` 工作流里：Android 出 APK，Windows 出 ZIP。
+本机不做编译，本地构建产物不用于发布。
 
-## Layout
+## 构建
 
-- `lib/src/core` — address parsing, signing, API access, DASH building, downloads,
-  remux, persistence. No Flutter imports except for `foundation` notifications.
-- `lib/src/ui` — the four pages: downloads, tasks, account, settings.
-- `test/app_test.dart` — offline checks for address parsing, cookie parsing, WBI and APP
-  signing vectors, DASH stream building and formatting helpers.
-- `test/fmp4_test.dart` — builds fragmented MP4 fixtures and checks track renumbering,
-  fragment interleaving, `base_data_offset` rewriting and the non-fragmented error path.
-- `test/downloader_test.dart` — runs a local `HttpServer` to check parallel range
-  downloads, the single-connection fallback and resume against a partial `.part`.
+推送到 `main` 或手动触发 `Cloud build`。工作流在干净的 runner 上安装 Flutter stable、
+生成平台壳、注入图标与显示名、配置发布签名，跑 `flutter analyze` 与 `flutter test` 后出包。
 
-## Builds
+## 目录
 
-The `Cloud build` GitHub Actions workflow installs Flutter stable on clean runners,
-generates the platform shells, patches the Android manifest (API 26, `INTERNET`
-permission, `url_launcher` queries), runs formatting, analysis and tests, and builds:
+- `lib/src/core` — 地址解析、签名、接口访问、DASH 组装、下载、合并、持久化。
+- `lib/src/ui` — 下载、任务、账号、设置四个页面。
+- `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、fMP4 合并、档位选择。
+- `packaging` — 图标资源：Android 各密度图标与自适应图标、Windows `ico`。
 
-- `BiliHarbor-android-arm64`
-- `BiliHarbor-windows-x64`
+## 贡献者
 
-Local build products are intentionally not used for releases.
+- tricky — 作者，需求与验收
+- Copilot（QwenPaw agent）— 开发
+- 致谢：BBDownNext（KaiHuaDou）提供行为参考，bilibili-API-collect（SocialSisterYi）提供接口资料
+
+## 说明
+
+仅供个人备份自己有权访问的内容。

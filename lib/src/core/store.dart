@@ -24,7 +24,16 @@ class Store {
 
   static Future<Store> open() async {
     final base = await getApplicationSupportDirectory();
-    final root = Directory('${base.path}${Platform.pathSeparator}biliharbor');
+    final root = Directory('${base.path}${Platform.pathSeparator}bilicross');
+    final legacy = Directory('${base.path}${Platform.pathSeparator}biliharbor');
+    // 更名前的旧目录整体搬过来：Android 侧包名没变，设置、凭据、任务与已下载文件都还在原处。
+    if (!root.existsSync() && legacy.existsSync()) {
+      try {
+        await legacy.rename(root.path);
+      } on FileSystemException {
+        await root.create(recursive: true);
+      }
+    }
     if (!root.existsSync()) {
       await root.create(recursive: true);
     }

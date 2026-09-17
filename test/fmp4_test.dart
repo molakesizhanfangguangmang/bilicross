@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:biliharbor/src/core/bili_api.dart';
-import 'package:biliharbor/src/core/fmp4.dart';
+import 'package:bilicross/src/core/bili_api.dart';
+import 'package:bilicross/src/core/fmp4.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<int> _be32(int value) => [
@@ -217,7 +217,7 @@ void main() {
   late Directory work;
 
   setUp(() async {
-    work = await Directory.systemTemp.createTemp('biliharbor-fmp4');
+    work = await Directory.systemTemp.createTemp('bilicross-fmp4');
   });
 
   tearDown(() async {
