@@ -8,7 +8,7 @@ import 'package:http/testing.dart';
 http.Response _release(String tag, {String? url, int status = 200}) {
   final body = jsonEncode(<String, Object?>{
     'tag_name': tag,
-    if (url != null) 'html_url': url,
+    'html_url': ?url,
     'name': tag,
   });
   return http.Response(body, status, headers: <String, String>{
