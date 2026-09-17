@@ -293,7 +293,7 @@ class AppState extends ChangeNotifier {
   String? authNotice(Object error) {
     final text = authNoticeFor(
       error,
-      hasCookie: cookie.isNotEmpty,
+      hasCookie: !cookie.isEmpty,
       hasToken: token?.accessToken.isNotEmpty ?? false,
     );
     if (text != null) {
