@@ -87,7 +87,12 @@ void main() {
       final android = StreamDownloader.headersFor(url: _androidUrl, userAgent: 'MyAgent/1.0');
       expect(android.containsKey('Referer'), isFalse);
       expect(android.containsKey('Origin'), isFalse);
-      expect(android['User-Agent'], 'MyAgent/1.0');
+      // 移动端地址固定短串：桌面长 UA 一律被 CDN 403，设置里的值在这类地址上不使用
+      expect(android['User-Agent'], kFallbackUserAgent);
+
+      final androidDesktop = StreamDownloader.headersFor(url: _androidUrl, userAgent: kWebUserAgent);
+      expect(androidDesktop['User-Agent'], kFallbackUserAgent);
+      expect(androidDesktop.containsKey('Referer'), isFalse);
     });
 
     test('android_tv_yst 这类平台也按移动端处理', () {
