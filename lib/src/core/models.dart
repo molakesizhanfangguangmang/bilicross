@@ -1,0 +1,556 @@
+/// 数据模型与常量。所有对外可见的文案为中文，标识符为英文。
+
+const String kDefaultAppKey = '783bbb7264451d82';
+const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';
+
+const String kWebUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0';
+
+/// APP 通道使用移动端 UA，网页通道使用 [kWebUserAgent]。
+const String kAppUserAgent = 'Mozilla/5.0 BiliDroid/1.0.0 (bbcallen@gmail.com)';
+
+/// 视频清晰度编号 -> 展示名。仅列首版会遇到的档位，其余回落到编号本身。
+const Map<int, String> kQualityNames = {
+  6: '240P',
+  16: '360P',
+  32: '480P',
+  64: '720P',
+  74: '720P60',
+  80: '1080P',
+  100: '智能修复',
+  112: '1080P+',
+  116: '1080P60',
+  117: '1080P60+',
+  120: '4K',
+  125: 'HDR',
+  126: '杜比视界',
+  127: '8K',
+};
+
+/// 音频编号 -> 展示名。
+const Map<int, String> kAudioNames = {
+  30216: '64K',
+  30232: '132K',
+  30280: '192K',
+  30250: '杜比全景声',
+  30251: 'Hi-Res 无损',
+};
+
+String qualityLabel(int id) => kQualityNames[id] ?? '画质 $id';
+
+String audioLabel(int id) => kAudioNames[id] ?? '音质 $id';
+
+/// 编解码器短名，用于在同清晰度多编码之间区分。
+String codecShortName(String codecs) {
+  final lower = codecs.toLowerCase();
+  if (lower.startsWith('avc')) return 'AVC';
+  if (lower.startsWith('hev') || lower.startsWith('hvc')) return 'HEVC';
+  if (lower.startsWith('av01') || lower.startsWith('av1')) return 'AV1';
+  if (lower.startsWith('ec-3') || lower.startsWith('eac3')) return 'E-AC-3';
+  if (lower.startsWith('flac')) return 'FLAC';
+  if (lower.startsWith('mp4a')) return 'AAC';
+  return codecs;
+}
+
+/// 地址识别结果。
+enum TargetKind { video, bangumi, cheese, shortLink, unknown }
+
+class BiliTarget {
+  const BiliTarget({
+    required this.kind,
+    this.bvid,
+    this.aid,
+    this.epId,
+    this.seasonId,
+    this.page = 1,
+    this.shortUrl,
+    required this.source,
+  });
+
+  final TargetKind kind;
+  final String? bvid;
+  final int? aid;
+  final int? epId;
+  final int? seasonId;
+
+  /// 分 P 序号，从 1 开始。
+  final int page;
+  final String? shortUrl;
+  final String source;
+
+  bool get isSupported =>
+      kind == TargetKind.video || kind == TargetKind.bangumi || kind == TargetKind.cheese;
+
+  String get displayId {
+    if (bvid != null) return page > 1 ? '$bvid P$page' : bvid!;
+    if (aid != null) return page > 1 ? 'av$aid P$page' : 'av$aid';
+    if (epId != null) return 'ep$epId';
+    if (seasonId != null) return 'ss$seasonId';
+    return source;
+  }
+}
+
+class PlayPage {
+  const PlayPage({
+    required this.page,
+    required this.cid,
+    required this.part,
+    required this.durationSec,
+    this.aid = 0,
+    this.epId = 0,
+  });
+
+  final int page;
+  final int cid;
+  final String part;
+  final int durationSec;
+
+  /// 番剧分集自带 aid；普通视频沿用所属视频的 aid。
+  final int aid;
+  final int epId;
+
+  Map<String, dynamic> toJson() => {
+        'page': page,
+        'cid': cid,
+        'part': part,
+        'duration': durationSec,
+        'aid': aid,
+        'ep_id': epId,
+      };
+
+  static PlayPage fromJson(Map<String, dynamic> json) => PlayPage(
+        page: (json['page'] as num?)?.toInt() ?? 1,
+        cid: (json['cid'] as num?)?.toInt() ?? 0,
+        part: json['part'] as String? ?? '',
+        durationSec: (json['duration'] as num?)?.toInt() ?? 0,
+        aid: (json['aid'] as num?)?.toInt() ?? 0,
+        epId: (json['ep_id'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class VideoInfo {
+  const VideoInfo({
+    required this.bvid,
+    required this.aid,
+    required this.title,
+    required this.owner,
+    required this.cover,
+    required this.durationSec,
+    required this.pages,
+  });
+
+  final String bvid;
+  final int aid;
+  final String title;
+  final String owner;
+  final String cover;
+  final int durationSec;
+  final List<PlayPage> pages;
+}
+
+class MediaStream {
+  const MediaStream({
+    required this.id,
+    required this.label,
+    required this.codecs,
+    required this.bandwidth,
+    required this.url,
+    this.backupUrls = const [],
+    this.width = 0,
+    this.height = 0,
+    this.sizeBytes = 0,
+  });
+
+  final int id;
+  final String label;
+  final String codecs;
+  final int bandwidth;
+  final String url;
+  final List<String> backupUrls;
+  final int width;
+  final int height;
+  final int sizeBytes;
+
+  bool get isVideo => height > 0;
+
+  String get detail {
+    if (isVideo) {
+      final size = sizeBytes > 0 ? ' · ${formatBytes(sizeBytes)}' : '';
+      return '${width}x$height · ${codecShortName(codecs)} · ${formatBitrate(bandwidth)}$size';
+    }
+    return '${codecShortName(codecs)} · ${formatBitrate(bandwidth)}';
+  }
+}
+
+class ParsedMedia {
+  const ParsedMedia({
+    required this.info,
+    required this.page,
+    required this.videos,
+    required this.audios,
+    required this.durationSec,
+    required this.channel,
+    required this.guestLimited,
+  });
+
+  final VideoInfo info;
+  final PlayPage page;
+  final List<MediaStream> videos;
+  final List<MediaStream> audios;
+  final int durationSec;
+
+  /// 实际命中的解析通道，写入任务记录。
+  final String channel;
+
+  /// 无 Cookie 或无有效 Token 时，高清晰度会被限制，界面需要提示。
+  final bool guestLimited;
+
+  MediaStream? get bestVideo => videos.isEmpty ? null : videos.first;
+
+  MediaStream? get bestAudio => audios.isEmpty ? null : audios.last;
+
+  ParsedMedia copyWith({List<MediaStream>? videos, List<MediaStream>? audios}) => ParsedMedia(
+        info: info,
+        page: page,
+        videos: videos ?? this.videos,
+        audios: audios ?? this.audios,
+        durationSec: durationSec,
+        channel: channel,
+        guestLimited: guestLimited,
+      );
+}
+
+class WebCookie {
+  const WebCookie({
+    required this.raw,
+    required this.sessData,
+    required this.biliJct,
+    required this.dedeUserId,
+  });
+
+  const WebCookie.empty()
+      : raw = '',
+        sessData = '',
+        biliJct = '',
+        dedeUserId = '';
+
+  final String raw;
+  final String sessData;
+  final String biliJct;
+  final String dedeUserId;
+
+  bool get isEmpty => raw.isEmpty;
+
+  bool get isComplete =>
+      sessData.isNotEmpty && biliJct.isNotEmpty && dedeUserId.isNotEmpty;
+
+  /// 界面只展示字段是否齐全与掩码，不展示完整值。
+  String get maskedSessData => maskSecret(sessData);
+
+  Map<String, dynamic> toJson() => {
+        'raw': raw,
+        'sessdata': sessData,
+        'bili_jct': biliJct,
+        'dede_user_id': dedeUserId,
+      };
+
+  static WebCookie fromJson(Map<String, dynamic> json) => WebCookie(
+        raw: json['raw'] as String? ?? '',
+        sessData: json['sessdata'] as String? ?? '',
+        biliJct: json['bili_jct'] as String? ?? '',
+        dedeUserId: json['dede_user_id'] as String? ?? '',
+      );
+}
+
+class AppToken {
+  const AppToken({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.expiresIn,
+    required this.mid,
+    required this.obtainedAtMs,
+  });
+
+  final String accessToken;
+  final String refreshToken;
+  final int expiresIn;
+  final int mid;
+  final int obtainedAtMs;
+
+  bool get isEmpty => accessToken.isEmpty;
+
+  int get expiresAtMs => obtainedAtMs + expiresIn * 1000;
+
+  String get masked => maskSecret(accessToken);
+
+  Map<String, dynamic> toJson() => {
+        'access_token': accessToken,
+        'refresh_token': refreshToken,
+        'expires_in': expiresIn,
+        'mid': mid,
+        'obtained_at_ms': obtainedAtMs,
+      };
+
+  static AppToken fromJson(Map<String, dynamic> json) => AppToken(
+        accessToken: json['access_token'] as String? ?? '',
+        refreshToken: json['refresh_token'] as String? ?? '',
+        expiresIn: (json['expires_in'] as num?)?.toInt() ?? 0,
+        mid: (json['mid'] as num?)?.toInt() ?? 0,
+        obtainedAtMs: (json['obtained_at_ms'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class AccountState {
+  const AccountState({
+    required this.loggedIn,
+    this.uname = '',
+    this.mid = 0,
+    this.vipStatus = 0,
+    this.vipType = 0,
+    this.coins = 0,
+    this.message = '',
+  });
+
+  const AccountState.unknown() : this(loggedIn: false, message: '未检测');
+
+  final bool loggedIn;
+  final String uname;
+  final int mid;
+  final int vipStatus;
+  final int vipType;
+  final double coins;
+  final String message;
+
+  String get vipLabel {
+    if (vipStatus != 1) return '非大会员';
+    return switch (vipType) {
+      2 => '年度大会员',
+      1 => '月度大会员',
+      _ => '大会员',
+    };
+  }
+}
+
+enum TaskStage { pending, resolving, downloading, muxing, done, failed }
+
+extension TaskStageLabel on TaskStage {
+  String get label => switch (this) {
+        TaskStage.pending => '等待',
+        TaskStage.resolving => '解析',
+        TaskStage.downloading => '下载',
+        TaskStage.muxing => '合并',
+        TaskStage.done => '完成',
+        TaskStage.failed => '失败',
+      };
+}
+
+class DownloadTask {
+  DownloadTask({
+    required this.id,
+    required this.title,
+    required this.source,
+    required this.infoId,
+    required this.page,
+    required this.cid,
+    required this.outputPath,
+    required this.engine,
+    required this.channel,
+    this.stage = TaskStage.pending,
+    this.message = '',
+    this.totalBytes = 0,
+    this.receivedBytes = 0,
+    this.videoUrl = '',
+    this.audioUrl = '',
+    this.videoBackups = const [],
+    this.audioBackups = const [],
+    this.videoPath = '',
+    this.audioPath = '',
+    this.merged = false,
+    this.createdAtMs = 0,
+  });
+
+  final String id;
+  String title;
+  final String source;
+  final String infoId;
+  final int page;
+  final int cid;
+  String outputPath;
+  String engine;
+  String channel;
+  TaskStage stage;
+  String message;
+  int totalBytes;
+  int receivedBytes;
+  String videoUrl;
+  String audioUrl;
+  List<String> videoBackups;
+  List<String> audioBackups;
+  String videoPath;
+  String audioPath;
+  bool merged;
+  final int createdAtMs;
+
+  double get progress {
+    if (totalBytes <= 0) return 0;
+    return (receivedBytes / totalBytes).clamp(0.0, 1.0).toDouble();
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'source': source,
+        'info_id': infoId,
+        'page': page,
+        'cid': cid,
+        'output_path': outputPath,
+        'engine': engine,
+        'channel': channel,
+        'stage': stage.name,
+        'message': message,
+        'total_bytes': totalBytes,
+        'received_bytes': receivedBytes,
+        'video_url': videoUrl,
+        'audio_url': audioUrl,
+        'video_backups': videoBackups,
+        'audio_backups': audioBackups,
+        'video_path': videoPath,
+        'audio_path': audioPath,
+        'merged': merged,
+        'created_at_ms': createdAtMs,
+      };
+
+  static DownloadTask fromJson(Map<String, dynamic> json) => DownloadTask(
+        id: json['id'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        source: json['source'] as String? ?? '',
+        infoId: json['info_id'] as String? ?? '',
+        page: (json['page'] as num?)?.toInt() ?? 1,
+        cid: (json['cid'] as num?)?.toInt() ?? 0,
+        outputPath: json['output_path'] as String? ?? '',
+        engine: json['engine'] as String? ?? 'dart',
+        channel: json['channel'] as String? ?? '',
+        stage: TaskStage.values.firstWhere(
+          (value) => value.name == json['stage'],
+          orElse: () => TaskStage.pending,
+        ),
+        message: json['message'] as String? ?? '',
+        totalBytes: (json['total_bytes'] as num?)?.toInt() ?? 0,
+        receivedBytes: (json['received_bytes'] as num?)?.toInt() ?? 0,
+        videoUrl: json['video_url'] as String? ?? '',
+        audioUrl: json['audio_url'] as String? ?? '',
+        videoBackups: (json['video_backups'] as List?)?.cast<String>() ?? const [],
+        audioBackups: (json['audio_backups'] as List?)?.cast<String>() ?? const [],
+        videoPath: json['video_path'] as String? ?? '',
+        audioPath: json['audio_path'] as String? ?? '',
+        merged: json['merged'] as bool? ?? false,
+        createdAtMs: (json['created_at_ms'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class AppSettings {
+  AppSettings({
+    this.downloadDir = '',
+    this.preferredQuality = 80,
+    this.preferredAudio = 30280,
+    this.engine = 'dart',
+    this.ffmpegPath = '',
+    this.proxy = '',
+    this.appKey = kDefaultAppKey,
+    this.appSec = kDefaultAppSec,
+    this.userAgent = kWebUserAgent,
+    this.maxParallelTasks = 2,
+    this.autoMux = true,
+    this.preferAppApi = false,
+  });
+
+  String downloadDir;
+  int preferredQuality;
+  int preferredAudio;
+  String engine;
+  String ffmpegPath;
+  String proxy;
+  String appKey;
+  String appSec;
+  String userAgent;
+  int maxParallelTasks;
+  bool autoMux;
+  bool preferAppApi;
+
+  Map<String, dynamic> toJson() => {
+        'download_dir': downloadDir,
+        'preferred_quality': preferredQuality,
+        'preferred_audio': preferredAudio,
+        'engine': engine,
+        'ffmpeg_path': ffmpegPath,
+        'proxy': proxy,
+        'app_key': appKey,
+        'app_sec': appSec,
+        'user_agent': userAgent,
+        'max_parallel_tasks': maxParallelTasks,
+        'auto_mux': autoMux,
+        'prefer_app_api': preferAppApi,
+      };
+
+  static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
+        downloadDir: json['download_dir'] as String? ?? '',
+        preferredQuality: (json['preferred_quality'] as num?)?.toInt() ?? 80,
+        preferredAudio: (json['preferred_audio'] as num?)?.toInt() ?? 30280,
+        engine: json['engine'] as String? ?? 'dart',
+        ffmpegPath: json['ffmpeg_path'] as String? ?? '',
+        proxy: json['proxy'] as String? ?? '',
+        appKey: json['app_key'] as String? ?? kDefaultAppKey,
+        appSec: json['app_sec'] as String? ?? kDefaultAppSec,
+        userAgent: json['user_agent'] as String? ?? kWebUserAgent,
+        maxParallelTasks: (json['max_parallel_tasks'] as num?)?.toInt() ?? 2,
+        autoMux: json['auto_mux'] as bool? ?? true,
+        preferAppApi: json['prefer_app_api'] as bool? ?? false,
+      );
+}
+
+/// 掩码工具：只保留前 4 位与后 2 位，短凭据整体打码。
+String maskSecret(String value) {
+  if (value.isEmpty) return '';
+  if (value.length <= 8) return '******';
+  return '${value.substring(0, 4)}******${value.substring(value.length - 2)}';
+}
+
+String formatBytes(int bytes) {
+  if (bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  final digits = value >= 100 || unit == 0 ? 0 : 1;
+  return '${value.toStringAsFixed(digits)} ${units[unit]}';
+}
+
+String formatBitrate(int bitsPerSecond) {
+  if (bitsPerSecond <= 0) return '未知码率';
+  if (bitsPerSecond >= 1000000) {
+    return '${(bitsPerSecond / 1000000).toStringAsFixed(2)} Mbps';
+  }
+  return '${(bitsPerSecond / 1000).toStringAsFixed(0)} Kbps';
+}
+
+String formatDuration(int seconds) {
+  if (seconds <= 0) return '--:--';
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  final s = seconds % 60;
+  String two(int v) => v.toString().padLeft(2, '0');
+  return h > 0 ? '${two(h)}:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+}
+
+/// 去掉文件名里不能用于 Windows 与 Android 的字符。凭据不参与命名。
+String sanitizeFileName(String name) {
+  var value = name.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), ' ');
+  value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (value.isEmpty) value = 'video';
+  if (value.length > 80) value = value.substring(0, 80).trim();
+  return value;
+}
