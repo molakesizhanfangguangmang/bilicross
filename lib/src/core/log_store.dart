@@ -119,12 +119,14 @@ class LogStore {
 
   /// 请求头整行掩码，连字段名一起抹掉。
   static final RegExp _cookieHeader =
-      RegExp(r'(?i)(cookie|set-cookie)\s*:\s*[^\n]+');
+      RegExp(r'(cookie|set-cookie)\s*:\s*[^\n]+', caseSensitive: false);
 
   /// 查询串里的凭据参数：保留键名，值换成 `***`。
+  /// 用 `caseSensitive: false` 而不是 `(?i)`：Dart 的 RegExp 不支持内联标志。
   static final RegExp _secretPair = RegExp(
-    r'(?i)\b(access_key|access_token|sign|refresh_token|auth_code|appsec'
+    r'\b(access_key|access_token|sign|refresh_token|auth_code|appsec'
     r'|app_secret|sessdata|bili_jct|dedeuserid|csrf)\b\s*[=:]\s*[^&\s;]+',
+    caseSensitive: false,
   );
 
   static String mask(String input) {
