@@ -267,7 +267,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       decoration: const InputDecoration(
                         labelText: 'User-Agent',
                         hintText: '留空使用内置短串 Mozilla/5.0',
-                        helperText: '桌面长串在移动端下载地址上会被 CDN 拒；不确定就留空',
+                        helperText: '只作用于网页请求与网页地址下载；移动端下载地址固定用内置短串',
                       ),
                     ),
                     const SizedBox(height: 12),

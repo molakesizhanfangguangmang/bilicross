@@ -50,6 +50,12 @@ class StreamDownloader {
   }) async {
     final candidates = <String>[url, ...backups];
     final name = targetPath.split(Platform.pathSeparator).last;
+    LogStore.instance.add(
+      '下载',
+      isAndroidPlatformUrl(url)
+          ? '$name：移动端地址，不带 Referer，UA=$kFallbackUserAgent'
+          : '$name：网页地址，带 Referer，UA=${effectiveUserAgent(userAgent)}',
+    );
     Object? lastError;
     for (var index = 0; index < candidates.length; index++) {
       final candidate = candidates[index];
@@ -134,7 +140,8 @@ class StreamDownloader {
   }
 
   /// 下载请求头。移动端地址不带 Referer/Origin（带了会被 CDN 403），网页地址反之必须带。
-  /// UA 留空时回落到短串：空 UA 在网页地址上会被拒，桌面长串在移动端地址上会被拒。
+  /// UA 也分开：移动端地址对桌面长串一律 403，固定用短串，不看设置里的值；
+  /// 网页地址用设置里的 UA，留空回落短串（空 UA 会被 CDN 拒）。
   static Map<String, String> headersFor({
     required String url,
     required String userAgent,
@@ -142,7 +149,7 @@ class StreamDownloader {
   }) {
     final android = isAndroidPlatformUrl(url);
     return {
-      'User-Agent': effectiveUserAgent(userAgent),
+      'User-Agent': android ? kFallbackUserAgent : effectiveUserAgent(userAgent),
       if (!android) 'Referer': kSiteReferer,
       if (!android) 'Origin': 'https://www.bilibili.com',
       'Accept': '*/*',
