@@ -312,6 +312,7 @@ class AppState extends ChangeNotifier {
         url: task.videoUrl,
         backups: task.videoBackups,
         targetPath: task.videoPath,
+        parts: settings.partsPerFile,
         onProgress: (received, total) {
           task.receivedBytes = received;
           task.totalBytes = total;
@@ -327,6 +328,7 @@ class AppState extends ChangeNotifier {
           url: task.audioUrl,
           backups: task.audioBackups,
           targetPath: task.audioPath,
+          parts: settings.partsPerFile,
           onProgress: (received, total) {
             task.receivedBytes = received;
             task.totalBytes = total;
@@ -347,27 +349,7 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      task.stage = TaskStage.muxing;
-      task.message = '合并音视频';
-      notifyListeners();
-      final binary = await Muxer.locate(settings.ffmpegPath);
-      if (binary == null) {
-        task.stage = TaskStage.done;
-        task.merged = false;
-        task.message = '未找到 ffmpeg，音视频分片已保留，可在设置里指定后重试合并';
-        notifyListeners();
-        return;
-      }
-      await Muxer.remux(
-        ffmpeg: binary,
-        videoPath: task.videoPath,
-        audioPath: task.audioPath,
-        outputPath: task.outputPath,
-      );
-      task.merged = true;
-      task.stage = TaskStage.done;
-      task.message = '完成：${task.outputPath}';
-      notifyListeners();
+      await _muxTask(task);
     } on Exception catch (error) {
       task.stage = TaskStage.failed;
       task.message = '$error';
@@ -376,6 +358,53 @@ class AppState extends ChangeNotifier {
       await store.saveTasks(tasks);
       notifyListeners();
     }
+  }
+
+  /// 合并音视频。ffmpeg 在就用 ffmpeg，没有就走内置分片合并；
+  /// 两条路都失败时保留分片并把原因写进任务消息，界面可以单独重试合并。
+  Future<void> _muxTask(DownloadTask task) async {
+    task.stage = TaskStage.muxing;
+    task.message = '合并音视频';
+    notifyListeners();
+    try {
+      final outcome = await Muxer.merge(
+        ffmpegPath: ffmpegPath ?? '',
+        preferFfmpeg: settings.preferFfmpegMux,
+        videoPath: task.videoPath,
+        audioPath: task.audioPath,
+        outputPath: task.outputPath,
+        onProgress: (written, total) {
+          task.receivedBytes = written;
+          task.totalBytes = total;
+          notifyListeners();
+        },
+      );
+      task.merged = true;
+      task.stage = TaskStage.done;
+      task.message = '完成（${outcome.engineLabel}）：${task.outputPath}';
+    } on Exception catch (error) {
+      task.merged = false;
+      task.stage = TaskStage.done;
+      task.message = '合并失败，两个分片已保留，可稍后重试：$error';
+    }
+    notifyListeners();
+  }
+
+  /// 只重跑合并，不重新下载。
+  Future<void> retryMerge(String id) async {
+    final task = tasks.firstWhere((item) => item.id == id);
+    if (task.stage == TaskStage.downloading ||
+        task.stage == TaskStage.muxing ||
+        task.stage == TaskStage.resolving) {
+      return;
+    }
+    if (!hasUsableFile(task.videoPath) || !hasUsableFile(task.audioPath)) {
+      task.message = '缺少视频或音频分片，请重新下载';
+      notifyListeners();
+      return;
+    }
+    await _muxTask(task);
+    await store.saveTasks(tasks);
   }
 
   /// 断点续传前先补地址：旧任务里的 CDN 地址可能已经过期。

@@ -28,17 +28,28 @@ device; there is no remote service.
 - APP token: WEB Cookie -> `auth_code` -> system browser authorization -> poll every
   2 seconds -> token written only after a complete response. Old tokens are kept when
   acquisition fails.
-- Downloads: single connection per stream with `Range` resume against a `.part` file,
-  backup URL fallback, queue with a configurable parallel limit, task persistence and
-  restart recovery. Stale CDN URLs are re-resolved before resuming.
-- Optional remux: `ffmpeg -c copy` merge of the video and audio parts into MP4. No
-  transcoding. Without ffmpeg the parts are kept and the task is marked complete.
+- Downloads: per file up to 8 parallel `Range` connections (splitting into chunks under
+  `.partN` files that each resume on their own), falling back to a single connection when
+  the server ignores `Range`, when the file is small, or when a partially written `.part`
+  is already there. Backup URL fallback, queue with a configurable parallel limit, task
+  persistence and restart recovery. Stale CDN URLs are re-resolved before resuming.
+- Merging without external tools: `Fmp4Merger`, the built-in merge, rebuilds one `moov` with
+  both tracks (the audio track gets a fresh `track_ID`), rewrites the audio fragments'
+  `tfhd` accordingly, and interleaves `moof`+`mdat` pairs by `tfdt` decode time. Sample
+  data is copied as is: no re-encode, no rebuild of the sample tables, and `trun` data
+  offsets stay valid because `base_data_offset`, when present, is recomputed relative to
+  the new `moof` position.
+- Merging with ffmpeg: when an `ffmpeg` binary is configured or found on `PATH`, it is
+  used first (`-c copy`, no transcoding) because it emits a plain MP4. The built-in merge
+  is the fallback, and the engine actually used is written into the task message.
+- Failed merges keep both parts and say why in the task message; a separate "retry merge"
+  action re-runs only the merge step.
 
 ## Not wired yet
 
 - Embedded web login (a web view that captures cookies). Use paste or `cookie.txt`.
-- Bundled FFmpeg. The remux step needs an `ffmpeg` binary on `PATH` or a path set in
-  settings, so the Android build currently finishes without merging.
+- Bundled FFmpeg binary. It is not required any more: the built-in merge covers machines
+  without `ffmpeg`.
 - BBDownNext compatibility engine (bundled `serve` on Windows) and the engine switch.
 - Secure credential storage: settings, cookies and tasks are stored as JSON under the
   application support directory, with timestamped backups for credentials.
@@ -50,6 +61,10 @@ device; there is no remote service.
 - `lib/src/ui` — the four pages: downloads, tasks, account, settings.
 - `test/app_test.dart` — offline checks for address parsing, cookie parsing, WBI and APP
   signing vectors, DASH stream building and formatting helpers.
+- `test/fmp4_test.dart` — builds fragmented MP4 fixtures and checks track renumbering,
+  fragment interleaving, `base_data_offset` rewriting and the non-fragmented error path.
+- `test/downloader_test.dart` — runs a local `HttpServer` to check parallel range
+  downloads, the single-connection fallback and resume against a partial `.part`.
 
 ## Builds
 

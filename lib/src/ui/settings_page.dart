@@ -129,6 +129,29 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text('${settings.maxParallelTasks}'),
                       ],
                     ),
+                    Row(
+                      children: [
+                        const SizedBox(width: 96, child: Text('单文件连接')),
+                        Expanded(
+                          child: Slider(
+                            value: settings.partsPerFile.toDouble().clamp(1, 8),
+                            min: 1,
+                            max: 8,
+                            divisions: 7,
+                            label: '${settings.partsPerFile}',
+                            onChanged: (value) {
+                              settings.partsPerFile = value.round();
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                        Text('${settings.partsPerFile}'),
+                      ],
+                    ),
+                    const Text(
+                      '同一个文件切成几段并行下载，1 表示单连接。服务端不支持分段或文件较小时会自动退回单连接。',
+                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: settings.preferAppApi,
@@ -146,8 +169,8 @@ class _SettingsPageState extends State<SettingsPage> {
               SectionCard(
                 title: '混流',
                 trailing: StateChip(
-                  text: state.ffmpegPath == null ? '未找到 ffmpeg' : '已就绪',
-                  tone: state.ffmpegPath == null ? 2 : 1,
+                  text: state.ffmpegPath == null ? '内置合并' : 'ffmpeg 就绪',
+                  tone: 1,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,9 +194,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: const Text('检测 ffmpeg'),
                       ),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.preferFfmpegMux,
+                      onChanged: (value) {
+                        settings.preferFfmpegMux = value;
+                        setState(() {});
+                      },
+                      title: const Text('优先使用 ffmpeg 合并'),
+                      subtitle: const Text('关闭则始终用内置分片合并；无论开关，另一条路都会兜底'),
+                    ),
                     const Text(
-                      '混流只做流复制合并，不转码。找不到 ffmpeg 时任务会保留音视频分片并标记为完成，'
-                      '指定路径后点重试即可合并。',
+                      '合并只做流复制，不转码。没有 ffmpeg 时用内置合并：按 moof/mdat 把两条流'
+                      '交替写成 MP4，采样数据原样搬运。两条路都失败才会保留分片并写进任务消息，'
+                      '之后可以在任务页单独重试合并。',
                       style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
