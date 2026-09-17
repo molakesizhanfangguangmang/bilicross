@@ -77,6 +77,13 @@ void main() {
       expect(qualityRank(112), lessThan(qualityRank(80)));
     });
 
+    test('用户定下的前五档：8K → HDR Vivid → 杜比视界 → HDR → 4K', () {
+      expect(kQualityRank.take(5).toList(), <int>[127, 129, 126, 125, 120]);
+      expect(qualityRank(129), lessThan(qualityRank(126)));
+      expect(qualityRank(126), lessThan(qualityRank(125)));
+      expect(qualityRank(125), lessThan(qualityRank(120)));
+    });
+
     test('未登记档位排在所有登记档位之后', () {
       final lowest = kQualityRank.length - 1;
       expect(qualityRank(100000), greaterThan(lowest));

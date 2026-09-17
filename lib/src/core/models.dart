@@ -7,8 +7,21 @@ const String kWebUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0';
 
-/// APP 通道使用移动端 UA，网页通道使用 [kWebUserAgent]。
+/// APP 通道使用移动端 UA。桌面串 [kWebUserAgent] 仅留作自定义 UA 的参考，不再是默认值。
 const String kAppUserAgent = 'Mozilla/5.0 BiliDroid/1.0.0 (bbcallen@gmail.com)';
+
+/// 兜底 UA。B 站 CDN 对空 UA 直接 403，桌面长串又会被移动端（platform=android）
+/// 地址拒绝，实测两类地址都能过的只有这种短串。
+const String kFallbackUserAgent = 'Mozilla/5.0';
+
+/// 网页地址下载必须带这个 Referer；移动端地址带了会被 CDN 403。
+const String kSiteReferer = 'https://www.bilibili.com/';
+
+/// UA 配置留空时回落到 [kFallbackUserAgent]。
+String effectiveUserAgent(String raw) {
+  final value = raw.trim();
+  return value.isEmpty ? kFallbackUserAgent : value;
+}
 
 /// playurl 的 fnval 位：16 DASH + 64 HDR + 128 4K + 256 杜比音频 + 512 杜比视界
 /// + 1024 8K + 2048 AV1。UGC 端点用这一组。
@@ -42,9 +55,10 @@ const Map<int, String> kQualityNames = {
 };
 
 /// 展示顺序，从高到低。不能按编号排：HDR Vivid 的编号（129）比 8K（127）大，
-/// 档位却比 4K（120）低，与 B 站播放器一致的是这张表。
+/// 档位却在 8K 之下。这张表同时决定「最高」判定、列表顺序与默认勾选行。
+/// 顺序由用户 2026-09-17 定：8K → HDR Vivid → 杜比视界 → HDR → 4K。
 const List<int> kQualityRank = [
-  127, 126, 125, 129, 120, 117, 116, 112, 100, 80, 74, 64, 48, 32, 16, 6, 5,
+  127, 129, 126, 125, 120, 117, 116, 112, 100, 80, 74, 64, 48, 32, 16, 6, 5,
 ];
 
 /// 越小越高。未登记的档位排在所有已登记档位之后，彼此再按编号从大到小。
@@ -66,6 +80,38 @@ const Map<int, String> kAudioNames = {
 String qualityLabel(int id) => kQualityNames[id] ?? '画质 $id';
 
 String audioLabel(int id) => kAudioNames[id] ?? '音质 $id';
+
+/// 按任务记录的档位号与编码挑流。同档位多编码时优先编码一致的那条，否则取该档位第一条。
+/// 返回 null 表示这次解析结果里没有这个档位，调用方据此报错，不要静默换成别的档位。
+MediaStream? pickStream(List<MediaStream> streams, int qualityId, String codecs) {
+  if (qualityId <= 0) return null;
+  final sameId = streams.where((item) => item.id == qualityId).toList();
+  if (sameId.isEmpty) return null;
+  if (codecs.isNotEmpty) {
+    for (final item in sameId) {
+      if (item.codecs == codecs) return item;
+    }
+  }
+  return sameId.first;
+}
+
+/// 重试或重新解析时按任务记录挑流。`recorded` 是记录的档位号：
+/// 0 表示这条轨道不下载，-1 表示老任务没记录（取 [fallbackFirst] 指定的那一端，
+/// 视频取第一条、音频取最后一条），其余按档位号取。
+/// 返回 null 表示这次解析结果里没有可用的流，调用方据此决定报错还是降级。
+MediaStream? resolveRecordedStream(
+  List<MediaStream> streams,
+  int recorded,
+  String codecs, {
+  required bool fallbackFirst,
+}) {
+  if (recorded == 0) return null;
+  if (recorded < 0) {
+    if (streams.isEmpty) return null;
+    return fallbackFirst ? streams.first : streams.last;
+  }
+  return pickStream(streams, recorded, codecs);
+}
 
 /// 编解码器短名，用于在同清晰度多编码之间区分。
 String codecShortName(String codecs) {
@@ -392,6 +438,10 @@ class DownloadTask {
     this.audioBackups = const [],
     this.videoPath = '',
     this.audioPath = '',
+    this.videoQualityId = 0,
+    this.audioQualityId = 0,
+    this.videoCodecs = '',
+    this.audioCodecs = '',
     this.merged = false,
     this.createdAtMs = 0,
   });
@@ -415,6 +465,15 @@ class DownloadTask {
   List<String> audioBackups;
   String videoPath;
   String audioPath;
+
+  /// 用户选的档位号：0 表示这条轨道不下载，-1 表示旧任务没有记录（按默认取流）。
+  /// 重试与重新解析都按这里的档位取流，不再改成「列表第一条」。
+  int videoQualityId;
+  int audioQualityId;
+
+  /// 同档位多编码时用来还原到同一个编码。
+  String videoCodecs;
+  String audioCodecs;
   bool merged;
   final int createdAtMs;
 
@@ -422,6 +481,10 @@ class DownloadTask {
     if (totalBytes <= 0) return 0;
     return (receivedBytes / totalBytes).clamp(0.0, 1.0).toDouble();
   }
+
+  /// 只选了一条轨道的任务：产物就是那条流本身，没有可合并的分片，
+  /// 「重试合并」与「清理残留」都不该出现。
+  bool get singleTrack => videoQualityId == 0 || audioQualityId == 0;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -443,6 +506,10 @@ class DownloadTask {
         'audio_backups': audioBackups,
         'video_path': videoPath,
         'audio_path': audioPath,
+        'video_quality_id': videoQualityId,
+        'audio_quality_id': audioQualityId,
+        'video_codecs': videoCodecs,
+        'audio_codecs': audioCodecs,
         'merged': merged,
         'created_at_ms': createdAtMs,
       };
@@ -470,6 +537,10 @@ class DownloadTask {
         audioBackups: (json['audio_backups'] as List?)?.cast<String>() ?? const [],
         videoPath: json['video_path'] as String? ?? '',
         audioPath: json['audio_path'] as String? ?? '',
+        videoQualityId: (json['video_quality_id'] as num?)?.toInt() ?? -1,
+        audioQualityId: (json['audio_quality_id'] as num?)?.toInt() ?? -1,
+        videoCodecs: json['video_codecs'] as String? ?? '',
+        audioCodecs: json['audio_codecs'] as String? ?? '',
         merged: json['merged'] as bool? ?? false,
         createdAtMs: (json['created_at_ms'] as num?)?.toInt() ?? 0,
       );
@@ -485,7 +556,7 @@ class AppSettings {
     this.proxy = '',
     this.appKey = kDefaultAppKey,
     this.appSec = kDefaultAppSec,
-    this.userAgent = kWebUserAgent,
+    this.userAgent = '',
     this.maxParallelTasks = 2,
     this.autoMux = true,
     this.preferAppApi = false,
@@ -544,7 +615,7 @@ class AppSettings {
         proxy: json['proxy'] as String? ?? '',
         appKey: json['app_key'] as String? ?? kDefaultAppKey,
         appSec: json['app_sec'] as String? ?? kDefaultAppSec,
-        userAgent: json['user_agent'] as String? ?? kWebUserAgent,
+        userAgent: json['user_agent'] as String? ?? '',
         maxParallelTasks: (json['max_parallel_tasks'] as num?)?.toInt() ?? 2,
         autoMux: json['auto_mux'] as bool? ?? true,
         preferAppApi: json['prefer_app_api'] as bool? ?? false,
