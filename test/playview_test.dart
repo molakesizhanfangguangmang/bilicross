@@ -70,12 +70,12 @@ void main() {
     expect(audios.single.url, 'https://example.invalid/a192.m4s');
   });
 
-  test('合并后重新排序：129 排在 120 之前、125 之后', () {
+  test('合并后重新排序：129 排在 126 之前、120 之前', () {
     final base = DashBuilder.videoStreams({
       'dash': {
         'video': [
           {'id': 120, 'base_url': 'https://example.invalid/120', 'codecs': 'avc1'},
-          {'id': 125, 'base_url': 'https://example.invalid/125', 'codecs': 'hev1'},
+          {'id': 126, 'base_url': 'https://example.invalid/126', 'codecs': 'hev1'},
         ],
       },
     });
@@ -83,6 +83,8 @@ void main() {
       ...base,
       ...DashBuilder.videoStreams(PlayViewCodec.decodeReply(base64.decode(_replyGolden))),
     ]);
-    expect(merged.map((stream) => stream.id), [125, 129, 120, 120]);
+    // 顺序按 kQualityRank：129 只排在 8K 之后、杜比视界与 4K 之前。
+    // 120 出现两次是因为 base 与 PlayView 各给了它一条，这里只关心排序。
+    expect(merged.map((stream) => stream.id), [129, 126, 120, 120]);
   });
 }
