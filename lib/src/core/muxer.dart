@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'bili_api.dart';
 import 'fmp4.dart';
+import 'log_store.dart';
 
 /// 合并结果：用的是哪条路径、写出多少字节、多长。
 class MuxOutcome {
@@ -97,6 +98,7 @@ class Muxer {
     ];
     final failures = <String>[];
     for (final engine in engines) {
+      final label = engine == 'ffmpeg' ? 'ffmpeg' : '内置合并';
       try {
         if (engine == 'ffmpeg') {
           await remux(
@@ -105,9 +107,11 @@ class Muxer {
             audioPath: audioPath,
             outputPath: outputPath,
           );
+          final bytes = await File(outputPath).length();
+          LogStore.instance.add('合并', 'ffmpeg 合并完成：$bytes 字节');
           return MuxOutcome(
             engine: engine,
-            bytes: await File(outputPath).length(),
+            bytes: bytes,
             durationSeconds: 0,
           );
         }
@@ -117,14 +121,19 @@ class Muxer {
           outputPath: outputPath,
           onProgress: onProgress,
         );
+        LogStore.instance.add('合并', '内置合并完成：${result.bytes} 字节');
         return MuxOutcome(
           engine: engine,
           bytes: result.bytes,
           durationSeconds: result.durationSeconds,
         );
       } catch (error) {
-        final label = engine == 'ffmpeg' ? 'ffmpeg' : '内置合并';
         failures.add('$label：${error is BiliException ? error.message : error}');
+        LogStore.instance.add(
+          '合并',
+          '$label 失败：${error is BiliException ? error.message : error}'
+          '${engines.last == engine ? '' : '，改用下一条路径'}',
+        );
       }
     }
     throw BiliException('合并失败（${failures.join('；')}）');

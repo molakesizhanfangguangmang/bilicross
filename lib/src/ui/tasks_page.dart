@@ -110,6 +110,12 @@ class _TaskCard extends StatelessWidget {
                   onPressed: running ? null : () => state.retryMerge(task.id),
                   child: const Text('重试合并'),
                 ),
+              if (task.stage == TaskStage.failed ||
+                  (task.stage == TaskStage.done && !task.merged))
+                OutlinedButton(
+                  onPressed: running ? null : () => _cleanup(context, state, task),
+                  child: const Text('清理残留'),
+                ),
               OutlinedButton(
                 onPressed: running ? null : () => state.removeTask(task.id),
                 child: const Text('移除'),
@@ -117,6 +123,21 @@ class _TaskCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// 删掉这个任务留下的成品与分片，并把任务从列表里去掉。
+  Future<void> _cleanup(
+    BuildContext context,
+    AppState state,
+    DownloadTask task,
+  ) async {
+    final removed = await state.cleanupTask(task.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(removed > 0 ? '已清理 $removed 个文件' : '没有可清理的文件'),
       ),
     );
   }

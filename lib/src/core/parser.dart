@@ -1,6 +1,7 @@
 import 'bili_api.dart';
 import 'bili_url.dart';
 import 'dash_builder.dart';
+import 'log_store.dart';
 import 'models.dart';
 
 class ResolvedTarget {
@@ -103,8 +104,18 @@ class ParseService {
     channels.add('web');
     if (!channels.contains('app') && !token.isEmpty) channels.add('app');
 
+    LogStore.instance.add(
+      '解析',
+      '开始：${info.title.isEmpty ? page.part : info.title}'
+      '｜aid=$aid cid=${page.cid} qn=$qn'
+      '｜APP Token ${token.isEmpty ? '无' : '有'}，优先 APP '
+      '${settings.preferAppApi ? '开' : '关'}'
+      '｜通道顺序 ${channels.map(_channelLabel).join(' → ')}',
+    );
+
     BiliException? lastError;
     for (final channel in channels) {
+      final label = _channelLabel(channel);
       try {
         final data = channel == 'app'
             ? await api.fetchPlayUrlApp(
@@ -127,20 +138,46 @@ class ParseService {
           throw BiliException('该通道没有返回可选视频流');
         }
         final dashDuration = DashBuilder.durationOf(data);
-        final maxQuality = videos.map((stream) => stream.id).reduce((a, b) => a > b ? a : b);
+        final best = videos.reduce(
+          (left, right) => qualityRank(left.id) <= qualityRank(right.id) ? left : right,
+        );
+        final maxQuality = best.id;
+        LogStore.instance.add(
+          '解析',
+          '$label 成功：视频 ${videos.length} 条（${_videoSummary(videos)}）；'
+          '音频 ${audios.length} 条（${audios.map((stream) => stream.label).join('、')}）',
+        );
+        LogStore.instance.add(
+          '解析',
+          '采用 $label，最高 ${qualityLabel(maxQuality)}（$maxQuality）',
+        );
         return ParsedMedia(
           info: info,
           page: page,
           videos: videos,
           audios: audios,
           durationSec: dashDuration > 0 ? dashDuration : page.durationSec,
-          channel: channel == 'app' ? 'APP 通道' : '网页通道',
-          guestLimited: maxQuality < qn,
+          channel: label,
+          guestLimited: qualityRank(maxQuality) > qualityRank(qn),
         );
       } on Exception catch (error) {
         lastError = error is BiliException ? error : BiliException('$error');
+        LogStore.instance.add('解析', '$label 失败：$lastError');
       }
     }
+    LogStore.instance.add('解析', '所有通道都失败：${lastError ?? '解析失败'}');
     throw lastError ?? BiliException('解析失败');
+  }
+
+  static String _channelLabel(String channel) => channel == 'app' ? 'APP 通道' : '网页通道';
+
+  /// 档位列表写进日志，方便对照「到底解析到了哪些画质」。
+  static String _videoSummary(List<MediaStream> videos) {
+    const limit = 8;
+    final head = videos
+        .take(limit)
+        .map((stream) => '${stream.label}#${stream.id}/${stream.codecs}')
+        .join('、');
+    return videos.length > limit ? '$head …' : head;
   }
 }

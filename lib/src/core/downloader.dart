@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'log_store.dart';
+
 class DownloadResult {
   const DownloadResult({
     required this.path,
@@ -39,39 +41,62 @@ class StreamDownloader {
     bool Function()? isCancelled,
   }) async {
     final candidates = <String>[url, ...backups];
+    final name = targetPath.split(Platform.pathSeparator).last;
     Object? lastError;
-    for (final candidate in candidates) {
+    for (var index = 0; index < candidates.length; index++) {
+      final candidate = candidates[index];
       if (candidate.isEmpty) continue;
+      if (index > 0) {
+        LogStore.instance.add('下载', '$name：主地址失败，改用备用地址 $index');
+      }
       try {
-        if (parts > 1 && !await _hasPendingPart(targetPath)) {
-          try {
-            final result = await _downloadParts(
-              url: candidate,
-              targetPath: targetPath,
-              referer: referer,
-              parts: parts,
-              onProgress: onProgress,
-              isCancelled: isCancelled,
-            );
-            if (result != null) return result;
-          } on _DownloadCancelled {
-            rethrow;
-          } catch (error) {
-            // 分段失败不丢这个地址：退回单连接再试一次。
-            lastError = error;
+        if (parts > 1) {
+          if (await _hasPendingPart(targetPath)) {
+            LogStore.instance.add('下载', '$name：已有半截 .part，沿用单连接续传');
+          } else {
+            try {
+              final result = await _downloadParts(
+                url: candidate,
+                targetPath: targetPath,
+                referer: referer,
+                parts: parts,
+                onProgress: onProgress,
+                isCancelled: isCancelled,
+              );
+              if (result != null) {
+                LogStore.instance.add(
+                  '下载',
+                  '$name：分段下载完成，${result.bytes} 字节',
+                );
+                return result;
+              }
+              LogStore.instance.add('下载', '$name：分段不可用（服务端不认 Range 或文件过小），改单连接');
+            } on _DownloadCancelled {
+              rethrow;
+            } catch (error) {
+              // 分段失败不丢这个地址：退回单连接再试一次。
+              lastError = error;
+              LogStore.instance.add('下载', '$name：分段下载失败（$error），改单连接');
+            }
           }
         }
-        return await _downloadOne(
+        final result = await _downloadOne(
           url: candidate,
           targetPath: targetPath,
           referer: referer,
           onProgress: onProgress,
           isCancelled: isCancelled,
         );
+        LogStore.instance.add(
+          '下载',
+          '$name：单连接完成，${result.bytes} 字节${result.resumed ? '（续传）' : ''}',
+        );
+        return result;
       } on _DownloadCancelled {
         rethrow;
       } catch (error) {
         lastError = error;
+        LogStore.instance.add('下载', '$name：地址 $index 失败（$error）');
       }
     }
     throw HttpException('下载失败：${lastError ?? '没有可用地址'}');
@@ -370,4 +395,27 @@ class _DownloadCancelled implements Exception {}
 bool hasUsableFile(String path) {
   final file = File(path);
   return file.existsSync() && file.lengthSync() > 0;
+}
+
+/// 一个下载目标可能留下的全部文件：成品本身、`.part`、`.partN`。
+/// 分段并发上限是 8，这里多扫一倍留余量。
+List<String> artifactPaths(String targetPath) {
+  if (targetPath.isEmpty) return const [];
+  return <String>[
+    targetPath,
+    '$targetPath.part',
+    for (var index = 0; index < 16; index++) '$targetPath.part$index',
+  ];
+}
+
+/// 删掉某个目标文件的全部痕迹，返回删掉的文件数。
+Future<int> removeArtifacts(String targetPath) async {
+  var removed = 0;
+  for (final path in artifactPaths(targetPath)) {
+    final file = File(path);
+    if (!await file.exists()) continue;
+    await file.delete();
+    removed++;
+  }
+  return removed;
 }

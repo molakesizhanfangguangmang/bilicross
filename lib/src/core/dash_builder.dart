@@ -49,7 +49,8 @@ class DashBuilder {
       ));
     }
     streams.sort((left, right) {
-      final byQuality = right.id.compareTo(left.id);
+      // 按档位高低排，不按编号：编号顺序与档位顺序在 HDR Vivid 上不一致。
+      final byQuality = qualityRank(left.id).compareTo(qualityRank(right.id));
       if (byQuality != 0) return byQuality;
       return _codecRank(left.codecs).compareTo(_codecRank(right.codecs));
     });
