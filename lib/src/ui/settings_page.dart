@@ -182,6 +182,19 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: const Text('优先使用 APP 通道解析'),
                       subtitle: const Text('需要有 APP Token；失败会自动回退网页通道'),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.useAppGrpc,
+                      onChanged: (value) {
+                        settings.useAppGrpc = value;
+                        setState(() {});
+                      },
+                      title: const Text('补取 HDR Vivid 档位（gRPC）'),
+                      subtitle: const Text(
+                        '解析成功后再请求一次 gRPC PlayView，补上 129 档（HDR Vivid），'
+                        '需要 APP Token；失败只记日志，不影响原有结果',
+                      ),
+                    ),
                   ],
                 ),
               ),

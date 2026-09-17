@@ -26,6 +26,18 @@ class DashBuilder {
     return raw.whereType<String>().where((value) => value.isNotEmpty).toList();
   }
 
+  /// 档位从高到低排，不按编号：编号顺序与档位顺序在 HDR Vivid 上不一致；
+  /// 同档位再按编码稳定性排（AVC → HEVC → AV1）。
+  static int compareVideos(MediaStream left, MediaStream right) {
+    final byQuality = qualityRank(left.id).compareTo(qualityRank(right.id));
+    if (byQuality != 0) return byQuality;
+    return _codecRank(left.codecs).compareTo(_codecRank(right.codecs));
+  }
+
+  /// 合并多来源的流之后要重新排序，故单独暴露。
+  static List<MediaStream> sortVideos(List<MediaStream> streams) =>
+      [...streams]..sort(compareVideos);
+
   static List<MediaStream> videoStreams(Map<String, dynamic> data) {
     final dash = data['dash'];
     if (dash is! Map) return const [];
@@ -48,13 +60,7 @@ class DashBuilder {
         height: (map['height'] as num?)?.toInt() ?? 0,
       ));
     }
-    streams.sort((left, right) {
-      // 按档位高低排，不按编号：编号顺序与档位顺序在 HDR Vivid 上不一致。
-      final byQuality = qualityRank(left.id).compareTo(qualityRank(right.id));
-      if (byQuality != 0) return byQuality;
-      return _codecRank(left.codecs).compareTo(_codecRank(right.codecs));
-    });
-    return streams;
+    return sortVideos(streams);
   }
 
   static List<MediaStream> audioStreams(Map<String, dynamic> data) {

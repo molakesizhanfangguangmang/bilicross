@@ -6,6 +6,7 @@ import 'package:http/io_client.dart';
 
 import 'models.dart';
 import 'log_store.dart';
+import 'playview.dart';
 import 'signing.dart';
 
 class BiliException implements Exception {
@@ -406,6 +407,66 @@ class BiliApi {
     if (data is! Map<String, dynamic>) {
       throw BiliException('APP 通道解析返回空数据');
     }
+    return data;
+  }
+
+  /// gRPC PlayView：REST 端点不给的档位（129 HDR Vivid）只能从这里取。
+  ///
+  /// 服务端在 HTTP/1.1 上也接受 `application/grpc+proto` 的 5 字节帧，所以不必
+  /// 为它引入 http2 / gRPC 依赖。qn 固定 127：该端点的档位表不受 qn 限制，
+  /// 传小值也不会省数据（实测 qn=80 时 129 依然在列）。
+  Future<Map<String, dynamic>> fetchPlayUrlAppGrpc({
+    required String accessToken,
+    required int aid,
+    required int cid,
+    int qn = 127,
+  }) async {
+    final message = PlayViewCodec.encodeRequest(aid: aid, cid: cid, qn: qn);
+    LogStore.instance.add(
+      '解析',
+      'gRPC PlayView 请求：aid=$aid cid=$cid qn=$qn'
+      ' fnval=${PlayViewCodec.fnvalVivid} access_key=${accessToken.isEmpty ? '无' : '有'}',
+    );
+    final http.Response response;
+    try {
+      response = await client.post(
+        Uri.parse('https://${PlayViewCodec.host}${PlayViewCodec.method}'),
+        headers: {
+          'User-Agent': PlayViewCodec.userAgent,
+          'Content-Type': 'application/grpc+proto',
+          'Accept': 'application/grpc+proto',
+          'TE': 'trailers',
+          'x-grpc-web': '1',
+          if (accessToken.isNotEmpty) 'authorization': 'identify_v1 $accessToken',
+          ...PlayViewCodec.binaryHeaders(accessToken: accessToken),
+        },
+        body: PlayViewCodec.frame(message),
+      );
+    } on Exception catch (error) {
+      LogStore.instance.add('接口', 'gRPC PlayView 网络失败：$error');
+      throw BiliException('gRPC 请求失败：$error');
+    }
+    if (response.statusCode != 200) {
+      LogStore.instance.add('接口', 'gRPC PlayView 失败：HTTP ${response.statusCode}');
+      throw BiliException('gRPC 返回 HTTP ${response.statusCode}');
+    }
+    final Map<String, dynamic> data;
+    try {
+      data = PlayViewCodec.decodeReply(PlayViewCodec.unframe(response.bodyBytes));
+    } on FormatException catch (error) {
+      LogStore.instance.add('接口', 'gRPC PlayView 响应无法解析：$error');
+      throw BiliException('gRPC 响应解析失败：$error');
+    }
+    final dash = data['dash'];
+    final downloadable = dash is Map && dash['video'] is List
+        ? (dash['video']! as List).length
+        : 0;
+    LogStore.instance.add(
+      '解析',
+      'gRPC PlayView 成功：可下载档位 $downloadable 条'
+      '｜档位表 ${PlayViewCodec.describe(data)}',
+      detail: true,
+    );
     return data;
   }
 

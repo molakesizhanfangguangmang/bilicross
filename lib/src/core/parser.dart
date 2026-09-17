@@ -132,10 +132,25 @@ class ParseService {
                 epId: page.epId,
                 qn: qn,
               );
-        final videos = DashBuilder.videoStreams(data);
-        final audios = DashBuilder.audioStreams(data);
+        var videos = DashBuilder.videoStreams(data);
+        var audios = DashBuilder.audioStreams(data);
         if (videos.isEmpty) {
           throw BiliException('该通道没有返回可选视频流');
+        }
+        // gRPC PlayView 只补 REST 拿不到的档位（129 HDR Vivid）：同 id 已有就跳过，
+        // 不覆盖 REST 那份多编码列表。网页通道也补，只要手上有 APP Token。
+        var usedLabel = label;
+        if (settings.useAppGrpc) {
+          final supplement = await _supplementFromGrpc(
+            token: token,
+            aid: aid,
+            cid: page.cid,
+            videos: videos,
+            audios: audios,
+          );
+          videos = supplement.videos;
+          audios = supplement.audios;
+          if (supplement.added) usedLabel = '$label+gRPC';
         }
         final dashDuration = DashBuilder.durationOf(data);
         final best = videos.reduce(
@@ -144,12 +159,12 @@ class ParseService {
         final maxQuality = best.id;
         LogStore.instance.add(
           '解析',
-          '$label 成功：视频 ${videos.length} 条（${_videoSummary(videos)}）；'
+          '$usedLabel 成功：视频 ${videos.length} 条（${_videoSummary(videos)}）；'
           '音频 ${audios.length} 条（${audios.map((stream) => stream.label).join('、')}）',
         );
         LogStore.instance.add(
           '解析',
-          '采用 $label，最高 ${qualityLabel(maxQuality)}（$maxQuality）',
+          '采用 $usedLabel，最高 ${qualityLabel(maxQuality)}（$maxQuality）',
         );
         return ParsedMedia(
           info: info,
@@ -157,7 +172,7 @@ class ParseService {
           videos: videos,
           audios: audios,
           durationSec: dashDuration > 0 ? dashDuration : page.durationSec,
-          channel: label,
+          channel: usedLabel,
           guestLimited: qualityRank(maxQuality) > qualityRank(qn),
         );
       } on Exception catch (error) {
@@ -170,6 +185,62 @@ class ParseService {
   }
 
   static String _channelLabel(String channel) => channel == 'app' ? 'APP 通道' : '网页通道';
+
+  /// 用 APP 端 gRPC PlayView 补齐 REST 通道拿不到的档位。
+  ///
+  /// 失败只写日志：REST 的结果照旧可用，缺 129 不影响原有解析。
+  Future<({List<MediaStream> videos, List<MediaStream> audios, bool added})>
+      _supplementFromGrpc({
+    required AppToken token,
+    required int aid,
+    required int cid,
+    required List<MediaStream> videos,
+    required List<MediaStream> audios,
+  }) async {
+    if (token.isEmpty) {
+      return (videos: videos, audios: audios, added: false);
+    }
+    final Map<String, dynamic> data;
+    try {
+      data = await api.fetchPlayUrlAppGrpc(
+        accessToken: token.accessToken,
+        aid: aid,
+        cid: cid,
+      );
+    } on Exception catch (error) {
+      LogStore.instance.add('解析', 'gRPC 补充失败：$error，沿用 APP 通道结果');
+      return (videos: videos, audios: audios, added: false);
+    }
+    final knownVideoIds = videos.map((stream) => stream.id).toSet();
+    final knownAudioIds = audios.map((stream) => stream.id).toSet();
+    final extraVideos = DashBuilder.videoStreams(data)
+        .where((stream) => !knownVideoIds.contains(stream.id))
+        .toList();
+    final extraAudios = DashBuilder.audioStreams(data)
+        .where((stream) => !knownAudioIds.contains(stream.id))
+        .toList();
+    if (extraVideos.isEmpty && extraAudios.isEmpty) {
+      LogStore.instance.add('解析', 'gRPC 补充：该视频没有 REST 通道之外的新档位');
+      return (videos: videos, audios: audios, added: false);
+    }
+    final mergedAudios = extraAudios.isEmpty
+        ? audios
+        : ([...audios, ...extraAudios]..sort((left, right) => left.id.compareTo(right.id)));
+    if (extraVideos.isEmpty) {
+      LogStore.instance.add('解析', 'gRPC 补充：音频 +${extraAudios.length} 条');
+      return (videos: videos, audios: mergedAudios, added: true);
+    }
+    LogStore.instance.add(
+      '解析',
+      'gRPC 补充：视频 +${extraVideos.length} 条（${_videoSummary(extraVideos)}）'
+      '${extraAudios.isEmpty ? '' : '；音频 +${extraAudios.length} 条'}',
+    );
+    return (
+      videos: DashBuilder.sortVideos([...videos, ...extraVideos]),
+      audios: mergedAudios,
+      added: true,
+    );
+  }
 
   /// 档位列表写进日志，方便对照「到底解析到了哪些画质」。
   static String _videoSummary(List<MediaStream> videos) {
