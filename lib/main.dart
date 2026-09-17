@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'src/app_state.dart';
+import 'src/core/update_check.dart';
+import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
@@ -98,6 +100,16 @@ class _AppShellState extends State<AppShell> {
     widget.state.refreshFfmpeg();
     widget.state.refreshAccount();
     widget.state.pumpQueue();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdateOnce());
+  }
+
+  /// 启动后静默查一次更新：有新版弹确认框，查不到提示一句，已是最新不出声。
+  /// 目前只给 Android 侧载包用，其它平台不显示「检测更新」也没必要去查。
+  Future<void> _checkUpdateOnce() async {
+    if (!mounted || Theme.of(context).platform != TargetPlatform.android) return;
+    final result = await checkForUpdate();
+    if (!mounted) return;
+    await handleUpdateResult(context, result, notifyWhenUpToDate: false);
   }
 
   @override
