@@ -36,6 +36,7 @@ jobs:
           flutter create --platforms=android --org io.github.molakesizhanfangguangmang --project-name biliharbor .
           rm -f test/widget_test.dart
           python3 - <<'PY'
+          import re
           from pathlib import Path
           candidates = [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]
           for path in candidates:
@@ -55,6 +56,33 @@ jobs:
               break
           else:
               raise SystemExit('Android Gradle app file not found')
+
+          # 模板只在 debug/profile 清单里声明 INTERNET，release 包需要自己补。
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          if 'android.permission.INTERNET' not in text:
+              text = re.sub(
+                  r'(<manifest[^>]*>)',
+                  r'\1\n    <uses-permission android:name="android.permission.INTERNET"/>',
+                  text,
+                  count=1,
+              )
+          if '<queries>' not in text:
+              queries = (
+                  '\n    <queries>\n'
+                  '        <intent>\n'
+                  '            <action android:name="android.intent.action.VIEW"/>\n'
+                  '            <data android:scheme="https"/>\n'
+                  '        </intent>\n'
+                  '    </queries>\n'
+              )
+              text = text.replace('<application', queries + '    <application', 1)
+          manifest.write_text(text)
+          written = manifest.read_text()
+          for needle in ('android.permission.INTERNET', '<queries>'):
+              if needle not in written:
+                  raise SystemExit(f'Failed to inject {needle}')
+          print('Android manifest patched')
           PY
 
       - name: Check and test

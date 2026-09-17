@@ -1,7 +1,7 @@
 name: biliharbor
 description: Cross-platform local Bilibili media workflow client.
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -9,6 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  crypto: ^3.0.7
+  file_picker: ^13.1.0
+  http: ^1.6.0
+  path_provider: ^2.1.6
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
