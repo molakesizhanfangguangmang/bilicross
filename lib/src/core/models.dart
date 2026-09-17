@@ -489,6 +489,7 @@ class AppSettings {
     this.maxParallelTasks = 2,
     this.autoMux = true,
     this.preferAppApi = false,
+    this.useAppGrpc = true,
     this.partsPerFile = 4,
     this.preferFfmpegMux = true,
   });
@@ -505,6 +506,10 @@ class AppSettings {
   int maxParallelTasks;
   bool autoMux;
   bool preferAppApi;
+
+  /// APP 通道解析成功后再补一次 gRPC PlayView，取 REST 端点不给的
+  /// HDR Vivid（qn=129）档位；失败只写日志，不影响原有结果。
+  bool useAppGrpc;
 
   /// 单文件并发连接数（1 表示单连接）。
   int partsPerFile;
@@ -525,6 +530,7 @@ class AppSettings {
         'max_parallel_tasks': maxParallelTasks,
         'auto_mux': autoMux,
         'prefer_app_api': preferAppApi,
+        'use_app_grpc': useAppGrpc,
         'parts_per_file': partsPerFile,
         'prefer_ffmpeg_mux': preferFfmpegMux,
       };
@@ -542,6 +548,7 @@ class AppSettings {
         maxParallelTasks: (json['max_parallel_tasks'] as num?)?.toInt() ?? 2,
         autoMux: json['auto_mux'] as bool? ?? true,
         preferAppApi: json['prefer_app_api'] as bool? ?? false,
+        useAppGrpc: json['use_app_grpc'] as bool? ?? true,
         partsPerFile: (json['parts_per_file'] as num?)?.toInt() ?? 4,
         preferFfmpegMux: json['prefer_ffmpeg_mux'] as bool? ?? true,
       );
