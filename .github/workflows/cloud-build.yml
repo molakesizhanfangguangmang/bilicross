@@ -142,17 +142,23 @@ jobs:
               raise SystemExit('发布签名配置已存在')
           text += """
           // 由 CI 注入：用仓库 secrets 里的固定发布密钥签名，保证升级安装可用。
-          val biliharborKeystoreFile = rootProject.file("key.properties")
-          if (biliharborKeystoreFile.exists()) {
-              val biliharborKeystore = java.util.Properties()
-              biliharborKeystoreFile.inputStream().use { biliharborKeystore.load(it) }
+          // 不引 java.util.Properties：脚本里 java 是 Gradle 的 java 扩展，会把包名遮掉。
+          val biliharborSigningFile = rootProject.file("key.properties")
+          if (biliharborSigningFile.exists()) {
+              val biliharborSigning = mutableMapOf<String, String>()
+              biliharborSigningFile.readLines().forEach { line ->
+                  val cut = line.indexOf('=')
+                  if (cut > 0) {
+                      biliharborSigning[line.substring(0, cut).trim()] = line.substring(cut + 1).trim()
+                  }
+              }
               android {
                   signingConfigs {
                       create("biliharborSigning") {
-                          storeFile = file(biliharborKeystore["storeFile"] as String)
-                          storePassword = biliharborKeystore["storePassword"] as String
-                          keyAlias = biliharborKeystore["keyAlias"] as String
-                          keyPassword = biliharborKeystore["keyPassword"] as String
+                          storeFile = file(biliharborSigning.getValue("storeFile"))
+                          storePassword = biliharborSigning.getValue("storePassword")
+                          keyAlias = biliharborSigning.getValue("keyAlias")
+                          keyPassword = biliharborSigning.getValue("keyPassword")
                       }
                   }
                   buildTypes {
