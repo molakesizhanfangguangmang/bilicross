@@ -73,7 +73,7 @@ class BiliApi {
     final http.Response response;
     try {
       response = await client.get(uri, headers: {
-        'User-Agent': userAgent ?? settings.userAgent,
+        'User-Agent': effectiveUserAgent(userAgent ?? settings.userAgent),
         'Referer': 'https://www.bilibili.com/',
         if (cookie.isNotEmpty) 'Cookie': cookie,
       });
@@ -95,7 +95,7 @@ class BiliApi {
       response = await client.post(
         uri,
         headers: {
-          'User-Agent': userAgent ?? settings.userAgent,
+          'User-Agent': effectiveUserAgent(userAgent ?? settings.userAgent),
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
           'Referer': 'https://www.bilibili.com/',
         },
@@ -194,7 +194,7 @@ class BiliApi {
     for (var hop = 0; hop < 5; hop++) {
       final request = http.Request('GET', target)
         ..followRedirects = false
-        ..headers['User-Agent'] = settings.userAgent;
+        ..headers['User-Agent'] = effectiveUserAgent(settings.userAgent);
       final response = await client.send(request);
       await response.stream.drain<void>();
       if (response.isRedirect) {

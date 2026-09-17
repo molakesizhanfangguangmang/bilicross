@@ -25,9 +25,12 @@ class _DownloadPageState extends State<DownloadPage> {
     super.dispose();
   }
 
+  /// -1 是「这条轨道不下载」，不能被 ??= 覆盖回默认值；越界则回落到默认勾选行。
   void _rememberSelection(ParsedMedia media) {
     _videoIndex ??= 0;
-    if (_videoIndex! >= media.videos.length) _videoIndex = 0;
+    if (_videoIndex! >= media.videos.length) {
+      _videoIndex = media.videos.isEmpty ? -1 : 0;
+    }
     _audioIndex ??= media.audios.isEmpty ? -1 : media.audios.length - 1;
     if (_audioIndex! >= media.audios.length) {
       _audioIndex = media.audios.isEmpty ? -1 : media.audios.length - 1;
@@ -101,10 +104,10 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _result(BuildContext context, AppState state, ParsedMedia media) {
-    final videoIndex = (_videoIndex ?? 0).clamp(0, media.videos.length - 1);
-    final audioIndex = media.audios.isEmpty
-        ? -1
-        : (_audioIndex ?? media.audios.length - 1).clamp(0, media.audios.length - 1);
+    final videoIndex = (_videoIndex ?? 0).clamp(-1, media.videos.length - 1);
+    final audioIndex = (_audioIndex ?? (media.audios.isEmpty ? -1 : media.audios.length - 1))
+        .clamp(-1, media.audios.length - 1);
+    final canStart = videoIndex >= 0 || audioIndex >= 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -132,6 +135,11 @@ class _DownloadPageState extends State<DownloadPage> {
           title: '视频流',
           child: Column(
             children: [
+              ChoiceTile(
+                selected: videoIndex < 0,
+                onTap: () => setState(() => _videoIndex = -1),
+                title: '不下载视频（只保存音频）',
+              ),
               for (var index = 0; index < media.videos.length; index++)
                 ChoiceTile(
                   selected: index == videoIndex,
@@ -145,9 +153,14 @@ class _DownloadPageState extends State<DownloadPage> {
         SectionCard(
           title: '音频流',
           child: media.audios.isEmpty
-              ? const Text('该通道没有单独音频流，下载结果为单文件流。')
+              ? const Text('该通道没有单独音频流，只能保存视频。')
               : Column(
                   children: [
+                    ChoiceTile(
+                      selected: audioIndex < 0,
+                      onTap: () => setState(() => _audioIndex = -1),
+                      title: '不下载音频（只保存视频）',
+                    ),
                     for (var index = 0; index < media.audios.length; index++)
                       ChoiceTile(
                         selected: index == audioIndex,
@@ -161,20 +174,25 @@ class _DownloadPageState extends State<DownloadPage> {
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
-            onPressed: () {
-              state.enqueue(
-                video: media.videos[videoIndex],
-                // 没有独立音频流时不能拿视频流顶替，否则会把同一个流下两遍再去合并。
-                audio: audioIndex >= 0 ? media.audios[audioIndex] : null,
-                engine: 'dart',
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已加入任务队列')),
-              );
-              state.pumpQueue();
-            },
+            onPressed: !canStart
+                ? null
+                : () {
+                    state.enqueue(
+                      video: videoIndex >= 0 ? media.videos[videoIndex] : null,
+                      audio: audioIndex >= 0 ? media.audios[audioIndex] : null,
+                      engine: 'dart',
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已加入任务队列')),
+                    );
+                    state.pumpQueue();
+                  },
             icon: const Icon(Icons.download),
-            label: const Text('加入任务'),
+            label: Text(
+              canStart
+                  ? '加入任务（${videoIndex >= 0 && audioIndex >= 0 ? '视频 + 音频' : videoIndex >= 0 ? '只有视频' : '只有音频'}）'
+                  : '至少要选一条轨道',
+            ),
           ),
         ),
       ],

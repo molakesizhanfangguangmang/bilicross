@@ -58,7 +58,10 @@ class _TaskCard extends StatelessWidget {
 
   /// 分片都还在时允许单独重跑合并。
   bool get _canMerge =>
-      task.audioPath.isNotEmpty && hasUsableFile(task.videoPath) && hasUsableFile(task.audioPath);
+      !task.singleTrack &&
+      task.audioPath.isNotEmpty &&
+      hasUsableFile(task.videoPath) &&
+      hasUsableFile(task.audioPath);
 
   int get _tone => switch (task.stage) {
         TaskStage.done => 1,
@@ -111,7 +114,7 @@ class _TaskCard extends StatelessWidget {
                   child: const Text('重试合并'),
                 ),
               if (task.stage == TaskStage.failed ||
-                  (task.stage == TaskStage.done && !task.merged))
+                  (task.stage == TaskStage.done && !task.merged && !task.singleTrack))
                 OutlinedButton(
                   onPressed: running ? null : () => _cleanup(context, state, task),
                   child: const Text('清理残留'),

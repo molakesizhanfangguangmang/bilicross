@@ -255,12 +255,13 @@ class AppState extends ChangeNotifier {
   // ---------- 任务 ----------
 
   void enqueue({
-    required MediaStream video,
+    required MediaStream? video,
     required MediaStream? audio,
     required String engine,
   }) {
     final media = parsed;
     if (media == null) return;
+    if (video == null && audio == null) return;
     final dir = settings.downloadDir;
     final name = sanitizeFileName(
       '${media.info.title}${media.page.page > 1 ? ' P${media.page.page} ${media.page.part}' : ''}',
@@ -272,13 +273,18 @@ class AppState extends ChangeNotifier {
       infoId: media.info.bvid.isEmpty ? '${media.info.aid}' : media.info.bvid,
       page: media.page.page,
       cid: media.page.cid,
-      outputPath: '$dir${Platform.pathSeparator}$name.mp4',
+      outputPath: '$dir${Platform.pathSeparator}$name.${video == null ? 'm4a' : 'mp4'}',
       engine: engine,
       channel: media.channel,
-      videoUrl: video.url,
+      videoUrl: video?.url ?? '',
       audioUrl: audio?.url ?? '',
-      videoBackups: video.backupUrls,
+      videoBackups: video?.backupUrls ?? const [],
       audioBackups: audio?.backupUrls ?? const [],
+      // 档位与编码一起记下来：重试时按这对值取流，不改成列表里的第一条。
+      videoQualityId: video?.id ?? 0,
+      audioQualityId: audio?.id ?? 0,
+      videoCodecs: video?.codecs ?? '',
+      audioCodecs: audio?.codecs ?? '',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     tasks.insert(0, task);
@@ -317,6 +323,8 @@ class AppState extends ChangeNotifier {
     return removed;
   }
 
+  /// 重试保留原来的档位与编码：只清掉可能过期的 CDN 地址，重新解析时按原档位取，
+  /// 用户不必回到解析页重选一次。
   void retryTask(String id) {
     final task = tasks.firstWhere((item) => item.id == id);
     task.stage = TaskStage.pending;
@@ -364,31 +372,44 @@ class AppState extends ChangeNotifier {
       if (!dir.existsSync()) {
         await dir.create(recursive: true);
       }
-      if (task.videoUrl.isEmpty) {
+      if ((task.videoQualityId != 0 && task.videoUrl.isEmpty) ||
+          (task.audioQualityId != 0 && task.audioUrl.isEmpty)) {
         task.stage = TaskStage.resolving;
-        task.message = '地址已失效，重新解析';
+        task.message = '地址已失效，按原档位重新解析';
         notifyListeners();
         await _refreshTaskUrls(task);
       }
-      task.stage = TaskStage.downloading;
-      task.message = '下载视频流';
-      notifyListeners();
+
+      // 档位 0 表示用户在界面上取消了这条轨道，单轨任务不做合并。
+      final wantsVideo = task.videoQualityId != 0;
+      final wantsAudio = task.audioQualityId != 0;
+      if (!wantsVideo && !wantsAudio) {
+        throw BiliException('任务没有选择任何轨道');
+      }
 
       final base = sanitizeFileName(task.title);
-      task.videoPath = '${dir.path}${Platform.pathSeparator}$base.video.m4s';
-      task.audioPath = '${dir.path}${Platform.pathSeparator}$base.audio.m4s';
-      task.outputPath = '${dir.path}${Platform.pathSeparator}$base.mp4';
+      final separator = Platform.pathSeparator;
+      task.videoPath = '${dir.path}$separator$base.video.m4s';
+      task.audioPath = '${dir.path}$separator$base.audio.m4s';
+      task.outputPath = '${dir.path}$separator$base.${wantsVideo ? 'mp4' : 'm4a'}';
 
-      await downloader.download(
-        url: task.videoUrl,
-        backups: task.videoBackups,
-        targetPath: task.videoPath,
-        parts: settings.partsPerFile,
-        onProgress: (received, total) => _pushProgress(task, received, total),
-        isCancelled: () => task.stage == TaskStage.failed,
-      );
+      task.stage = TaskStage.downloading;
+      if (wantsVideo) {
+        task.message = '下载视频流';
+        task.receivedBytes = 0;
+        task.totalBytes = 0;
+        notifyListeners();
+        await downloader.download(
+          url: task.videoUrl,
+          backups: task.videoBackups,
+          targetPath: task.videoPath,
+          parts: settings.partsPerFile,
+          onProgress: (received, total) => _pushProgress(task, received, total),
+          isCancelled: () => task.stage == TaskStage.failed,
+        );
+      }
 
-      if (task.audioUrl.isNotEmpty) {
+      if (wantsAudio) {
         task.message = '下载音频流';
         task.receivedBytes = 0;
         task.totalBytes = 0;
@@ -403,19 +424,23 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      if (!hasUsableFile(task.videoPath)) {
-        throw BiliException('视频分片为空');
-      }
-
-      if (task.audioUrl.isEmpty || !hasUsableFile(task.audioPath)) {
-        task.merged = false;
-        task.stage = TaskStage.done;
-        task.message = '已下载单文件流，未做合并';
-        notifyListeners();
+      if (wantsVideo && wantsAudio) {
+        if (!hasUsableFile(task.videoPath)) {
+          throw BiliException('视频分片为空');
+        }
+        if (!hasUsableFile(task.audioPath)) {
+          throw BiliException('音频分片为空');
+        }
+        await _muxTask(task);
         return;
       }
 
-      await _muxTask(task);
+      // 只下了一条轨道：没有可合并的东西，分片直接改名成产物。
+      final source = wantsVideo ? task.videoPath : task.audioPath;
+      if (!hasUsableFile(source)) {
+        throw BiliException(wantsVideo ? '视频分片为空' : '音频分片为空');
+      }
+      await _finalizeSingle(task, source);
     } on Exception catch (error) {
       task.stage = TaskStage.failed;
       task.message = '$error';
@@ -448,6 +473,26 @@ class AppState extends ChangeNotifier {
       LogStore.instance.add('合并', '${task.title}：已清理 $removed 个分片');
     }
     return removed;
+  }
+
+  /// 单轨任务的落定：把分片改名成最终产物，不给用户留一个 .m4s。
+  /// 只下视频得到无声 mp4，只下音频得到 m4a，两者都不合并。
+  Future<void> _finalizeSingle(DownloadTask task, String sourcePath) async {
+    final target = File(task.outputPath);
+    await target.parent.create(recursive: true);
+    if (await target.exists()) await target.delete();
+    var path = target.path;
+    try {
+      path = (await File(sourcePath).rename(target.path)).path;
+    } on FileSystemException {
+      // 跨卷时不支持改名，退回复制。
+      await File(sourcePath).copy(target.path);
+      await File(sourcePath).delete();
+    }
+    task.merged = false;
+    task.stage = TaskStage.done;
+    task.message = '完成（单轨）：$path';
+    LogStore.instance.add('任务', '${task.title}：单轨完成 $path');
   }
 
   /// 合并音视频。ffmpeg 在就用 ffmpeg，没有就走内置分片合并；
@@ -491,6 +536,11 @@ class AppState extends ChangeNotifier {
         task.stage == TaskStage.resolving) {
       return;
     }
+    if (task.videoQualityId == 0 || task.audioQualityId == 0) {
+      task.message = '该任务只下了一条轨道，没有可合并的分片';
+      notifyListeners();
+      return;
+    }
     if (!hasUsableFile(task.videoPath) || !hasUsableFile(task.audioPath)) {
       task.message = '缺少视频或音频分片，请重新下载';
       notifyListeners();
@@ -501,20 +551,69 @@ class AppState extends ChangeNotifier {
   }
 
   /// 断点续传前先补地址：旧任务里的 CDN 地址可能已经过期。
+  ///
+  /// 取流严格按任务记录的档位与编码（`videoQualityId` / `audioQualityId`）：找不到同一个
+  /// 档位就报错，不静默换成别的档位——否则用户选了 8K、重试后拿到更低的档位也不会发现。
+  /// 档位为 -1 的是没有记录的老任务，按老行为取（视频第一条、音频最后一条），
+  /// 取完把实际用到的档位补写回任务。
   Future<void> _refreshTaskUrls(DownloadTask task) async {
-    LogStore.instance.add('任务', '${task.title}：地址已失效，重新解析');
+    LogStore.instance.add('任务', '${task.title}：地址已失效，按原档位重新解析');
     final media = await parseService.parseTarget(
       task.source,
       cookie: cookie,
       token: token ?? _emptyToken,
       pageOverride: task.page,
     );
-    final video = media.videos.first;
-    final audio = media.audios.isEmpty ? null : media.audios.last;
-    task.videoUrl = video.url;
-    task.videoBackups = video.backupUrls;
-    task.audioUrl = audio?.url ?? '';
-    task.audioBackups = audio?.backupUrls ?? const [];
+
+    if (task.videoQualityId != 0) {
+      final video = resolveRecordedStream(
+        media.videos,
+        task.videoQualityId,
+        task.videoCodecs,
+        fallbackFirst: true,
+      );
+      if (video == null) {
+        throw BiliException(task.videoQualityId > 0
+            ? '原选择的视频档位（${qualityLabel(task.videoQualityId)}）本次解析没有返回'
+            : '本次解析没有返回任何视频流');
+      }
+      task.videoUrl = video.url;
+      task.videoBackups = video.backupUrls;
+      task.videoQualityId = video.id;
+      task.videoCodecs = video.codecs;
+    } else {
+      task.videoUrl = '';
+      task.videoBackups = const [];
+    }
+
+    if (task.audioQualityId != 0) {
+      final audio = resolveRecordedStream(
+        media.audios,
+        task.audioQualityId,
+        task.audioCodecs,
+        fallbackFirst: false,
+      );
+      if (audio == null) {
+        if (task.audioQualityId > 0) {
+          throw BiliException(
+            '原选择的音频档位（${audioLabel(task.audioQualityId)}）本次解析没有返回',
+          );
+        }
+        // 老任务本来要音频，这次解析没有独立音频流：改成只下视频。
+        task.audioUrl = '';
+        task.audioBackups = const [];
+        task.audioQualityId = 0;
+      } else {
+        task.audioUrl = audio.url;
+        task.audioBackups = audio.backupUrls;
+        task.audioQualityId = audio.id;
+        task.audioCodecs = audio.codecs;
+      }
+    } else {
+      task.audioUrl = '';
+      task.audioBackups = const [];
+    }
+
     task.channel = media.channel;
   }
 

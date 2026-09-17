@@ -264,7 +264,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     TextField(
                       controller: _userAgent,
                       maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'User-Agent'),
+                      decoration: const InputDecoration(
+                        labelText: 'User-Agent',
+                        hintText: '留空使用内置短串 Mozilla/5.0',
+                        helperText: '桌面长串在移动端下载地址上会被 CDN 拒；不确定就留空',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(

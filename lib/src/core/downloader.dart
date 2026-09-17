@@ -4,6 +4,15 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'log_store.dart';
+import 'models.dart';
+
+/// 地址的 `platform` 参数以 android 开头（含 android_tv_yst 这类变体）。
+/// 这类地址由 gRPC PlayView 等移动端接口签发：CDN 不接受它带 Referer，
+/// 桌面长 UA 也会被拒，实测「短 UA + 不带 Referer」才回 200/206。
+bool isAndroidPlatformUrl(String url) {
+  final platform = Uri.tryParse(url)?.queryParameters['platform'];
+  return platform != null && platform.startsWith('android');
+}
 
 class DownloadResult {
   const DownloadResult({
@@ -35,7 +44,6 @@ class StreamDownloader {
     required String url,
     required String targetPath,
     List<String> backups = const [],
-    String referer = 'https://www.bilibili.com/',
     int parts = 1,
     void Function(int received, int total)? onProgress,
     bool Function()? isCancelled,
@@ -58,7 +66,6 @@ class StreamDownloader {
               final result = await _downloadParts(
                 url: candidate,
                 targetPath: targetPath,
-                referer: referer,
                 parts: parts,
                 onProgress: onProgress,
                 isCancelled: isCancelled,
@@ -83,7 +90,6 @@ class StreamDownloader {
         final result = await _downloadOne(
           url: candidate,
           targetPath: targetPath,
-          referer: referer,
           onProgress: onProgress,
           isCancelled: isCancelled,
         );
@@ -108,10 +114,10 @@ class StreamDownloader {
   }
 
   /// 问一次总长度，顺便确认服务端认 Range。不认就返回 null。
-  Future<int?> _probeTotal({required String url, required String referer}) async {
+  Future<int?> _probeTotal({required String url}) async {
     try {
       final request = http.Request('GET', Uri.parse(url));
-      request.headers.addAll(_headers(referer: referer, range: 'bytes=0-0'));
+      request.headers.addAll(headersFor(url: url, userAgent: userAgent, range: 'bytes=0-0'));
       final response = await client.send(request);
       await response.stream.drain<void>();
       if (response.statusCode != 206) return null;
@@ -127,24 +133,32 @@ class StreamDownloader {
     }
   }
 
-  Map<String, String> _headers({required String referer, String? range}) => {
-        'User-Agent': userAgent,
-        'Referer': referer,
-        'Origin': 'https://www.bilibili.com',
-        'Accept': '*/*',
-        if (range != null) 'Range': range,
-      };
+  /// 下载请求头。移动端地址不带 Referer/Origin（带了会被 CDN 403），网页地址反之必须带。
+  /// UA 留空时回落到短串：空 UA 在网页地址上会被拒，桌面长串在移动端地址上会被拒。
+  static Map<String, String> headersFor({
+    required String url,
+    required String userAgent,
+    String? range,
+  }) {
+    final android = isAndroidPlatformUrl(url);
+    return {
+      'User-Agent': effectiveUserAgent(userAgent),
+      if (!android) 'Referer': kSiteReferer,
+      if (!android) 'Origin': 'https://www.bilibili.com',
+      'Accept': '*/*',
+      if (range != null) 'Range': range,
+    };
+  }
 
   /// 分段下载。返回 null 表示「这次不分段」，由调用方退回单连接。
   Future<DownloadResult?> _downloadParts({
     required String url,
     required String targetPath,
-    required String referer,
     required int parts,
     void Function(int received, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final total = await _probeTotal(url: url, referer: referer);
+    final total = await _probeTotal(url: url);
     if (total == null || total < minChunkBytes * 2) return null;
 
     var count = parts;
@@ -175,7 +189,6 @@ class StreamDownloader {
           chunkPath: _chunkPath(targetPath, index),
           start: index * chunkSize,
           end: _chunkEnd(index, chunkSize, total),
-          referer: referer,
           onBytes: (bytes) {
             received[index] = bytes;
             report();
@@ -244,7 +257,6 @@ class StreamDownloader {
     required String chunkPath,
     required int start,
     required int end,
-    required String referer,
     required void Function(int bytes) onBytes,
     bool Function()? isCancelled,
   }) async {
@@ -267,7 +279,7 @@ class StreamDownloader {
       try {
         final request = http.Request('GET', Uri.parse(url));
         request.headers.addAll(
-          _headers(referer: referer, range: 'bytes=${start + have}-$end'),
+          headersFor(url: url, userAgent: userAgent, range: 'bytes=${start + have}-$end'),
         );
         final response = await client.send(request);
         if (response.statusCode == 416) {
@@ -327,7 +339,6 @@ class StreamDownloader {
   Future<DownloadResult> _downloadOne({
     required String url,
     required String targetPath,
-    required String referer,
     void Function(int received, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -336,8 +347,9 @@ class StreamDownloader {
     var startAt = await part.exists() ? await part.length() : 0;
 
     final request = http.Request('GET', Uri.parse(url));
-    request.headers.addAll(_headers(
-      referer: referer,
+    request.headers.addAll(headersFor(
+      url: url,
+      userAgent: userAgent,
       range: startAt > 0 ? 'bytes=$startAt-' : null,
     ));
 
