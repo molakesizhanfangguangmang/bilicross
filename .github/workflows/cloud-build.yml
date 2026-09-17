@@ -135,12 +135,18 @@ jobs:
           if named != 1:
               raise SystemExit('未能设置应用显示名')
           manifest.write_text(text)
-          for needle in ('android:label="逸轨"', '@color/ic_launcher_background'):
-              present = needle in manifest.read_text() or needle in Path(
-                  'android/app/src/main/res/values/colors.xml'
-              ).read_text()
-              if not present:
-                  raise SystemExit(f'图标或显示名注入失败：缺少 {needle}')
+          for needle in ('android:label="逸轨"',):
+              if needle not in manifest.read_text():
+                  raise SystemExit(f'显示名注入失败：缺少 {needle}')
+          adaptive = Path('android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml')
+          colors = Path('android/app/src/main/res/values/colors.xml')
+          icons = list(Path('android/app/src/main/res').glob('mipmap-*/ic_launcher.png'))
+          if not adaptive.exists() or '@color/ic_launcher_background' not in adaptive.read_text():
+              raise SystemExit('自适应图标未写入')
+          if not colors.exists() or 'ic_launcher_background' not in colors.read_text():
+              raise SystemExit('图标背景色未写入')
+          if len(icons) < 5:
+              raise SystemExit(f'图标密度不全：{sorted(p.name for p in icons)}')
           print('图标、显示名与包名标识已写入')
           PY
 
@@ -236,6 +242,26 @@ jobs:
             exit 1
           fi
           sha256sum "$apk" | tee "$apk.sha256"
+          python3 - <<'PY'
+          import zipfile
+          apk = 'build/app/outputs/flutter-apk/app-release.apk'
+          package = zipfile.ZipFile(apk)
+          manifest = package.read('AndroidManifest.xml')
+          arsc = package.read('resources.arsc')
+          expected = {
+              'applicationId': 'io.github.molakesizhanfangguangmang.biliharbor',
+              '显示名': '逸轨',
+          }
+          for label, text in expected.items():
+              found = any(
+                  text.encode(encoding) in blob
+                  for encoding in ('utf-16-le', 'utf-8')
+                  for blob in (manifest, arsc)
+              )
+              print(f'{label}: {"ok" if found else "missing"}')
+              if not found:
+                  raise SystemExit(f'APK 里找不到 {label}（{text}）')
+          PY
 
       - name: Verify APK signing
         shell: bash
