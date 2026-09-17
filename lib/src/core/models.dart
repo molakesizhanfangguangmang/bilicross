@@ -1,4 +1,4 @@
-/// 数据模型与常量。所有对外可见的文案为中文，标识符为英文。
+// 数据模型与常量。所有对外可见的文案为中文，标识符为英文。
 
 const String kDefaultAppKey = '783bbb7264451d82';
 const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';
