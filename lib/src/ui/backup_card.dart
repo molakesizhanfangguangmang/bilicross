@@ -68,7 +68,7 @@ class _BackupCardState extends State<BackupCard> {
     setState(() => _busy = true);
     try {
       final service = await _service();
-      final path = await FilePicker.platform.saveFile(
+      final path = await FilePicker.saveFile(
         dialogTitle: l10n.tr('backup.export'),
         fileName: service.suggestFileName(),
         type: FileType.custom,
@@ -93,7 +93,7 @@ class _BackupCardState extends State<BackupCard> {
     setState(() => _busy = true);
     try {
       final service = await _service();
-      final picked = await FilePicker.platform.pickFiles(
+      final picked = await FilePicker.pickFiles(
         dialogTitle: l10n.tr('backup.restore'),
         type: FileType.any,
         allowMultiple: false,
