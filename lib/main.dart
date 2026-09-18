@@ -76,6 +76,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
   }
 
   DesktopShell? _shell;
+  bool _shellAttached = false;
 
   Future<void> _attachDesktopShell(AppState state) async {
     if (!DesktopShell.isSupported) return;
@@ -136,10 +137,6 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     state.addListener(() {
       shell.applyCloseBehavior(state.settings.closeToTray);
     });
-  }
-
-  bool _shellAttached = false;
-
   }
 
   Widget _buildApp(AppState state) {
