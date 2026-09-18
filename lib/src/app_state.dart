@@ -118,10 +118,14 @@ class AppState extends ChangeNotifier {
 
   /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
   /// 不重启应用，也不重建任务与凭据，只影响文案。
+  /// 非法代码直接忽略——磁盘上的旧数据归一化交给 fromJson，这里不该把
+  /// 「传错值」翻译成「切回中文」，那会覆盖用户已选的语言。
   Future<void> setLocale(String code) async {
-    final next = normalizeLocaleCode(code);
-    if (next == settings.localeCode) return;
-    settings.localeCode = next;
+    if (code != kLocaleSystem && code != kLocaleZhCN && code != kLocaleEnUS) {
+      return;
+    }
+    if (code == settings.localeCode) return;
+    settings.localeCode = code;
     await store.saveSettings(settings);
     notifyListeners();
   }
