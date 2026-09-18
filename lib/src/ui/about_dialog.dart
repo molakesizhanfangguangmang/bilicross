@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/update_check.dart';
+import '../i18n/app_localizations.dart';
 
 /// 关于弹窗里的纹章图，原图直接打进包里，不做压缩。
 const String kCrestAsset = 'assets/branding/crest.png';
@@ -31,8 +32,10 @@ Future<void> handleUpdateResult(
   }
   if (result.outcome == UpdateOutcome.upToDate && !notifyWhenUpToDate) return;
   if (!context.mounted) return;
-  final text =
-      result.outcome == UpdateOutcome.upToDate ? '已是最新' : '检测更新失败';
+  final l10n = AppLocalizations.of(context);
+  final text = result.outcome == UpdateOutcome.upToDate
+      ? l10n.tr('about.upToDate')
+      : l10n.tr('about.checkFailed');
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
@@ -45,6 +48,7 @@ Future<void> showUpdateConfirmDialog(
   BuildContext context,
   UpdateCheckResult result,
 ) async {
+  final l10n = AppLocalizations.of(context);
   final go = await showDialog<bool>(
     context: context,
     builder: (dialogContext) {
@@ -57,7 +61,7 @@ Future<void> showUpdateConfirmDialog(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
-                tooltip: '关闭',
+                tooltip: l10n.tr('common.close'),
                 iconSize: 18,
                 onPressed: () => Navigator.of(dialogContext).pop(false),
                 icon: const Icon(Icons.close),
@@ -66,7 +70,9 @@ Future<void> showUpdateConfirmDialog(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('检测到更新 ${result.latestLabel}，是否前往'),
+                  child: Text(
+                    l10n.tr('about.updateFound', {'version': result.latestLabel}),
+                  ),
                 ),
               ),
               Padding(
@@ -76,12 +82,12 @@ Future<void> showUpdateConfirmDialog(
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: const Text('否'),
+                      child: Text(l10n.tr('common.no')),
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
                       onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: const Text('是'),
+                      child: Text(l10n.tr('common.yes')),
                     ),
                   ],
                 ),
@@ -109,10 +115,14 @@ Future<void> openExternalUrl(BuildContext context, String url) async {
     launched = false;
   }
   if (launched || !context.mounted) return;
+  final l10n = AppLocalizations.of(context);
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
-      const SnackBar(content: Text('浏览器没有打开'), duration: Duration(seconds: 2)),
+      SnackBar(
+        content: Text(l10n.tr('common.browserNotOpened')),
+        duration: const Duration(seconds: 2),
+      ),
     );
 }
 
@@ -145,15 +155,16 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
     Navigator.of(context).pop(result);
   }
 
-  String get _versionLine {
+  String _versionLine(AppLocalizations l10n) {
     final version = _version;
     if (version == null) return '';
-    if (version.isEmpty) return '当前版本 未知';
-    return '当前版本 $version';
+    if (version.isEmpty) return l10n.tr('about.versionUnknown');
+    return l10n.tr('about.version', {'version': version});
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     // 「检测更新」目前只服务 Android 侧载更新；Windows 包不显示这一格。
     final canCheck = Theme.of(context).platform == TargetPlatform.android;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -180,7 +191,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                     top: 2,
                     right: 2,
                     child: IconButton(
-                      tooltip: '关闭',
+                      tooltip: l10n.tr('common.close'),
                       iconSize: 18,
                       color: Colors.white,
                       style: IconButton.styleFrom(
@@ -196,7 +207,10 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                     child: TextButton(
                       style: TextButton.styleFrom(foregroundColor: Colors.white),
                       onPressed: () => openExternalUrl(context, kProjectUrl),
-                      child: const Text('项目地址', style: TextStyle(fontSize: 13)),
+                      child: Text(
+                        l10n.tr('about.projectUrl'),
+                        style: const TextStyle(fontSize: 13),
+                      ),
                     ),
                   ),
                   if (canCheck)
@@ -217,7 +231,10 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('检测更新', style: TextStyle(fontSize: 13)),
+                            : Text(
+                                l10n.tr('about.checkUpdate'),
+                                style: const TextStyle(fontSize: 13),
+                              ),
                       ),
                     ),
                 ],
@@ -226,7 +243,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Text(
-                _versionLine,
+                _versionLine(l10n),
                 style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
               ),
             ),

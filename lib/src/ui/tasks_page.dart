@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/downloader.dart';
 import '../core/models.dart';
+import '../i18n/app_localizations.dart';
 import 'widgets.dart';
 
 class TasksPage extends StatelessWidget {
@@ -12,21 +13,22 @@ class TasksPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
         if (state.tasks.isEmpty) {
-          return const PageFrame(
-            title: '下载任务',
+          return PageFrame(
+            title: l10n.tr('tasks.title'),
             child: EmptyState(
               icon: Icons.inbox_outlined,
-              title: '暂无任务',
-              message: '队列会区分等待、下载、合并、完成与失败状态。中断的任务在下次启动时按断点续传继续。',
+              title: l10n.tr('tasks.emptyTitle'),
+              message: l10n.tr('tasks.emptyHint'),
             ),
           );
         }
         return PageFrame(
-          title: '下载任务',
+          title: l10n.tr('tasks.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -34,9 +36,11 @@ class TasksPage extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '并发 ${state.settings.maxParallelTasks}'
-                      ' · 队列${state.queueRunning ? '运行中' : '空闲'}'
-                      ' · 等待 ${state.pendingCount} 条',
+                      '${l10n.tr('tasks.parallel', {
+                            'count': '${state.settings.maxParallelTasks}',
+                          })}'
+                      ' · ${state.queueRunning ? l10n.tr('tasks.queueRunning') : l10n.tr('tasks.queueIdle')}'
+                      ' · ${l10n.tr('tasks.pending', {'count': '${state.pendingCount}'})}',
                       style: const TextStyle(color: Color(0xff6d716f), fontSize: 12),
                     ),
                   ),
@@ -46,7 +50,11 @@ class TasksPage extends StatelessWidget {
                         ? null
                         : () => state.pumpQueue(),
                     icon: const Icon(Icons.play_arrow),
-                    label: Text(state.queueRunning ? '运行中' : '开始任务'),
+                    label: Text(
+                      state.queueRunning
+                          ? l10n.tr('tasks.queueRunning')
+                          : l10n.tr('tasks.startQueue'),
+                    ),
                   ),
                 ],
               ),
@@ -87,10 +95,11 @@ class _TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final running = task.stage == TaskStage.downloading || task.stage == TaskStage.muxing;
     return SectionCard(
       title: task.title,
-      trailing: StateChip(text: task.stage.label, tone: _tone),
+      trailing: StateChip(text: task.stage.label(l10n), tone: _tone),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -103,18 +112,27 @@ class _TaskCard extends StatelessWidget {
               ),
             ),
           InfoLine(
-            label: '进度',
+            label: l10n.tr('tasks.progress'),
             value: '${formatBytes(task.receivedBytes)}'
                 '${task.totalBytes > 0 ? ' / ${formatBytes(task.totalBytes)}' : ''}',
           ),
-          InfoLine(label: '通道', value: task.channel.isEmpty ? '未记录' : task.channel),
           InfoLine(
-            label: '分 P',
-            value: task.page > 1 ? '第 ${task.page} P · cid ${task.cid}' : 'cid ${task.cid}',
+            label: l10n.tr('tasks.channel'),
+            value: task.channel.isEmpty ? l10n.tr('tasks.notRecorded') : task.channel,
           ),
-          InfoLine(label: '引擎', value: task.engine == 'dart' ? 'Dart 内置' : task.engine),
-          if (task.message.isNotEmpty) InfoLine(label: '状态', value: task.message),
-          InfoLine(label: '输出', value: task.outputPath),
+          InfoLine(
+            label: l10n.tr('download.part'),
+            value: task.page > 1
+                ? l10n.tr('tasks.pagePart', {'page': '${task.page}', 'cid': '${task.cid}'})
+                : l10n.tr('tasks.cidOnly', {'cid': '${task.cid}'}),
+          ),
+          InfoLine(
+            label: l10n.tr('tasks.engine'),
+            value: task.engine == 'dart' ? l10n.tr('tasks.dartEngine') : task.engine,
+          ),
+          if (task.message.isNotEmpty)
+            InfoLine(label: l10n.tr('tasks.status'), value: task.message),
+          InfoLine(label: l10n.tr('tasks.output'), value: task.outputPath),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -123,26 +141,26 @@ class _TaskCard extends StatelessWidget {
               if (task.stage == TaskStage.downloading)
                 OutlinedButton(
                   onPressed: () => state.pauseTask(task.id),
-                  child: const Text('暂停'),
+                  child: Text(l10n.tr('tasks.pause')),
                 ),
               if (running)
                 OutlinedButton(
                   onPressed: () => _stop(context, state, task),
-                  child: const Text('强制结束'),
+                  child: Text(l10n.tr('tasks.forceStop')),
                 ),
               if (task.stage == TaskStage.paused)
                 OutlinedButton(
                   onPressed: () => state.resumeTask(task.id),
-                  child: const Text('继续'),
+                  child: Text(l10n.tr('tasks.resume')),
                 ),
               OutlinedButton(
                 onPressed: running ? null : () => state.retryTask(task.id),
-                child: const Text('重试'),
+                child: Text(l10n.tr('tasks.retry')),
               ),
               if (!task.merged && _canMerge)
                 OutlinedButton(
                   onPressed: running ? null : () => state.retryMerge(task.id),
-                  child: const Text('重试合并'),
+                  child: Text(l10n.tr('tasks.retryMux')),
                 ),
               if (task.stage == TaskStage.failed ||
                   task.stage == TaskStage.stopped ||
@@ -150,11 +168,11 @@ class _TaskCard extends StatelessWidget {
                   (task.stage == TaskStage.done && !task.merged && !task.singleTrack))
                 OutlinedButton(
                   onPressed: running ? null : () => _cleanup(context, state, task),
-                  child: const Text('清理残留'),
+                  child: Text(l10n.tr('tasks.cleanup')),
                 ),
               OutlinedButton(
                 onPressed: running ? null : () => state.removeTask(task.id),
-                child: const Text('移除'),
+                child: Text(l10n.tr('common.remove')),
               ),
             ],
           ),
@@ -169,22 +187,23 @@ class _TaskCard extends StatelessWidget {
     AppState state,
     DownloadTask task,
   ) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('强制结束'),
+        title: Text(l10n.tr('tasks.forceStop')),
         content: Text(
-          '将停止「${task.title}」，并删除它已经下载的分片与半成品。'
-          '删掉之后不能续传，只能重新下载。',
+          '${l10n.tr('tasks.forceStopConfirm', {'title': task.title})}'
+          '${l10n.tr('tasks.forceStopWarning')}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
+            child: Text(l10n.tr('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('强制结束'),
+            child: Text(l10n.tr('tasks.forceStop')),
           ),
         ],
       ),
@@ -199,11 +218,16 @@ class _TaskCard extends StatelessWidget {
     AppState state,
     DownloadTask task,
   ) async {
+    final l10n = AppLocalizations.of(context);
     final removed = await state.cleanupTask(task.id);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(removed > 0 ? '已清理 $removed 个文件' : '没有可清理的文件'),
+        content: Text(
+          removed > 0
+              ? l10n.tr('tasks.cleanedFiles', {'count': '$removed'})
+              : l10n.tr('tasks.nothingToClean'),
+        ),
       ),
     );
   }

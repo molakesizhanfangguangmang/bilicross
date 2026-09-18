@@ -222,6 +222,7 @@ jobs:
       - name: Check and test
         shell: bash
         run: |
+          flutter pub get
           dart format lib test
           flutter analyze
           flutter test
@@ -262,6 +263,20 @@ jobs:
               if not found:
                   raise SystemExit(f'APK 里找不到 {label}（{text}）')
           PY
+
+      - name: Verify APK version
+        shell: bash
+        run: |
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          tools=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$tools" ] || [ ! -x "$tools/aapt" ]; then
+            echo '未找到 aapt，无法校验 APK 版本号' >&2
+            exit 1
+          fi
+          badging=$("$tools/aapt" dump badging "$apk")
+          echo "$badging" | grep -E "^package:" | sed -n '1p'
+          echo "$badging" | grep -F "versionCode='13'"
+          echo "$badging" | grep -F "versionName='1.0.3'"
 
       - name: Verify APK signing
         shell: bash
@@ -323,6 +338,7 @@ jobs:
       - name: Check and test
         shell: pwsh
         run: |
+          flutter pub get
           dart format lib test
           flutter analyze
           flutter test

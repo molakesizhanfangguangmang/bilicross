@@ -1,4 +1,6 @@
-// 数据模型与常量。所有对外可见的文案为中文，标识符为英文。
+// 数据模型与常量。标识符为英文，界面文案统一走 [AppLocalizations]。
+
+import '../i18n/app_localizations.dart';
 
 const String kDefaultAppKey = '783bbb7264451d82';
 const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';
@@ -77,9 +79,39 @@ const Map<int, String> kAudioNames = {
   30251: 'Hi-Res 无损',
 };
 
-String qualityLabel(int id) => kQualityNames[id] ?? '画质 $id';
+/// 编号 -> 需要翻译的文案 key。其余档位名（1080P、HDR Vivid 之类）中英同名，
+/// 直接沿用 [kQualityNames] / [kAudioNames]。
+const Map<int, String> kVideoQualityKeys = {100: 'quality.100', 126: 'quality.126'};
+const Map<int, String> kAudioQualityKeys = {
+  30250: 'quality.30250',
+  30251: 'quality.30251',
+};
 
-String audioLabel(int id) => kAudioNames[id] ?? '音质 $id';
+/// 语言代码只接受三个值，其它一律回落到简体中文：旧配置没有这个字段、
+/// 或存了不认识的值，都不能让界面变成没翻译的状态。
+String normalizeLocaleCode(String? raw) => switch (raw) {
+      kLocaleSystem || kLocaleZhCN || kLocaleEnUS => raw!,
+      _ => kLocaleZhCN,
+    };
+
+/// 档位展示名。`l10n` 为空时给中文，老调用点不用改也不会编译失败。
+String qualityLabel(int id, [AppLocalizations? l10n]) {
+  final t = l10n ?? const AppLocalizationsZh();
+  final key = kVideoQualityKeys[id];
+  if (key != null) return t.tr(key);
+  final raw = kQualityNames[id];
+  if (raw != null) return raw;
+  return t.tr('quality.fallbackVideo', {'id': '$id'});
+}
+
+String audioLabel(int id, [AppLocalizations? l10n]) {
+  final t = l10n ?? const AppLocalizationsZh();
+  final key = kAudioQualityKeys[id];
+  if (key != null) return t.tr(key);
+  final raw = kAudioNames[id];
+  if (raw != null) return raw;
+  return t.tr('quality.fallbackAudio', {'id': '$id'});
+}
 
 /// 按任务记录的档位号与编码挑流。同档位多编码时优先编码一致的那条，否则取该档位第一条。
 /// 返回 null 表示这次解析结果里没有这个档位，调用方据此报错，不要静默换成别的档位。
@@ -394,12 +426,14 @@ class AccountState {
   final double coins;
   final String message;
 
-  String get vipLabel {
-    if (vipStatus != 1) return '非大会员';
+  /// 会员状态。`l10n` 为空时给中文，测试与非 UI 调用点可以直接用。
+  String vipLabel([AppLocalizations? l10n]) {
+    final t = l10n ?? const AppLocalizationsZh();
+    if (vipStatus != 1) return t.tr('vip.none');
     return switch (vipType) {
-      2 => '年度大会员',
-      1 => '月度大会员',
-      _ => '大会员',
+      2 => t.tr('vip.annual'),
+      1 => t.tr('vip.monthly'),
+      _ => t.tr('vip.general'),
     };
   }
 }
@@ -407,16 +441,20 @@ class AccountState {
 enum TaskStage { pending, resolving, downloading, muxing, paused, stopped, done, failed }
 
 extension TaskStageLabel on TaskStage {
-  String get label => switch (this) {
-        TaskStage.pending => '等待',
-        TaskStage.resolving => '解析',
-        TaskStage.downloading => '下载',
-        TaskStage.muxing => '合并',
-        TaskStage.paused => '暂停',
-        TaskStage.stopped => '已结束',
-        TaskStage.done => '完成',
-        TaskStage.failed => '失败',
-      };
+  /// 阶段名。`l10n` 为空时给中文，日志与非 UI 调用点可以直接用。
+  String label([AppLocalizations? l10n]) {
+    final t = l10n ?? const AppLocalizationsZh();
+    return switch (this) {
+      TaskStage.pending => t.tr('stage.pending'),
+      TaskStage.resolving => t.tr('stage.resolving'),
+      TaskStage.downloading => t.tr('stage.downloading'),
+      TaskStage.muxing => t.tr('stage.muxing'),
+      TaskStage.paused => t.tr('stage.paused'),
+      TaskStage.stopped => t.tr('stage.stopped'),
+      TaskStage.done => t.tr('stage.done'),
+      TaskStage.failed => t.tr('stage.failed'),
+    };
+  }
 }
 
 class DownloadTask {
@@ -565,6 +603,7 @@ class AppSettings {
     this.useAppGrpc = true,
     this.partsPerFile = 4,
     this.preferFfmpegMux = true,
+    this.localeCode = kLocaleZhCN,
   });
 
   String downloadDir;
@@ -590,6 +629,10 @@ class AppSettings {
   /// 合并时是否优先使用已找到的 ffmpeg。
   bool preferFfmpegMux;
 
+  /// 界面语言：'system' 跟随系统，'zh-CN'，'en-US'。
+  /// 默认与旧配置缺失时都是 'zh-CN'，新装和升级上来都从简体中文开始。
+  String localeCode;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -606,6 +649,7 @@ class AppSettings {
         'use_app_grpc': useAppGrpc,
         'parts_per_file': partsPerFile,
         'prefer_ffmpeg_mux': preferFfmpegMux,
+        'locale_code': localeCode,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -624,6 +668,7 @@ class AppSettings {
         useAppGrpc: json['use_app_grpc'] as bool? ?? true,
         partsPerFile: (json['parts_per_file'] as num?)?.toInt() ?? 4,
         preferFfmpegMux: json['prefer_ffmpeg_mux'] as bool? ?? true,
+        localeCode: normalizeLocaleCode(json['locale_code'] as String?),
       );
 }
 
@@ -647,8 +692,10 @@ String formatBytes(int bytes) {
   return '${value.toStringAsFixed(digits)} ${units[unit]}';
 }
 
-String formatBitrate(int bitsPerSecond) {
-  if (bitsPerSecond <= 0) return '未知码率';
+String formatBitrate(int bitsPerSecond, [AppLocalizations? l10n]) {
+  if (bitsPerSecond <= 0) {
+    return (l10n ?? const AppLocalizationsZh()).tr('quality.unknownBitrate');
+  }
   if (bitsPerSecond >= 1000000) {
     return '${(bitsPerSecond / 1000000).toStringAsFixed(2)} Mbps';
   }
