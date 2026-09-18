@@ -49,14 +49,17 @@ void main() {
     });
 
     test('Windows 便携版放程序目录下的 data', () {
+      // 路径按当前平台分隔符拼：CI 的 Linux 作业上反斜杠不是分隔符，
+      // 直接写 r'D:\...' 会让 File.parent 退化成当前目录。
+      final exe = 'D:${sep}BiliCross-Portable${sep}bilicross.exe';
       final root = resolveDataRoot(
         channel: ReleaseChannel.portable,
         isWindows: true,
-        executablePath: r'D:\BiliCross-Portable\bilicross.exe',
+        executablePath: exe,
         environment: const {'LOCALAPPDATA': r'C:\Users\tester\AppData\Local'},
         systemSupportDirectory: Directory(r'C:\Users\tester\AppData\Roaming\app'),
       );
-      expect(root.path, '${r'D:\BiliCross-Portable'}${sep}data');
+      expect(root.path, 'D:${sep}BiliCross-Portable${sep}data');
     });
 
     test('非 Windows 平台保持旧位置，不受通道影响', () {

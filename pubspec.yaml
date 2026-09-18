@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   crypto: ^3.0.7
+  cryptography: ^2.9.0
   file_picker: ^13.1.0
   http: ^1.6.0
   package_info_plus: ^10.2.1
