@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../core/bili_api.dart';
+import '../i18n/app_localizations.dart';
 import 'web_login.dart';
 import 'widgets.dart';
 
@@ -16,19 +17,24 @@ class AccountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
         final cookie = state.cookie;
         return PageFrame(
-          title: '账号与授权',
+          title: l10n.tr('account.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SectionCard(
                 title: 'WEB Cookie',
                 trailing: StateChip(
-                  text: cookie.isEmpty ? '未配置' : (cookie.isComplete ? '字段齐全' : '字段不全'),
+                  text: cookie.isEmpty
+                      ? l10n.tr('account.cookieMissing')
+                      : (cookie.isComplete
+                          ? l10n.tr('account.cookieComplete')
+                          : l10n.tr('account.cookieIncomplete')),
                   tone: cookie.isEmpty ? 0 : (cookie.isComplete ? 1 : 2),
                 ),
                 child: Column(
@@ -38,8 +44,14 @@ class AccountPage extends StatelessWidget {
                       label: 'SESSDATA',
                       value: cookie.isEmpty ? '—' : cookie.maskedSessData,
                     ),
-                    InfoLine(label: 'bili_jct', value: cookie.biliJct.isEmpty ? '—' : '已写入'),
-                    InfoLine(label: 'DedeUserID', value: cookie.dedeUserId.isEmpty ? '—' : '已写入'),
+                    InfoLine(
+                      label: 'bili_jct',
+                      value: cookie.biliJct.isEmpty ? '—' : l10n.tr('account.written'),
+                    ),
+                    InfoLine(
+                      label: 'DedeUserID',
+                      value: cookie.dedeUserId.isEmpty ? '—' : l10n.tr('account.written'),
+                    ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
@@ -48,36 +60,36 @@ class AccountPage extends StatelessWidget {
                         OutlinedButton.icon(
                           onPressed: () => _pasteCookie(context),
                           icon: const Icon(Icons.paste),
-                          label: const Text('粘贴 Cookie'),
+                          label: Text(l10n.tr('account.pasteCookie')),
                         ),
                         OutlinedButton.icon(
                           onPressed: () => _importCookieFile(context),
                           icon: const Icon(Icons.file_open),
-                          label: const Text('导入 cookie.txt'),
+                          label: Text(l10n.tr('account.importCookie')),
                         ),
                         if (WebLoginPage.isSupported)
                           OutlinedButton.icon(
                             onPressed: () => _webLogin(context),
                             icon: const Icon(Icons.public),
-                            label: const Text('网页登录'),
+                            label: Text(l10n.tr('account.webLogin')),
                           ),
                         OutlinedButton.icon(
                           onPressed: () => _refresh(context),
                           icon: const Icon(Icons.refresh),
-                          label: const Text('检测状态'),
+                          label: Text(l10n.tr('account.checkStatus')),
                         ),
                         OutlinedButton.icon(
                           onPressed: cookie.isEmpty ? null : () => state.clearCookie(),
                           icon: const Icon(Icons.delete_outline),
-                          label: const Text('清除'),
+                          label: Text(l10n.tr('account.clear')),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(
                       WebLoginPage.isSupported
-                          ? '网页登录会在应用内打开登录页，登录完成后自动取 Cookie；也可以继续用粘贴或导入。'
-                          : '本平台没有内置浏览器，请用粘贴或导入 cookie.txt。',
+                          ? l10n.tr('account.webLoginHint')
+                          : l10n.tr('account.noBrowserHint'),
                       style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
@@ -85,7 +97,7 @@ class AccountPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               SectionCard(
-                title: 'WEB 账号状态',
+                title: l10n.tr('account.webStatusTitle'),
                 trailing: state.busy
                     ? const SizedBox(
                         width: 14,
@@ -96,21 +108,26 @@ class AccountPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    InfoLine(label: '登录', value: state.account.loggedIn ? '是' : '否'),
                     InfoLine(
-                      label: '昵称',
+                      label: l10n.tr('account.loggedIn'),
+                      value: state.account.loggedIn
+                          ? l10n.tr('common.yes')
+                          : l10n.tr('common.no'),
+                    ),
+                    InfoLine(
+                      label: l10n.tr('account.nickname'),
                       value: state.account.uname.isEmpty ? '—' : state.account.uname,
                     ),
                     InfoLine(
                       label: 'UID',
                       value: state.account.mid == 0 ? '—' : '${state.account.mid}',
                     ),
-                    InfoLine(label: '大会员', value: state.account.vipLabel),
-                    InfoLine(label: '返回', value: state.account.message),
+                    InfoLine(label: l10n.tr('account.vip'), value: state.account.vipLabel(l10n)),
+                    InfoLine(label: l10n.tr('account.message'), value: state.account.message),
                     const SizedBox(height: 6),
-                    const Text(
-                      '这里的登录状态来自 WEB Cookie，只代表网页账号，不代表 APP Token 可用。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    Text(
+                      l10n.tr('account.webOnlyHint'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
                 ),
@@ -119,7 +136,9 @@ class AccountPage extends StatelessWidget {
               SectionCard(
                 title: 'APP Token',
                 trailing: StateChip(
-                  text: state.token == null ? '未获取' : '已获取',
+                  text: state.token == null
+                      ? l10n.tr('account.tokenMissing')
+                      : l10n.tr('account.tokenReady'),
                   tone: state.token == null ? 0 : 1,
                 ),
                 child: Column(
@@ -127,7 +146,7 @@ class AccountPage extends StatelessWidget {
                   children: [
                     InfoLine(label: 'Token', value: state.token?.masked ?? '—'),
                     InfoLine(
-                      label: '过期时间',
+                      label: l10n.tr('account.expiresAt'),
                       value: state.token == null || state.token!.expiresIn == 0
                           ? '—'
                           : DateTime.fromMillisecondsSinceEpoch(state.token!.expiresAtMs)
@@ -136,7 +155,8 @@ class AccountPage extends StatelessWidget {
                               .split('.')
                               .first,
                     ),
-                    if (state.authStatus.isNotEmpty) InfoLine(label: '授权', value: state.authStatus),
+                    if (state.authStatus.isNotEmpty)
+                      InfoLine(label: l10n.tr('account.auth'), value: state.authStatus),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
@@ -146,19 +166,19 @@ class AccountPage extends StatelessWidget {
                               ? null
                               : () => _startAuth(context),
                           icon: const Icon(Icons.open_in_browser),
-                          label: const Text('打开 APP 授权'),
+                          label: Text(l10n.tr('account.openAuth')),
                         ),
                         if (state.pendingAuth != null)
                           OutlinedButton(
                             onPressed: () => state.cancelAppAuth(),
-                            child: const Text('取消授权'),
+                            child: Text(l10n.tr('account.cancelAuth')),
                           ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      '授权在系统浏览器里完成：打开链接后用手机 App 扫码确认，应用每 2 秒轮询一次，5 分钟未确认即超时。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    Text(
+                      l10n.tr('account.authHint'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
                 ),
@@ -184,6 +204,7 @@ class AccountPage extends StatelessWidget {
       MaterialPageRoute<bool>(
         builder: (routeContext) => WebLoginPage(
           onCookie: (text) => captured = text,
+          localeCode: state.settings.localeCode,
         ),
       ),
     );
@@ -193,11 +214,12 @@ class AccountPage extends StatelessWidget {
   }
 
   Future<void> _pasteCookie(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('粘贴 Cookie'),
+        title: Text(l10n.tr('account.pasteCookie')),
         content: SizedBox(
           width: 520,
           child: TextField(
@@ -212,11 +234,11 @@ class AccountPage extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
+            child: Text(l10n.tr('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('写入'),
+            child: Text(l10n.tr('common.save')),
           ),
         ],
       ),
@@ -234,7 +256,7 @@ class AccountPage extends StatelessWidget {
     if (bytes.isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('文件内容为空')),
+        SnackBar(content: Text(AppLocalizations.of(context).tr('account.emptyFile'))),
       );
       return;
     }
@@ -243,6 +265,7 @@ class AccountPage extends StatelessWidget {
   }
 
   Future<void> _apply(BuildContext context, String text) async {
+    final l10n = AppLocalizations.of(context);
     try {
       await state.applyCookieText(text);
     } on BiliException catch (error) {
@@ -254,11 +277,16 @@ class AccountPage extends StatelessWidget {
     }
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(state.notice.isEmpty ? '已写入 Cookie' : state.notice)),
+      SnackBar(
+        content: Text(
+          state.notice.isEmpty ? l10n.tr('account.cookieWritten') : state.notice,
+        ),
+      ),
     );
   }
 
   Future<void> _startAuth(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     try {
       await state.startAppAuth();
     } on BiliException catch (error) {
@@ -276,7 +304,13 @@ class AccountPage extends StatelessWidget {
     );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(launched ? '已打开授权页面，请用手机 App 确认' : '浏览器未打开，请手动访问授权链接')),
+      SnackBar(
+        content: Text(
+          launched
+              ? l10n.tr('account.authPageOpened')
+              : l10n.tr('account.browserFailed'),
+        ),
+      ),
     );
   }
 }

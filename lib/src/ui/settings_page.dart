@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/log_store.dart';
 import '../core/models.dart';
+import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'log_page.dart';
 import 'widgets.dart';
@@ -56,28 +57,52 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    final l10n = AppLocalizations.of(context);
     final windows = Theme.of(context).platform == TargetPlatform.windows;
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
         final settings = state.settings;
         return PageFrame(
-          title: '设置',
+          title: l10n.tr('settings.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
               SectionCard(
-                title: '下载',
+                title: l10n.tr('settings.language'),
+                child: DropdownButtonFormField<String>(
+                  initialValue: settings.localeCode,
+                  decoration: InputDecoration(
+                    labelText: l10n.tr('settings.language'),
+                    prefixIcon: const Icon(Icons.translate),
+                  ),
+                  items: [
+                    for (final code in kLocaleCodes)
+                      DropdownMenuItem(
+                        value: code,
+                        child: Text(_localeName(l10n, code)),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    state.setLocale(value);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              SectionCard(
+                title: l10n.tr('settings.download'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
                       controller: _dir,
                       decoration: InputDecoration(
-                        labelText: '下载目录',
+                        labelText: l10n.tr('settings.downloadDir'),
                         prefixIcon: const Icon(Icons.folder_outlined),
                         suffixIcon: IconButton(
-                          tooltip: '选择目录',
+                          tooltip: l10n.tr('settings.chooseDir'),
                           onPressed: _pickDirectory,
                           icon: const Icon(Icons.folder_open),
                         ),
@@ -86,9 +111,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       initialValue: settings.preferredQuality,
-                      decoration: const InputDecoration(
-                        labelText: '默认画质',
-                        prefixIcon: Icon(Icons.high_quality_outlined),
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('settings.quality'),
+                        prefixIcon: const Icon(Icons.high_quality_outlined),
                       ),
                       items: [
                         for (final entry in _choices(
@@ -98,7 +123,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ))
                           DropdownMenuItem(
                             value: entry,
-                            child: Text('${qualityLabel(entry)}（$entry）'),
+                            child: Text('${qualityLabel(entry, l10n)}（$entry）'),
                           ),
                       ],
                       onChanged: (value) {
@@ -110,9 +135,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       initialValue: settings.preferredAudio,
-                      decoration: const InputDecoration(
-                        labelText: '默认音质',
-                        prefixIcon: Icon(Icons.graphic_eq),
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('settings.audio'),
+                        prefixIcon: const Icon(Icons.graphic_eq),
                       ),
                       items: [
                         for (final entry in _choices(
@@ -121,7 +146,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ))
                           DropdownMenuItem(
                             value: entry,
-                            child: Text('${audioLabel(entry)}（$entry）'),
+                            child: Text('${audioLabel(entry, l10n)}（$entry）'),
                           ),
                       ],
                       onChanged: (value) {
@@ -133,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const SizedBox(width: 96, child: Text('并发任务')),
+                        SizedBox(width: 96, child: Text(l10n.tr('settings.parallelTasks'))),
                         Expanded(
                           child: Slider(
                             value: settings.maxParallelTasks.toDouble().clamp(1, 4),
@@ -152,7 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     Row(
                       children: [
-                        const SizedBox(width: 96, child: Text('单文件连接')),
+                        SizedBox(width: 96, child: Text(l10n.tr('settings.partsPerFile'))),
                         Expanded(
                           child: Slider(
                             value: settings.partsPerFile.toDouble().clamp(1, 8),
@@ -169,9 +194,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text('${settings.partsPerFile}'),
                       ],
                     ),
-                    const Text(
-                      '同一个文件切成几段并行下载，1 表示单连接。服务端不支持分段或文件较小时会自动退回单连接。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    Text(
+                      l10n.tr('settings.partsHint'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -180,8 +205,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         settings.preferAppApi = value;
                         setState(() {});
                       },
-                      title: const Text('优先使用 APP 通道解析'),
-                      subtitle: const Text('需要有 APP Token；失败会自动回退网页通道'),
+                      title: Text(l10n.tr('settings.preferApp')),
+                      subtitle: Text(l10n.tr('settings.preferAppHint')),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -190,20 +215,19 @@ class _SettingsPageState extends State<SettingsPage> {
                         settings.useAppGrpc = value;
                         setState(() {});
                       },
-                      title: const Text('补取 HDR Vivid 档位（gRPC）'),
-                      subtitle: const Text(
-                        '解析成功后再请求一次 gRPC PlayView，补上 129 档（HDR Vivid），'
-                        '需要 APP Token；失败只记日志，不影响原有结果',
-                      ),
+                      title: Text(l10n.tr('settings.grpcHdr')),
+                      subtitle: Text(l10n.tr('settings.grpcHint')),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               SectionCard(
-                title: '混流',
+                title: l10n.tr('settings.mux'),
                 trailing: StateChip(
-                  text: state.ffmpegPath == null ? '内置合并' : 'ffmpeg 就绪',
+                  text: state.ffmpegPath == null
+                      ? l10n.tr('settings.builtinMux')
+                      : l10n.tr('settings.ffmpegReady'),
                   tone: 1,
                 ),
                 child: Column(
@@ -211,10 +235,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     TextField(
                       controller: _ffmpeg,
-                      decoration: const InputDecoration(
-                        labelText: 'ffmpeg 可执行文件路径',
-                        hintText: '留空则在系统 PATH 中查找',
-                        prefixIcon: Icon(Icons.movie_filter_outlined),
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('settings.ffmpegPath'),
+                        hintText: l10n.tr('settings.ffmpegPathHint'),
+                        prefixIcon: const Icon(Icons.movie_filter_outlined),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -225,7 +249,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           widget.state.settings.ffmpegPath = _ffmpeg.text.trim();
                           await widget.state.refreshFfmpeg();
                         },
-                        child: const Text('检测 ffmpeg'),
+                        child: Text(l10n.tr('settings.detectFfmpeg')),
                       ),
                     ),
                     SwitchListTile(
@@ -235,40 +259,38 @@ class _SettingsPageState extends State<SettingsPage> {
                         settings.preferFfmpegMux = value;
                         setState(() {});
                       },
-                      title: const Text('优先使用 ffmpeg 合并'),
-                      subtitle: const Text('关闭则始终用内置分片合并；无论开关，另一条路都会兜底'),
+                      title: Text(l10n.tr('settings.preferFfmpeg')),
+                      subtitle: Text(l10n.tr('settings.preferFfmpegHint')),
                     ),
-                    const Text(
-                      '合并只做流复制，不转码。没有 ffmpeg 时用内置合并：按 moof/mdat 把两条流'
-                      '交替写成 MP4，采样数据原样搬运。两条路都失败才会保留分片并写进任务消息，'
-                      '之后可以在任务页单独重试合并。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    Text(
+                      l10n.tr('settings.muxExplain'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               SectionCard(
-                title: '网络与高级',
+                title: l10n.tr('settings.network'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
                       controller: _proxy,
-                      decoration: const InputDecoration(
-                        labelText: '代理',
-                        hintText: 'http://host:port，留空为直连',
-                        prefixIcon: Icon(Icons.lan_outlined),
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('settings.proxy'),
+                        hintText: 'http://host:port',
+                        prefixIcon: const Icon(Icons.lan_outlined),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _userAgent,
                       maxLines: 2,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'User-Agent',
-                        hintText: '留空使用内置短串 Mozilla/5.0',
-                        helperText: '只作用于网页请求与网页地址下载；移动端下载地址固定用内置短串',
+                        hintText: l10n.tr('settings.uaHint'),
+                        helperText: l10n.tr('settings.uaHelper'),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -282,26 +304,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       decoration: const InputDecoration(labelText: 'AppSec'),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'AppKey/AppSec 会随客户端分发，无法真正保密；只用于申请 APP 授权码。',
-                      style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              SectionCard(
-                title: '解析引擎',
-                trailing: const StateChip(text: 'Dart 内置'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('当前所有任务由 Dart 内置引擎执行。'),
-                    const SizedBox(height: 6),
                     Text(
-                      windows
-                          ? 'BBDownNext 兼容引擎（随包附带、本地 serve 模式）尚未接入，接入后可按任务切换。'
-                          : '该平台只提供 Dart 内置引擎。',
+                      l10n.tr('settings.appKeyHint'),
                       style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
@@ -309,15 +313,35 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               SectionCard(
-                title: '诊断',
+                title: l10n.tr('settings.engine'),
+                trailing: StateChip(text: l10n.tr('settings.engineDart')),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l10n.tr('settings.engineDartDesc')),
+                    const SizedBox(height: 6),
+                    Text(
+                      windows
+                          ? l10n.tr('settings.engineFuture')
+                          : l10n.tr('settings.engineOnlyDart'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              SectionCard(
+                title: l10n.tr('settings.diagnostics'),
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.receipt_long_outlined),
-                  title: const Text('运行日志'),
+                  title: Text(l10n.tr('settings.logs')),
                   subtitle: Text(
                     LogStore.instance.filePath == null
-                        ? '解析走了哪条通道、为什么回退、下载与合并的细节'
-                        : '记录文件：${LogStore.instance.filePath}',
+                        ? l10n.tr('settings.logsHint')
+                        : l10n.tr('settings.logFile', {
+                            'path': '${LogStore.instance.filePath}',
+                          }),
                     style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                   ),
                   trailing: const Icon(Icons.chevron_right),
@@ -332,17 +356,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: FilledButton.icon(
                   onPressed: _save,
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存设置'),
+                  label: Text(l10n.tr('settings.save')),
                 ),
               ),
               const SizedBox(height: 24),
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.info_outline),
-                  title: const Text('关于'),
-                  subtitle: const Text(
-                    '版本号、项目地址与检测更新',
-                    style: TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                  title: Text(l10n.tr('settings.about')),
+                  subtitle: Text(
+                    l10n.tr('settings.aboutHint'),
+                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => showAppAboutDialog(context),
@@ -354,6 +378,15 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     );
   }
+
+  /// 「跟随系统」跟当前界面走；语言名本身永远用各自的母语显示，
+  /// 这是各平台语言选择器的通行做法，方便用户认出自己的语言。
+  String _localeName(AppLocalizations l10n, String code) => switch (code) {
+        kLocaleSystem => l10n.tr('settings.languageSystem'),
+        kLocaleZhCN => l10n.tr('settings.languageZh'),
+        kLocaleEnUS => l10n.tr('settings.languageEn'),
+        _ => code,
+      };
 
   Future<void> _pickDirectory() async {
     final path = await FilePicker.getDirectoryPath();
@@ -373,7 +406,7 @@ class _SettingsPageState extends State<SettingsPage> {
     await widget.state.saveSettings();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('设置已保存')),
+      SnackBar(content: Text(AppLocalizations.of(context).tr('settings.saved'))),
     );
   }
 }

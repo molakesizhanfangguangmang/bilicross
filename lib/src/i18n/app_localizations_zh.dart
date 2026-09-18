@@ -1,0 +1,276 @@
+import 'app_localizations.dart';
+
+/// 简体中文文案。这里也是兜底表：英文漏翻的条目会回落到这里。
+class AppLocalizationsZh extends AppLocalizations {
+  const AppLocalizationsZh();
+
+  @override
+  String get code => kLocaleZhCN;
+
+  static const Map<String, String> data = {
+    // 应用与导航
+    'app.name': '逸轨',
+    'nav.download': '下载',
+    'nav.tasks': '任务',
+    'nav.account': '账号',
+    'nav.settings': '设置',
+    'app.initFailed': '初始化失败：{error}',
+    'app.queueRunning': '队列运行中',
+    'app.dartEngine': 'Dart 引擎',
+
+    // 通用
+    'common.cancel': '取消',
+    'common.close': '关闭',
+    'common.yes': '是',
+    'common.no': '否',
+    'common.save': '保存',
+    'common.remove': '移除',
+    'common.clear': '清除',
+    'common.open': '打开',
+    'common.browserNotOpened': '浏览器没有打开',
+    'common.dash': '—',
+
+    // 关于与更新
+    'about.projectUrl': '项目地址',
+    'about.checkUpdate': '检测更新',
+    'about.versionUnknown': '当前版本 未知',
+    'about.version': '当前版本 {version}',
+    'about.upToDate': '已是最新',
+    'about.checkFailed': '检测更新失败',
+    'about.updateFound': '检测到更新 {version}，是否前往',
+
+    // 账号与授权
+    'account.title': '账号与授权',
+    'account.cookieMissing': '未配置',
+    'account.cookieComplete': '字段齐全',
+    'account.cookieIncomplete': '字段不全',
+    'account.written': '已写入',
+    'account.pasteCookie': '粘贴 Cookie',
+    'account.importCookie': '导入 cookie.txt',
+    'account.webLogin': '网页登录',
+    'account.checkStatus': '检测状态',
+    'account.clear': '清除',
+    'account.webLoginHint': '网页登录会在应用内打开登录页，登录完成后自动取 Cookie；'
+        '也可以继续用粘贴或导入。',
+    'account.noBrowserHint': '本平台没有内置浏览器，请用粘贴或导入 cookie.txt。',
+    'account.webStatusTitle': 'WEB 账号状态',
+    'account.loggedIn': '登录',
+    'account.nickname': '昵称',
+    'account.vip': '大会员',
+    'account.message': '返回',
+    'account.webOnlyHint': '这里的登录状态来自 WEB Cookie，只代表网页账号，'
+        '不代表 APP Token 可用。',
+    'account.tokenMissing': '未获取',
+    'account.tokenReady': '已获取',
+    'account.expiresAt': '过期时间',
+    'account.auth': '授权',
+    'account.openAuth': '打开 APP 授权',
+    'account.cancelAuth': '取消授权',
+    'account.authHint': '授权在系统浏览器里完成：打开链接后用手机 App 扫码确认，'
+        '应用每 2 秒轮询一次，5 分钟未确认即超时。',
+    'account.emptyFile': '文件内容为空',
+    'account.cookieWritten': '已写入 Cookie',
+    'account.authPageOpened': '已打开授权页面，请用手机 App 确认',
+    'account.browserFailed': '浏览器未打开，请手动访问授权链接',
+
+    // 会员状态
+    'vip.none': '非大会员',
+    'vip.annual': '年度大会员',
+    'vip.monthly': '月度大会员',
+    'vip.general': '大会员',
+
+    // 解析页
+    'download.title': '新建下载',
+    'download.addressHint': '视频、番剧或分 P 地址',
+    'download.parse': '解析',
+    'download.waiting': '等待解析',
+    'download.waitingHint': '解析后会列出分 P、视频流与音频流，再选择要下载的组合。',
+    'download.result': '解析结果',
+    'download.id': '标识',
+    'download.uploader': 'UP 主',
+    'download.part': '分 P',
+    'download.duration': '时长',
+    'download.videoStreams': '视频流',
+    'download.noVideo': '不下载视频（只保存音频）',
+    'download.audioStreams': '音频流',
+    'download.noAudioTrack': '该通道没有单独音频流，只能保存视频。',
+    'download.noAudio': '不下载音频（只保存视频）',
+    'download.enqueueVideoAudio': '加入任务（视频 + 音频）',
+    'download.enqueueVideoOnly': '加入任务（只有视频）',
+    'download.enqueueAudioOnly': '加入任务（只有音频）',
+    'download.needOneTrack': '至少要选一条轨道',
+    'download.startNow': '立即开始下载',
+    'download.enqueuedStart': '已加入任务队列，开始下载',
+    'download.enqueuedWait': '已加入任务队列，去「任务」页点开始任务',
+
+    // 任务页
+    'tasks.title': '下载任务',
+    'tasks.emptyTitle': '暂无任务',
+    'tasks.emptyHint': '队列会区分等待、下载、合并、完成与失败状态。'
+        '中断的任务在下次启动时按断点续传继续。',
+    'tasks.parallel': '并发 {count}',
+    'tasks.queueRunning': '运行中',
+    'tasks.queueIdle': '空闲',
+    'tasks.pending': '等待 {count} 条',
+    'tasks.startQueue': '开始任务',
+    'tasks.progress': '进度',
+    'tasks.channel': '通道',
+    'tasks.notRecorded': '未记录',
+    'tasks.pagePart': '第 {page} P · cid {cid}',
+    'tasks.cidOnly': 'cid {cid}',
+    'tasks.engine': '引擎',
+    'tasks.dartEngine': 'Dart 内置',
+    'tasks.status': '状态',
+    'tasks.output': '输出',
+    'tasks.pause': '暂停',
+    'tasks.forceStop': '强制结束',
+    'tasks.resume': '继续',
+    'tasks.retry': '重试',
+    'tasks.retryMux': '重试合并',
+    'tasks.cleanup': '清理残留',
+    'tasks.forceStopConfirm': '将停止「{title}」，并删除它已经下载的分片与半成品。',
+    'tasks.forceStopWarning': '删掉之后不能续传，只能重新下载。',
+    'tasks.cleanedFiles': '已清理 {count} 个文件',
+    'tasks.nothingToClean': '没有可清理的文件',
+
+    // 任务阶段
+    'stage.pending': '等待',
+    'stage.resolving': '解析',
+    'stage.downloading': '下载',
+    'stage.muxing': '合并',
+    'stage.paused': '暂停',
+    'stage.stopped': '已结束',
+    'stage.done': '完成',
+    'stage.failed': '失败',
+
+    // 任务消息（显示在任务页「状态」行）
+    'msg.interruptedOnExit': '上次退出时中断，等待继续',
+    'msg.pausedOnExit': '上次退出时暂停，点「继续」从断点接',
+    'msg.pausing': '正在暂停…',
+    'msg.stopping': '正在强制结束…',
+    'msg.resuming': '继续下载（从断点接）',
+    'msg.paused': '已暂停，分片已保留，点「继续」从断点接',
+    'msg.stopped': '已强制结束，已删除 {count} 个残留文件',
+    'msg.waitRetry': '等待重试',
+    'msg.urlExpired': '地址已失效，按原档位重新解析',
+    'msg.downloadVideo': '下载视频流',
+    'msg.downloadAudio': '下载音频流',
+    'msg.singleTrackDone': '完成（单轨）：{path}',
+    'msg.muxing': '合并音视频',
+    'msg.done': '完成（{engine}）：{path}',
+    'msg.fragmentsRemoved': '（已清理 {count} 个分片）',
+    'msg.muxFailed': '合并失败，两个分片已保留，可稍后重试：{error}',
+    'msg.singleTrackNoMux': '该任务只下了一条轨道，没有可合并的分片',
+    'msg.missingFragments': '缺少视频或音频分片，请重新下载',
+    'msg.videoQualityGone': '原选择的视频档位（{quality}）本次解析没有返回',
+    'msg.noVideoStream': '本次解析没有返回任何视频流',
+    'msg.audioQualityGone': '原选择的音频档位（{quality}）本次解析没有返回',
+
+    // 错误提示
+    'err.noSessdata': '没有从内容里提取到 SESSDATA 字段',
+    'err.needWebCookie': '请先写入 WEB Cookie',
+    'err.engineMissing': 'BBDownNext 兼容引擎尚未接入，请改用 Dart 内置引擎',
+    'err.noTrack': '任务没有选择任何轨道',
+    'err.emptyVideo': '视频分片为空',
+    'err.emptyAudio': '音频分片为空',
+
+    // 授权状态
+    'auth.waiting': '等待在浏览器中确认授权',
+    'auth.timeout': '授权超时，请重新发起',
+    'auth.tokenReady': 'APP Token 已获取',
+    'auth.pollFailed': '轮询失败：{error}',
+
+    // 账号提示
+    'notice.cookieWritten': '已写入 WEB Cookie',
+    'notice.cookieWrittenMissing': '已写入 WEB Cookie，但缺少 {fields}',
+    'notice.cookieCleared': '已清除 WEB Cookie',
+    'notice.noCookie': '未配置 WEB Cookie',
+    'notice.tokenInvalid': 'APP Token 已失效，请重新登录',
+    'notice.cookieInvalid': 'Cookie 已失效，请重新登录',
+
+    // 档位
+    'quality.100': '智能修复',
+    'quality.126': '杜比视界',
+    'quality.30250': '杜比全景声',
+    'quality.30251': 'Hi-Res 无损',
+    'quality.fallbackVideo': '画质 {id}',
+    'quality.fallbackAudio': '音质 {id}',
+    'quality.unknownBitrate': '未知码率',
+
+    // 设置
+    'settings.title': '设置',
+    'settings.download': '下载',
+    'settings.downloadDir': '下载目录',
+    'settings.chooseDir': '选择目录',
+    'settings.quality': '默认画质',
+    'settings.audio': '默认音质',
+    'settings.parallelTasks': '并发任务',
+    'settings.partsPerFile': '单文件连接',
+    'settings.partsHint': '同一个文件切成几段并行下载，1 表示单连接。'
+        '服务端不支持分段或文件较小时会自动退回单连接。',
+    'settings.preferApp': '优先使用 APP 通道解析',
+    'settings.preferAppHint': '需要有 APP Token；失败会自动回退网页通道',
+    'settings.grpcHdr': '补取 HDR Vivid 档位（gRPC）',
+    'settings.grpcHint': '解析成功后再请求一次 gRPC PlayView，补上 129 档（HDR Vivid），'
+        '需要 APP Token；失败只记日志，不影响原有结果',
+    'settings.mux': '混流',
+    'settings.builtinMux': '内置合并',
+    'settings.ffmpegReady': 'ffmpeg 就绪',
+    'settings.ffmpegPath': 'ffmpeg 可执行文件路径',
+    'settings.ffmpegPathHint': '留空则在系统 PATH 中查找',
+    'settings.detectFfmpeg': '检测 ffmpeg',
+    'settings.preferFfmpeg': '优先使用 ffmpeg 合并',
+    'settings.preferFfmpegHint': '关闭则始终用内置分片合并；无论开关，另一条路都会兜底',
+    'settings.muxExplain': '合并只做流复制，不转码。没有 ffmpeg 时用内置合并：'
+        '按 moof/mdat 把两条流交替写成 MP4，采样数据原样搬运。'
+        '两条路都失败才会保留分片并写进任务消息，之后可以在任务页单独重试合并。',
+    'settings.network': '网络与高级',
+    'settings.proxy': '代理',
+    'settings.uaHint': '留空使用内置短串 Mozilla/5.0',
+    'settings.uaHelper': '只作用于网页请求与网页地址下载；移动端下载地址固定用内置短串',
+    'settings.appKeyHint': 'AppKey/AppSec 会随客户端分发，无法真正保密；'
+        '只用于申请 APP 授权码。',
+    'settings.engine': '解析引擎',
+    'settings.engineDart': 'Dart 内置',
+    'settings.engineDartDesc': '当前所有任务由 Dart 内置引擎执行。',
+    'settings.engineFuture': 'BBDownNext 兼容引擎（随包附带、本地 serve 模式）尚未接入，'
+        '接入后可按任务切换。',
+    'settings.engineOnlyDart': '该平台只提供 Dart 内置引擎。',
+    'settings.diagnostics': '诊断',
+    'settings.logs': '运行日志',
+    'settings.logsHint': '解析走了哪条通道、为什么回退、下载与合并的细节',
+    'settings.logFile': '记录文件：{path}',
+    'settings.save': '保存设置',
+    'settings.about': '关于',
+    'settings.aboutHint': '版本号、项目地址与检测更新',
+    'settings.saved': '设置已保存',
+    'settings.language': '语言',
+    'settings.languageSystem': '跟随系统',
+    'settings.languageZh': '简体中文',
+    'settings.languageEn': 'English',
+
+    // 日志页
+    'logs.title': '运行日志',
+    'logs.copyAll': '复制全部',
+    'logs.empty': '暂无日志',
+    'logs.copied': '已复制 {count} 条',
+    'logs.clear': '清空',
+    'logs.verbose': '详细日志',
+    'logs.verboseNoFile': '打开后记录请求地址与响应码；这台设备写不了日志文件，只留在内存',
+    'logs.verboseWithFile': '打开后记录请求地址与响应码，并追加到 {path}',
+    'logs.verboseOn': '已打开详细日志（凭据一律掩码）',
+    'logs.verboseOff': '已关闭详细日志',
+    'logs.section': '日志',
+
+    // 网页登录
+    'webLogin.title': '网页登录',
+    'webLogin.readCookie': '读取 Cookie',
+    'webLogin.hint': '登录完成后会自动读取；也可以点右上角手动读取。',
+    'webLogin.loadFailed': '页面加载失败：{error}',
+    'webLogin.noSessdata': '还没读到 SESSDATA，先在页面里完成登录。',
+    'webLogin.readFailed': '读取 Cookie 失败：{error}',
+  };
+
+  @override
+  Map<String, String> get values => data;
+}

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/app_state.dart';
 import 'src/core/update_check.dart';
+import 'src/i18n/app_localizations.dart';
+import 'src/i18n/app_localizations_zh.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
@@ -23,10 +26,61 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<AppState>(
+      future: _loading,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          // 还没读到设置，拿不到用户选的语言，这里先按中文出提示。
+          const l10n = AppLocalizationsZh();
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: l10n.tr('app.name'),
+            home: Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    l10n.tr('app.initFailed', {'error': '${snapshot.error}'}),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        final state = snapshot.data;
+        if (state == null) {
+          return const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: Scaffold(body: Center(child: CircularProgressIndicator())),
+          );
+        }
+        // 换语言必须重建 MaterialApp：locale 变了整棵树的 Localizations 都要换，
+        // 只重建 AppShell 不够。所以监听放在 MaterialApp 外面这一层。
+        return ListenableBuilder(
+          listenable: state,
+          builder: (context, _) => _buildApp(state),
+        );
+      },
+    );
+  }
+
+  Widget _buildApp(AppState state) {
+    final l10n = AppLocalizations.fromCode(state.settings.localeCode);
     const seed = Color(0xff2f6f65);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: '逸轨',
+      title: l10n.tr('app.name'),
+      // 'system' 交给框架按系统语言挑，其余按设置锁定。
+      locale: state.settings.localeCode == kLocaleSystem ? null : l10n.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      // GlobalMaterialLocalizations 提供「复制/剪切/粘贴/全选」等文本操作菜单的
+      // 官方译文，长按菜单跟着 locale 走；下面四个 delegate 缺一不可。
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
@@ -49,28 +103,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
           ),
         ),
       ),
-      home: FutureBuilder<AppState>(
-        future: _loading,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Scaffold(
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text('初始化失败：${snapshot.error}'),
-                ),
-              ),
-            );
-          }
-          final state = snapshot.data;
-          if (state == null) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          return AppShell(state: state);
-        },
-      ),
+      home: AppShell(state: state),
     );
   }
 }
@@ -86,13 +119,6 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
-
-  static const destinations = <NavigationDestination>[
-    NavigationDestination(icon: Icon(Icons.add_link), label: '下载'),
-    NavigationDestination(icon: Icon(Icons.downloading), label: '任务'),
-    NavigationDestination(icon: Icon(Icons.account_circle_outlined), label: '账号'),
-    NavigationDestination(icon: Icon(Icons.tune), label: '设置'),
-  ];
 
   @override
   void initState() {
@@ -116,8 +142,28 @@ class _AppShellState extends State<AppShell> {
     await handleUpdateResult(context, result, notifyWhenUpToDate: false);
   }
 
+  List<NavigationDestination> _destinations(AppLocalizations l10n) => [
+        NavigationDestination(
+          icon: const Icon(Icons.add_link),
+          label: l10n.tr('nav.download'),
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.downloading),
+          label: l10n.tr('nav.tasks'),
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.account_circle_outlined),
+          label: l10n.tr('nav.account'),
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.tune),
+          label: l10n.tr('nav.settings'),
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final state = widget.state;
     final pages = <Widget>[
       DownloadPage(state: state),
@@ -133,13 +179,15 @@ class _AppShellState extends State<AppShell> {
             final wide = constraints.maxWidth >= 760;
             return Scaffold(
               appBar: AppBar(
-                title: const Text('逸轨'),
+                title: Text(l10n.tr('app.name')),
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: Center(
                       child: StateChip(
-                        text: state.queueRunning ? '队列运行中' : 'Dart 引擎',
+                        text: state.queueRunning
+                            ? l10n.tr('app.queueRunning')
+                            : l10n.tr('app.dartEngine'),
                         tone: state.queueRunning ? 1 : 0,
                       ),
                     ),
@@ -153,7 +201,7 @@ class _AppShellState extends State<AppShell> {
                       selectedIndex: index,
                       labelType: NavigationRailLabelType.all,
                       onDestinationSelected: (value) => setState(() => index = value),
-                      destinations: destinations
+                      destinations: _destinations(l10n)
                           .map(
                             (item) => NavigationRailDestination(
                               icon: item.icon,
@@ -170,7 +218,7 @@ class _AppShellState extends State<AppShell> {
                   : NavigationBar(
                       selectedIndex: index,
                       onDestinationSelected: (value) => setState(() => index = value),
-                      destinations: destinations,
+                      destinations: _destinations(l10n),
                     ),
             );
           },

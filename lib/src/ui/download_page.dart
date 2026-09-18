@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/models.dart';
+import '../i18n/app_localizations.dart';
 import 'widgets.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -40,6 +41,7 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
@@ -48,7 +50,7 @@ class _DownloadPageState extends State<DownloadPage> {
           _rememberSelection(media);
         }
         return PageFrame(
-          title: '新建下载',
+          title: l10n.tr('download.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -60,10 +62,10 @@ class _DownloadPageState extends State<DownloadPage> {
                       controller: _controller,
                       onChanged: (value) => state.addressInput = value,
                       onSubmitted: (value) => _parse(state, value),
-                      decoration: const InputDecoration(
-                        labelText: '视频、番剧或分 P 地址',
-                        hintText: 'https://www.bilibili.com/video/BV... 或 b23.tv 短链',
-                        prefixIcon: Icon(Icons.link),
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('download.addressHint'),
+                        hintText: 'https://www.bilibili.com/video/BV... b23.tv',
+                        prefixIcon: const Icon(Icons.link),
                       ),
                     ),
                   ),
@@ -71,7 +73,7 @@ class _DownloadPageState extends State<DownloadPage> {
                   FilledButton.icon(
                     onPressed: state.busy ? null : () => _parse(state, _controller.text),
                     icon: const Icon(Icons.search),
-                    label: const Text('解析'),
+                    label: Text(l10n.tr('download.parse')),
                   ),
                 ],
               ),
@@ -83,10 +85,10 @@ class _DownloadPageState extends State<DownloadPage> {
               if (state.busy)
                 const LinearProgressIndicator(minHeight: 2)
               else if (media == null)
-                const EmptyState(
+                EmptyState(
                   icon: Icons.video_library_outlined,
-                  title: '等待解析',
-                  message: '解析后会列出分 P、视频流与音频流，再选择要下载的组合。',
+                  title: l10n.tr('download.waiting'),
+                  message: l10n.tr('download.waitingHint'),
                 )
               else
                 _result(context, state, media),
@@ -104,6 +106,7 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _result(BuildContext context, AppState state, ParsedMedia media) {
+    final l10n = AppLocalizations.of(context);
     final videoIndex = (_videoIndex ?? 0).clamp(-1, media.videos.length - 1);
     final audioIndex = (_audioIndex ?? (media.audios.isEmpty ? -1 : media.audios.length - 1))
         .clamp(-1, media.audios.length - 1);
@@ -112,33 +115,39 @@ class _DownloadPageState extends State<DownloadPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionCard(
-          title: media.info.title.isEmpty ? '解析结果' : media.info.title,
+          title: media.info.title.isEmpty ? l10n.tr('download.result') : media.info.title,
           trailing: StateChip(text: media.channel),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InfoLine(
-                label: '标识',
+                label: l10n.tr('download.id'),
                 value:
                     '${media.info.bvid.isEmpty ? 'av${media.info.aid}' : media.info.bvid} · cid ${media.page.cid}',
               ),
               if (media.info.owner.isNotEmpty)
-                InfoLine(label: 'UP 主', value: media.info.owner),
-              InfoLine(label: '分 P', value: '${media.page.page} / ${media.info.pages.length} · ${media.page.part}'),
-              InfoLine(label: '时长', value: formatDuration(media.durationSec)),
+                InfoLine(label: l10n.tr('download.uploader'), value: media.info.owner),
+              InfoLine(
+                label: l10n.tr('download.part'),
+                value: '${media.page.page} / ${media.info.pages.length} · ${media.page.part}',
+              ),
+              InfoLine(
+                label: l10n.tr('download.duration'),
+                value: formatDuration(media.durationSec),
+              ),
               if (media.page.epId > 0) InfoLine(label: 'ep', value: '${media.page.epId}'),
             ],
           ),
         ),
         const SizedBox(height: 12),
         SectionCard(
-          title: '视频流',
+          title: l10n.tr('download.videoStreams'),
           child: Column(
             children: [
               ChoiceTile(
                 selected: videoIndex < 0,
                 onTap: () => setState(() => _videoIndex = -1),
-                title: '不下载视频（只保存音频）',
+                title: l10n.tr('download.noVideo'),
               ),
               for (var index = 0; index < media.videos.length; index++)
                 ChoiceTile(
@@ -151,15 +160,15 @@ class _DownloadPageState extends State<DownloadPage> {
         ),
         const SizedBox(height: 12),
         SectionCard(
-          title: '音频流',
+          title: l10n.tr('download.audioStreams'),
           child: media.audios.isEmpty
-              ? const Text('该通道没有单独音频流，只能保存视频。')
+              ? Text(l10n.tr('download.noAudioTrack'))
               : Column(
                   children: [
                     ChoiceTile(
                       selected: audioIndex < 0,
                       onTap: () => setState(() => _audioIndex = -1),
-                      title: '不下载音频（只保存视频）',
+                      title: l10n.tr('download.noAudio'),
                     ),
                     for (var index = 0; index < media.audios.length; index++)
                       ChoiceTile(
@@ -193,8 +202,12 @@ class _DownloadPageState extends State<DownloadPage> {
                 icon: const Icon(Icons.playlist_add),
                 label: Text(
                   canStart
-                      ? '加入任务（${videoIndex >= 0 && audioIndex >= 0 ? '视频 + 音频' : videoIndex >= 0 ? '只有视频' : '只有音频'}）'
-                      : '至少要选一条轨道',
+                      ? l10n.tr(videoIndex >= 0 && audioIndex >= 0
+                          ? 'download.enqueueVideoAudio'
+                          : videoIndex >= 0
+                              ? 'download.enqueueVideoOnly'
+                              : 'download.enqueueAudioOnly')
+                      : l10n.tr('download.needOneTrack'),
                 ),
               ),
               OutlinedButton.icon(
@@ -209,7 +222,7 @@ class _DownloadPageState extends State<DownloadPage> {
                           startNow: true,
                         ),
                 icon: const Icon(Icons.download),
-                label: const Text('立即开始下载'),
+                label: Text(l10n.tr('download.startNow')),
               ),
             ],
           ),
@@ -235,10 +248,13 @@ class _DownloadPageState extends State<DownloadPage> {
     if (startNow) {
       state.pumpQueue();
     }
+    final l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          startNow ? '已加入任务队列，开始下载' : '已加入任务队列，去「任务」页点开始任务',
+          startNow
+              ? l10n.tr('download.enqueuedStart')
+              : l10n.tr('download.enqueuedWait'),
         ),
       ),
     );

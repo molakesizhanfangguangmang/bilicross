@@ -1,13 +1,15 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 1.0.2+12
+version: 1.0.3+13
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   crypto: ^3.0.7
   file_picker: ^13.1.0
@@ -21,6 +23,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  path_provider_platform_interface: ^2.1.0
 
 flutter:
   uses-material-design: true
