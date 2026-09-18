@@ -101,7 +101,6 @@ Future<Directory> migrateIfNeeded({
 
 Future<void> _copyTree(Directory from, Directory to) async {
   to.createSync(recursive: true);
-  final sep = Platform.pathSeparator;
   await for (final entity in from.list(recursive: true, followLinks: false)) {
     final relative = entity.path.substring(from.path.length);
     final destination = '${to.path}$relative';
