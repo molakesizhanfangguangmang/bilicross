@@ -1,6 +1,7 @@
 // 数据模型与常量。标识符为英文，界面文案统一走 [AppLocalizations]。
 
 import '../i18n/app_localizations.dart';
+import '../i18n/app_localizations_zh.dart';
 
 const String kDefaultAppKey = '783bbb7264451d82';
 const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';

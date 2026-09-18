@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/app_state.dart';
 import 'src/core/update_check.dart';
 import 'src/i18n/app_localizations.dart';
+import 'src/i18n/app_localizations_zh.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';

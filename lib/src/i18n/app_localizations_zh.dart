@@ -158,6 +158,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'msg.singleTrackDone': '完成（单轨）：{path}',
     'msg.muxing': '合并音视频',
     'msg.done': '完成（{engine}）：{path}',
+    'msg.fragmentsRemoved': '（已清理 {count} 个分片）',
     'msg.muxFailed': '合并失败，两个分片已保留，可稍后重试：{error}',
     'msg.singleTrackNoMux': '该任务只下了一条轨道，没有可合并的分片',
     'msg.missingFragments': '缺少视频或音频分片，请重新下载',
