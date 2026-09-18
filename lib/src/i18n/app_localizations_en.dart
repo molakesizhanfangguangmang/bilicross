@@ -164,6 +164,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'msg.singleTrackDone': 'Done (single track): {path}',
     'msg.muxing': 'Muxing audio and video',
     'msg.done': 'Done ({engine}): {path}',
+    'msg.fragmentsRemoved': ' ({count} fragment(s) removed)',
     'msg.muxFailed': 'Muxing failed; fragments kept, retry later: {error}',
     'msg.singleTrackNoMux': 'This task downloaded a single track; nothing to mux',
     'msg.missingFragments': 'Missing video or audio fragments; download again',

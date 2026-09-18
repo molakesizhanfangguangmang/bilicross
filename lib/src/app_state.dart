@@ -13,6 +13,7 @@ import 'core/parser.dart';
 import 'core/signing.dart';
 import 'core/store.dart';
 import 'i18n/app_localizations.dart';
+import 'i18n/app_localizations_zh.dart';
 
 class AppState extends ChangeNotifier {
   AppState._(this.store, this.settings, this.cookie, this.token, this.tasks) {
@@ -691,10 +692,12 @@ class AppState extends ChangeNotifier {
       task.stage = TaskStage.done;
       final removed = await _removeSources(task);
       task.message = l10n.tr(
-        'msg.done',
-        {'engine': outcome.engineLabel, 'path': task.outputPath},
-      )
-          '${removed > 0 ? '（已清理 $removed 个分片）' : ''}';
+            'msg.done',
+            {'engine': outcome.engineLabel, 'path': task.outputPath},
+          ) +
+          (removed > 0
+              ? l10n.tr('msg.fragmentsRemoved', {'count': '$removed'})
+              : '');
     } on TaskAborted {
       rethrow;
     } on Exception catch (error) {
