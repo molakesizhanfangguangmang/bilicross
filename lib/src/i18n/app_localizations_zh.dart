@@ -319,6 +319,18 @@ class AppLocalizationsZh extends AppLocalizations {
     'quit.title': '确认退出',
     'quit.body': '还有正在进行的任务，退出会中断它们。确定要退出吗？',
     'quit.ok': '退出',
+
+    // 启动环境自检
+    'startup.title': '无法启动',
+    'startup.body': '运行环境缺少必需组件，请按下面的提示处理后重新打开。',
+    'startup.check.dataDir': '数据目录可写',
+    'startup.check.assets': '应用资源可读',
+    'startup.check.webview2': 'WebView2 运行时',
+    'startup.reason': '原因：{detail}',
+    'startup.webview2Hint': '网页登录需要系统安装 Microsoft Edge WebView2 运行时，'
+        '可从微软官网下载 Evergreen 安装包。',
+    'startup.webview2Download': '打开下载页面',
+    'startup.exit': '退出应用',
   };
 
   @override

@@ -3,9 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
+import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
+import 'src/core/startup_check.dart';
 import 'src/core/update_check.dart';
 import 'src/i18n/app_localizations.dart';
 import 'src/i18n/app_localizations_zh.dart';
@@ -14,13 +17,37 @@ import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
+import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/widgets.dart';
 
 /// 全局导航键：托盘菜单与退出确认要在没有页面 context 的地方弹对话框。
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() => runApp(const BiliCrossApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // 先自检再起应用：数据目录写不了、资源读不出来、Windows 缺 WebView2，
+  // 这三样任一缺失后面都会以更难看的方式炸开，不如当场说清楚。
+  // 只查 Windows，其它平台直接跳过（Android 的路径与依赖不同，不在本次范围）。
+  if (DesktopShell.isSupported) {
+    final report = await runStartupChecks(
+      dataRoot: await _resolveStartupDataRoot(),
+      isWindows: true,
+    );
+    if (!report.allRequiredOk) {
+      runApp(StartupFailureApp(report: report));
+      return;
+    }
+  }
+  runApp(const BiliCrossApp());
+}
+
+/// 自检阶段的数据目录：此时 AppState 还没加载，只能按通道约定先算一份。
+/// 与 AppState 用的是同一套判定（见 core/distribution.dart），不会打架。
+Future<Directory> _resolveStartupDataRoot() async {
+  final support = await getApplicationSupportDirectory();
+  return resolveDataRoot(systemSupportDirectory: support);
+}
 
 class BiliCrossApp extends StatefulWidget {
   const BiliCrossApp({super.key});
@@ -208,9 +235,12 @@ class _AppShellState extends State<AppShell> {
   }
 
   /// 启动后静默查一次更新：有新版弹确认框，查不到提示一句，已是最新不出声。
-  /// 目前只给 Android 侧载包用，其它平台不显示「检测更新」也没必要去查。
+  /// Android 与 Windows 都查：前者换侧载包，后者换安装包/便携包。
   Future<void> _checkUpdateOnce() async {
-    if (!mounted || Theme.of(context).platform != TargetPlatform.android) {
+    if (!mounted) return;
+    final platform = Theme.of(context).platform;
+    if (platform != TargetPlatform.android &&
+        platform != TargetPlatform.windows) {
       return;
     }
     final result = await checkForUpdate();

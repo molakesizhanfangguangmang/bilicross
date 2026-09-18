@@ -165,8 +165,11 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // 「检测更新」目前只服务 Android 侧载更新；Windows 包不显示这一格。
-    final canCheck = Theme.of(context).platform == TargetPlatform.android;
+    // 「检测更新」在 Android 与 Windows 都显示：Android 走侧载包更新，
+    // Windows 走安装包/便携包换新。其它平台没有发布形态，不显示。
+    final platform = Theme.of(context).platform;
+    final canCheck = platform == TargetPlatform.android ||
+        platform == TargetPlatform.windows;
     final screenWidth = MediaQuery.of(context).size.width;
     final side = screenWidth * 0.9 < 320 ? screenWidth * 0.9 : 320.0;
     return Dialog(

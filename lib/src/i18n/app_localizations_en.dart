@@ -343,6 +343,20 @@ class AppLocalizationsEn extends AppLocalizations {
     'quit.title': 'Confirm exit',
     'quit.body': 'Tasks are still running and will be interrupted. Quit anyway?',
     'quit.ok': 'Quit',
+
+    // Startup environment self-check
+    'startup.title': 'Cannot start',
+    'startup.body': 'A required component is missing from the environment. '
+        'Please follow the notes below, then open the app again.',
+    'startup.check.dataDir': 'Data folder is writable',
+    'startup.check.assets': 'Application resources readable',
+    'startup.check.webview2': 'WebView2 runtime',
+    'startup.reason': 'Reason: {detail}',
+    'startup.webview2Hint': 'Web login needs the Microsoft Edge WebView2 runtime '
+        'installed on the system. It is available as an Evergreen installer from '
+        'Microsoft.',
+    'startup.webview2Download': 'Open download page',
+    'startup.exit': 'Exit',
   };
 
   @override
