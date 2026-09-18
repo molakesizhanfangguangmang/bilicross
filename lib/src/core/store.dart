@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'distribution.dart';
 import 'models.dart';
 
 class CredentialBundle {
@@ -22,18 +23,18 @@ class Store {
 
   final Directory root;
 
+  /// 数据目录按发行通道决定（见 [resolveDataRoot]）：
+  /// Windows 安装版在 `%LOCALAPPDATA%\BiliCross`，便携版在程序旁的 `data`，
+  /// 其它平台仍是系统应用支持目录下的 `bilicross`（与旧版本一致）。
+  /// 老版本 Windows 用户的数据会被整体搬过来，不会看起来像丢了账号。
   static Future<Store> open() async {
     final base = await getApplicationSupportDirectory();
-    final root = Directory('${base.path}${Platform.pathSeparator}bilicross');
-    final legacy = Directory('${base.path}${Platform.pathSeparator}biliharbor');
-    // 更名前的旧目录整体搬过来：Android 侧包名没变，设置、凭据、任务与已下载文件都还在原处。
-    if (!root.existsSync() && legacy.existsSync()) {
-      try {
-        await legacy.rename(root.path);
-      } on FileSystemException {
-        await root.create(recursive: true);
-      }
-    }
+    final systemSupport = Directory(base.path);
+    final target = resolveDataRoot(systemSupportDirectory: systemSupport);
+    final root = await migrateIfNeeded(
+      target: target,
+      legacyCandidates: legacyDataRoots(systemSupport),
+    );
     if (!root.existsSync()) {
       await root.create(recursive: true);
     }

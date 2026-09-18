@@ -149,11 +149,11 @@ void main() {
   });
 
   group('版本号', () {
-    test('pubspec 版本为 1.0.5+15', () {
+    test('pubspec 版本为 1.0.6+16', () {
       final text = File('pubspec.yaml').readAsStringSync();
       final match = RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(text);
       expect(match, isNotNull, reason: 'pubspec.yaml 里找不到 version 字段');
-      expect(match!.group(1), '1.0.5+15');
+      expect(match!.group(1), '1.0.6+16');
     });
   });
 }
