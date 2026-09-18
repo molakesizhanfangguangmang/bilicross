@@ -28,15 +28,31 @@
   选择会保存，重启后保持。
 - 账号：扫码登录（应用内显示 B 站二维码，手机客户端确认）、网页登录、粘贴 Cookie 或导入 `cookie.txt`，
   三条路都只取同一份网页 Cookie，之后照旧走 APP Token 授权；凭据只保存在本机并留有备份。
-- 关于：设置页底部有入口，弹窗里是应用图标、项目地址与当前版本号。Android 上可以点「检测更新」
-  查有没有新的正式版，启动后也会静默查一次，有新版再问要不要去 Release 页。
+  Windows 的网页登录在应用内用 WebView2 打开登录页，登录完成后自动取 Cookie；
+  需要系统安装 Microsoft Edge WebView2 运行时。
+- 关于：设置页底部有入口，弹窗里是应用图标、项目地址与当前版本号。Android 与 Windows 上可以点
+  「检测更新」查有没有新的正式版，启动后也会静默查一次，有新版再问要不要去 Release 页。
 - 备份与恢复（Windows）：设置页里可以导出应用备份，也可以从备份恢复，用于在 Windows 安装版与
   便携版之间迁移账号信息、设置与任务。恢复操作将覆盖当前应用数据，覆盖前会自动留一份回滚备份，
-  请妥善保管备份文件。便携版不提供自动更新，需要新版本时自行到 Release 页下载。
+  请妥善保管备份文件。
+- 桌面行为（Windows）：关闭窗口默认最小化到系统托盘，下载继续；托盘菜单可以显示主窗口、
+  打开下载目录、暂停全部任务与退出；还有任务在跑时退出会先确认。设置页可以改成「关闭即退出」。
+- 启动自检（Windows）：启动时检查数据目录可写、应用资源可读、WebView2 运行时可用；
+  缺任一项会直接说明缺什么并退出，不带病进界面。
 
 ## 从哪拿安装包
 
-云编译产物在 Actions 的 `Cloud build` 工作流里：Android 出 APK，Windows 出 ZIP。
+云编译产物在 Actions 的 `Cloud build` 工作流里。Android 出 APK；Windows 出两种包：
+
+- 安装版 `BiliCross-windows-x64-setup.exe`：Inno Setup 安装包，装到用户目录，数据放在
+  `%LOCALAPPDATA%\BiliCross`，可从「检测更新」跳 Release 页下载新安装包覆盖安装。
+- 便携版 `BiliCross-windows-x64-portable.zip`：解压即用，数据放在程序旁的 `data` 目录，
+  不提供自动更新，需要新版本时自行到 Release 页下载替换。
+
+两种包都自带 `ffmpeg.exe`（随包放在 `tools\ffmpeg`），合并默认用它；没有也能跑，
+会自动回落到内置 fMP4 合并。系统需要 Microsoft Visual C++ 运行库（Windows 10/11 通常已有）；
+程序目录请保留 `ffmpeg.exe`，删掉只会降级合并方式，不影响其它功能。
+
 本机不做编译，本地构建产物不用于发布。
 
 ## 构建
@@ -46,10 +62,11 @@
 
 ## 目录
 
-- `lib/src/core` — 地址解析、签名、接口访问、DASH 组装、下载、合并、持久化。
-- `lib/src/ui` — 下载、任务、账号、设置四个页面。
-- `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、暂停与强制结束、fMP4 合并、档位选择、版本号比较与更新检查。
-- `packaging` — 图标资源：Android 各密度图标与自适应图标、Windows `ico`。
+- `lib/src/core` — 地址解析、签名、接口访问、DASH 组装、下载、合并、备份、持久化。
+- `lib/src/platform/windows` — Windows 专用外壳：托盘子窗口行为、WebView2 网页登录。
+- `lib/src/ui` — 下载、任务、账号、设置四个页面，以及启动自检阻塞页。
+- `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、暂停与强制结束、fMP4 合并、档位选择、版本号比较与更新检查、发行通道与数据目录、备份编解码与服务、启动自检。
+- `packaging` — 图标资源（Android 各密度图标与自适应图标、Windows `ico`）与 Inno Setup 安装脚本。
 
 ## 贡献者
 
