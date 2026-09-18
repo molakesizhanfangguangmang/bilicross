@@ -153,7 +153,7 @@ void main() {
       });
 
       await expectLater(
-        () => failing.restore(await service.plan(bytes)),
+        () async => failing.restore(await service.plan(bytes)),
         throwsA(isA<BackupRestoreException>()),
       );
 
