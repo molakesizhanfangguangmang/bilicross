@@ -68,17 +68,18 @@ class _BackupCardState extends State<BackupCard> {
     setState(() => _busy = true);
     try {
       final service = await _service();
-      final path = await FilePicker.saveFile(
+      final bytes = await service.exportBytes();
+      // 插件直接把字节写到用户选的位置，返回目标 Uri；取消时为 null。
+      final target = await FilePicker.saveFile(
+        bytes: bytes,
         dialogTitle: l10n.tr('backup.export'),
         fileName: service.suggestFileName(),
         type: FileType.custom,
         allowedExtensions: const <String>['bcbak'],
       );
-      if (path == null) return;
-      final bytes = await service.exportBytes();
-      await File(path).writeAsBytes(bytes, flush: true);
+      if (target == null) return;
       // 只提示保存路径，备份内容不进任何日志。
-      _toast(l10n.tr('backup.exported', {'path': path}));
+      _toast(l10n.tr('backup.exported', {'path': target.toFilePath()}));
     } on BackupKeyException catch (error) {
       await _showError(error.message);
     } catch (error) {
@@ -95,10 +96,10 @@ class _BackupCardState extends State<BackupCard> {
       final service = await _service();
       final picked = await FilePicker.pickFiles(
         dialogTitle: l10n.tr('backup.restore'),
-        type: FileType.any,
-        allowMultiple: false,
+        type: FileType.custom,
+        allowedExtensions: const <String>['bcbak'],
       );
-      final file = picked?.files.firstOrNull;
+      final file = picked.firstOrNull;
       if (file == null) return;
       final Uint8List bytes;
       final path = file.path;
