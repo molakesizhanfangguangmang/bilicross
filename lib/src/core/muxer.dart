@@ -48,7 +48,7 @@ class Muxer {
       final base = File(Platform.resolvedExecutable).parent.path;
       final sep = Platform.pathSeparator;
       for (final name in _candidates) {
-        final bundled = File('$base${sep}tools${sep}ffmpeg${sep}$name');
+        final bundled = File('$base${sep}tools${sep}ffmpeg$name');
         if (!bundled.existsSync()) continue;
         try {
           final result = await Process.run(bundled.path, ['-version']);
