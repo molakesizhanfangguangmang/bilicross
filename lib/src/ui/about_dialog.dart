@@ -4,8 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
 
-/// 关于弹窗里的纹章图，原图直接打进包里，不做压缩。
-const String kCrestAsset = 'assets/branding/crest.png';
+/// 关于弹窗顶部的图：应用图标的原图（1440×2038，直接打进包里）。
+const String kAppIconAsset = 'assets/branding/app_icon.png';
 
 /// 打开关于弹窗。用户在里面点了「检测更新」就返回那次结果，
 /// 由调用方（页面自己有稳定的 context）去弹确认框或底部的提示。
@@ -185,7 +185,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: Image.asset(kCrestAsset, fit: BoxFit.cover),
+                    child: Image.asset(kAppIconAsset, fit: BoxFit.cover),
                   ),
                   Positioned(
                     top: 2,

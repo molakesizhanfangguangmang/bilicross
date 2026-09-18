@@ -1,7 +1,7 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 1.0.4+14
+version: 1.0.5+15
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -29,4 +29,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/crest.png
+    - assets/branding/app_icon.png

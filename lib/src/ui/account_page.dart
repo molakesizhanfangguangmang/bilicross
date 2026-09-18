@@ -54,17 +54,30 @@ class AccountPage extends StatelessWidget {
                       value: cookie.dedeUserId.isEmpty ? '—' : l10n.tr('account.written'),
                     ),
                     const SizedBox(height: 12),
+                    // 取凭据的两个入口并排：扫码（首选）与网页登录（兜底）。
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        // 扫码登录是首选入口：只取网页 Cookie，成功后仍走原有
-                        // 保存 → 账号校验 → APP Token 流程。
                         FilledButton.icon(
                           onPressed: () => _qrLogin(context),
                           icon: const Icon(Icons.qr_code_scanner),
                           label: Text(l10n.tr('qr.entry')),
                         ),
+                        if (WebLoginPage.isSupported)
+                          OutlinedButton.icon(
+                            onPressed: () => _webLogin(context),
+                            icon: const Icon(Icons.public),
+                            label: Text(l10n.tr('account.webLogin')),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // 手动补齐：粘贴或导入 cookie.txt。
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
                         OutlinedButton.icon(
                           onPressed: () => _pasteCookie(context),
                           icon: const Icon(Icons.paste),
@@ -75,19 +88,23 @@ class AccountPage extends StatelessWidget {
                           icon: const Icon(Icons.file_open),
                           label: Text(l10n.tr('account.importCookie')),
                         ),
-                        if (WebLoginPage.isSupported)
-                          OutlinedButton.icon(
-                            onPressed: () => _webLogin(context),
-                            icon: const Icon(Icons.public),
-                            label: Text(l10n.tr('account.webLogin')),
-                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // 状态维护放最下面。
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
                         OutlinedButton.icon(
                           onPressed: () => _refresh(context),
                           icon: const Icon(Icons.refresh),
                           label: Text(l10n.tr('account.checkStatus')),
                         ),
                         OutlinedButton.icon(
-                          onPressed: cookie.isEmpty ? null : () => state.clearCookie(),
+                          onPressed: cookie.isEmpty
+                              ? null
+                              : () => state.clearCookie(),
                           icon: const Icon(Icons.delete_outline),
                           label: Text(l10n.tr('account.clear')),
                         ),
