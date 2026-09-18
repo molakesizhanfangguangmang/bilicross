@@ -251,7 +251,11 @@ jobs:
 
       - name: Build release APK
         shell: bash
-        run: flutter build apk --release --target-platform android-arm64
+        # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。
+        # 测试另有独立测试密钥，不使用这里的值。
+        env:
+          BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
+        run: flutter build apk --release --target-platform android-arm64 $BACKUP_KEY_DEFINE
 
       - name: Verify APK architecture
         shell: bash
@@ -389,7 +393,11 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
-        run: flutter build windows --release
+        # 与 Android 同一个 Secret；值不会被打印到日志。
+        env:
+          BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
+        run: |
+          flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
 
       - name: Package and checksum
         shell: pwsh
