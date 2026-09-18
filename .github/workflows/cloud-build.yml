@@ -432,19 +432,29 @@ jobs:
         run: |
           flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
 
-      # 捆绑 ffmpeg（BtbN LGPL win64）：下载后用发布方的 SHA256SUMS 校验完整性，
-      # 再解到 tools\ffmpeg\ffmpeg.exe。不进仓库、不进 Release 说明，仅作运行期可选依赖；
-      # 缺了会自动回落内置合并。校验失败直接报错，避免带病文件出包。
+      # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
+      # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，
+      # 因此这里取“最新的版本化发布”——既能拿到校验和做 SHA-256 校验，也顺带锁定当次构建用到的具体版本。
+      # ffmpeg 不进仓库、不进 Release 说明，仅作运行期可选依赖；缺了会自动回落内置合并。
       - name: Fetch and verify ffmpeg (BtbN LGPL win64)
         shell: pwsh
         run: |
-          $asset = 'ffmpeg-master-latest-win64-lgpl.zip'
-          $base = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest'
-          Invoke-WebRequest -Uri "$base/$asset" -OutFile ffmpeg.zip
-          Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile SHA256SUMS
-          $m = Select-String -Path SHA256SUMS -Pattern "^([0-9a-fA-F]{64})\s+$asset`$"
-          if (-not $m) { throw "SHA256SUMS 里找不到 $asset 的校验值" }
-          $expected = $m.Matches[0].Groups[1].Value.ToLower()
+          $hdr = @{ 'User-Agent' = 'bilicross-ci' }
+          $list = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=10' -Headers $hdr
+          $rel = $null; $assetName = $null; $zipUrl = $null; $sumsUrl = $null
+          foreach ($r in $list) {
+            if ($r.tag_name -eq 'latest') { continue }
+            $zip = $r.assets | Where-Object { $_.name -match 'win64-lgpl\.zip$' -and $_.name -notmatch 'shared' } | Select-Object -First 1
+            $sums = $r.assets | Where-Object { $_.name -eq 'checksums.sha256' } | Select-Object -First 1
+            if ($zip -and $sums) { $rel = $r; $assetName = $zip.name; $zipUrl = $zip.browser_download_url; $sumsUrl = $sums.browser_download_url; break }
+          }
+          if (-not $rel) { throw '找不到带 checksums.sha256 的 FFmpeg 发布' }
+          Write-Output ("选定 ffmpeg 版本: " + $rel.tag_name + " / " + $assetName)
+          Invoke-WebRequest -Uri $zipUrl -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri $sumsUrl -OutFile checksums.sha256
+          $line = Select-String -Path checksums.sha256 -Pattern "[0-9a-fA-F]{64}" | Where-Object { $_.Line -match [regex]::Escape($assetName) } | Select-Object -First 1
+          if (-not $line) { throw "checksums.sha256 里找不到 $assetName 的校验值" }
+          $expected = ($line.Line -replace '[^0-9a-fA-F].*$','').Trim().ToLower()
           $actual = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
           if ($actual -ne $expected) { throw "ffmpeg SHA256 不匹配：期望 $expected 实际 $actual" }
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_extracted
