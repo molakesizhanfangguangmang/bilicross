@@ -310,6 +310,27 @@ class AppLocalizationsEn extends AppLocalizations {
     'qr.back': 'Back to account',
     'qr.fallbackHint': 'A failed scan does not affect the other ways in: web '
         'sign-in, pasting a cookie and importing cookie.txt all still work.',
+
+    // Backup & restore (Windows installer and portable editions)
+    'settings.backup': 'Backup & restore',
+    'backup.hint': 'Export your account information, settings and tasks to move '
+        'them between the installer and portable editions. Restoring overwrites '
+        'the current data.',
+    'backup.export': 'Export backup',
+    'backup.restore': 'Restore from backup',
+    'backup.working': 'Working…',
+    'backup.exported': 'Backup exported: {path}',
+    'backup.confirmTitle': 'Confirm restore',
+    'backup.confirmBody': 'This backup comes from {source}. Restoring overwrites '
+        'the current account, settings and tasks. A rollback copy is saved first. '
+        'Continue?',
+    'backup.confirmOk': 'Overwrite and restore',
+    'backup.restored': 'Restored {count} items',
+    'backup.pending': '{count} tasks point to a folder that no longer exists and '
+        'need manual attention',
+    'backup.failed': 'Restore failed: {error}',
+    'backup.noKey': 'This build has no backup key configured, exporting is not '
+        'possible',
   };
 
   @override

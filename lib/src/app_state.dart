@@ -116,6 +116,33 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 恢复备份之后重新读盘并重新验证。
+  ///
+  /// 恢复是覆盖式的：内存里的设置、凭据与任务必须整体换成磁盘上的新内容，
+  /// 否则界面还显示恢复前的账号。凭据过期时保留其它配置，账号状态回到「需要重新登录」，
+  /// 不在这里清空设置或任务。
+  Future<void> reloadAfterRestore() async {
+    final restored = await store.loadSettings();
+    if (restored.downloadDir.trim().isEmpty) {
+      restored.downloadDir =
+          '${store.root.path}${Platform.pathSeparator}downloads';
+    }
+    settings = restored;
+    final credentials = await store.loadCredentials();
+    cookie = credentials.cookie;
+    token = credentials.token;
+    tasks
+      ..clear()
+      ..addAll(await store.loadTasks());
+    account = const AccountState.unknown();
+    parsed = null;
+    await _rebuildApi();
+    await refreshFfmpeg();
+    notifyListeners();
+    // 重新验证：Cookie 与 Token 有效就刷新账号状态，失效就停在「未登录」，不抛错给用户。
+    await refreshAccount();
+  }
+
   /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
   /// 不重启应用，也不重建任务与凭据，只影响文案。
   /// 非法代码直接忽略——磁盘上的旧数据归一化交给 fromJson，这里不该把

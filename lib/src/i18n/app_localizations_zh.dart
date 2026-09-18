@@ -291,6 +291,22 @@ class AppLocalizationsZh extends AppLocalizations {
     'qr.back': '返回账号页',
     'qr.fallbackHint': '扫码失败不影响其它登录方式：'
         '网页登录、粘贴 Cookie、导入 cookie.txt 都仍然可用。',
+
+    // 备份与恢复（Windows 的安装版与便携版）
+    'settings.backup': '备份与恢复',
+    'backup.hint': '导出账号信息、设置与任务，用于安装版与便携版之间迁移。恢复会覆盖当前数据。',
+    'backup.export': '导出备份',
+    'backup.restore': '从备份恢复',
+    'backup.working': '处理中…',
+    'backup.exported': '已导出备份：{path}',
+    'backup.confirmTitle': '确认恢复',
+    'backup.confirmBody': '这份备份来自 {source}。恢复会覆盖当前账号、设置与任务，'
+        '覆盖前会自动留一份回滚备份。要继续吗？',
+    'backup.confirmOk': '覆盖并恢复',
+    'backup.restored': '已恢复 {count} 项数据',
+    'backup.pending': '有 {count} 个任务指向的目录不存在，需要手动处理',
+    'backup.failed': '恢复失败：{error}',
+    'backup.noKey': '当前构建没有配置备份密钥，无法导出备份',
   };
 
   @override
