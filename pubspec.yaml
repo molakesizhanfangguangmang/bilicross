@@ -22,6 +22,8 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
   window_manager: ^0.5.2
+  # Windows 网页登录用：flutter_inappwebview（WebView2）。Android 继续用 webview_flutter，不替换。
+  flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
   flutter_test:
