@@ -129,10 +129,10 @@ class _WindowsWebLoginPageState extends State<WindowsWebLoginPage> {
                 userAgent: kDesktopUserAgent,
                 javaScriptEnabled: true,
               ),
-              onLoadStart: (_, __) {
+              onLoadStart: (_, _) {
                 if (mounted) setState(() => _loading = true);
               },
-              onLoadStop: (_, __) {
+              onLoadStop: (_, _) {
                 if (mounted) setState(() => _loading = false);
                 _readCookies(auto: true);
               },
@@ -141,7 +141,7 @@ class _WindowsWebLoginPageState extends State<WindowsWebLoginPage> {
                 setState(
                   () => _status = l10n.tr(
                     'webLogin.loadFailed',
-                    {'error': error.description ?? ''},
+                    {'error': error.description},
                   ),
                 );
               },
