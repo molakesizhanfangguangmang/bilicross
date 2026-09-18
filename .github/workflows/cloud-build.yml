@@ -425,25 +425,82 @@ jobs:
       - name: Build Windows release
         shell: pwsh
         # 与 Android 同一个 Secret；值不会被打印到日志。
+        # 同一份产物既给安装版也给便携版：便携版靠包里的 portable.marker 在运行期认通道，
+        # 不必为两种包各编一次。
         env:
           BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
         run: |
           flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
 
-      - name: Package and checksum
+      # 捆绑 ffmpeg（BtbN LGPL win64）：下载后用发布方的 SHA256SUMS 校验完整性，
+      # 再解到 tools\ffmpeg\ffmpeg.exe。不进仓库、不进 Release 说明，仅作运行期可选依赖；
+      # 缺了会自动回落内置合并。校验失败直接报错，避免带病文件出包。
+      - name: Fetch and verify ffmpeg (BtbN LGPL win64)
         shell: pwsh
         run: |
-          $source = 'build\windows\x64\runner\Release'
-          if (-not (Test-Path "$source\bilicross.exe")) { throw 'Windows executable not found' }
-          Compress-Archive -Path "$source\*" -DestinationPath BiliCross-windows-x64.zip
-          $hash = (Get-FileHash BiliCross-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  BiliCross-windows-x64.zip" | Set-Content BiliCross-windows-x64.zip.sha256 -Encoding ascii
+          $asset = 'ffmpeg-master-latest-win64-lgpl.zip'
+          $base = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest'
+          Invoke-WebRequest -Uri "$base/$asset" -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile SHA256SUMS
+          $m = Select-String -Path SHA256SUMS -Pattern "^([0-9a-fA-F]{64})\s+$asset`$"
+          if (-not $m) { throw "SHA256SUMS 里找不到 $asset 的校验值" }
+          $expected = $m.Matches[0].Groups[1].Value.ToLower()
+          $actual = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "ffmpeg SHA256 不匹配：期望 $expected 实际 $actual" }
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_extracted
+          $src = Get-ChildItem ffmpeg_extracted -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $src) { throw 'ffmpeg.exe 未找到' }
+          New-Item tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item $src.FullName tools\ffmpeg\ffmpeg.exe -Force
+          Write-Output ("ffmpeg 就绪: " + (Get-Item tools\ffmpeg\ffmpeg.exe).Length + " 字节, sha256=" + $actual)
 
-      - name: Upload Windows artifact
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            (Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup 6" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue |
+              Select-Object -First 1).FullName
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            try { choco install innosetup -y --no-progress 2>$null } catch { }
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) {
+            $url = 'https://jrsoftware.org/download.php/is.exe'
+            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\innosetup.exe" -MaximumRedirection 10
+            Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw '未找到 ISCC.exe（Inno Setup 安装可能失败）' }
+          & $iscc packaging\windows\BiliCross.iss
+          if (-not (Test-Path BiliCross-windows-x64-setup.exe)) { throw '安装包未生成' }
+          $hash = (Get-FileHash BiliCross-windows-x64-setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-x64-setup.exe" | Set-Content BiliCross-windows-x64-setup.exe.sha256 -Encoding ascii
+
+      # 便携版：同一份安装版产物，只在包里塞一个 portable.marker 让运行期认出便携通道，
+      # 数据目录因此落到 <程序目录>\data。ffmpeg 也一并带进去。
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $rel = 'build\windows\x64\runner\Release'
+          if (-not (Test-Path "$rel\bilicross.exe")) { throw 'Windows executable not found' }
+          New-Item dist-portable -ItemType Directory -Force | Out-Null
+          Copy-Item "$rel\*" dist-portable -Recurse -Force
+          New-Item dist-portable\tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item tools\ffmpeg\ffmpeg.exe dist-portable\tools\ffmpeg\ffmpeg.exe -Force
+          New-Item dist-portable\portable.marker -ItemType File -Force | Out-Null
+          Compress-Archive -Path dist-portable\* -DestinationPath BiliCross-windows-x64-portable.zip -Force
+          $hash = (Get-FileHash BiliCross-windows-x64-portable.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-x64-portable.zip" | Set-Content BiliCross-windows-x64-portable.zip.sha256 -Encoding ascii
+
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BiliCross-windows-x64
           path: |
-            BiliCross-windows-x64.zip
-            BiliCross-windows-x64.zip.sha256
+            BiliCross-windows-x64-setup.exe
+            BiliCross-windows-x64-setup.exe.sha256
+            BiliCross-windows-x64-portable.zip
+            BiliCross-windows-x64-portable.zip.sha256
           if-no-files-found: error

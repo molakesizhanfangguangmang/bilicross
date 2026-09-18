@@ -42,6 +42,22 @@ class Muxer {
         continue;
       }
     }
+    // 捆绑的 ffmpeg：随包放在可执行文件旁的 tools/ffmpeg 下。系统 PATH 找不到时兜底，
+    // 这样便携版 / 安装版不用让用户自己配 PATH 也能用上 ffmpeg 合并。
+    if (Platform.isWindows) {
+      final base = File(Platform.resolvedExecutable).parent.path;
+      final sep = Platform.pathSeparator;
+      for (final name in _candidates) {
+        final bundled = File('$base${sep}tools${sep}ffmpeg${sep}$name');
+        if (!bundled.existsSync()) continue;
+        try {
+          final result = await Process.run(bundled.path, ['-version']);
+          if (result.exitCode == 0) return bundled.path;
+        } on ProcessException {
+          continue;
+        }
+      }
+    }
     return null;
   }
 

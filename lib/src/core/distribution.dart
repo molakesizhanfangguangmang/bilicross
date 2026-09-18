@@ -22,10 +22,21 @@ const String kChannelDefine = String.fromEnvironment('BILICROSS_CHANNEL');
 const String kPortableMarker = 'portable.marker';
 
 /// 把构建期常量翻译成通道。空值或未知值都按安装版处理。
-ReleaseChannel channelFromDefine([String value = kChannelDefine]) =>
-    value.trim().toLowerCase() == 'portable'
-        ? ReleaseChannel.portable
-        : ReleaseChannel.installed;
+///
+/// 再加一道兜底：构建期常量没标便携时，看程序旁边有没有 [kPortableMarker]。
+/// 这样「同一份安装版产物、只在便携包里塞一个 marker」就能区分通道，
+/// 不必为两种包编译两份二进制；用户把便携包解到任意目录都能认出便携通道。
+ReleaseChannel channelFromDefine([String value = kChannelDefine]) {
+  if (value.trim().toLowerCase() == 'portable') return ReleaseChannel.portable;
+  try {
+    if (portableMarkerFile(Platform.resolvedExecutable).existsSync()) {
+      return ReleaseChannel.portable;
+    }
+  } on Object {
+    // 取不到可执行路径就跳过兜底，按安装版处理。
+  }
+  return ReleaseChannel.installed;
+}
 
 /// 解析用户数据根目录（设置、任务、日志、凭据、回滚备份都在它下面）。
 ///
