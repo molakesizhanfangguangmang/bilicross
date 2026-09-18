@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 默认资源：与发布默认语言（简体中文）一致，未匹配到语言时回落到这里。 -->
+<resources>
+    <string name="app_name">逸轨</string>
+</resources>

@@ -12,6 +12,7 @@ import 'core/muxer.dart';
 import 'core/parser.dart';
 import 'core/signing.dart';
 import 'core/store.dart';
+import 'i18n/app_localizations.dart';
 
 class AppState extends ChangeNotifier {
   AppState._(this.store, this.settings, this.cookie, this.token, this.tasks) {
@@ -26,6 +27,7 @@ class AppState extends ChangeNotifier {
   static Future<AppState> load() async {
     final store = await Store.open();
     final settings = await store.loadSettings();
+    final l10n = AppLocalizations.fromCode(settings.localeCode);
     if (settings.downloadDir.trim().isEmpty) {
       settings.downloadDir = '${store.root.path}${Platform.pathSeparator}downloads';
     }
@@ -36,14 +38,14 @@ class AppState extends ChangeNotifier {
           task.stage == TaskStage.muxing ||
           task.stage == TaskStage.resolving) {
         task.stage = TaskStage.pending;
-        task.message = '上次退出时中断，等待继续';
+        task.message = l10n.tr('msg.interruptedOnExit');
         // CDN 地址带时效，续传前必须重新解析，不能沿用上次的地址。
         task.videoUrl = '';
         task.audioUrl = '';
       } else if (task.stage == TaskStage.paused) {
         // 暂停的任务留在暂停态：分片还在，等着用户点「继续」。
         // 地址同样过期，继续时会重新解析，分片照样按断点接。
-        task.message = '上次退出时暂停，点「继续」从断点接';
+        task.message = l10n.tr('msg.pausedOnExit');
         task.videoUrl = '';
         task.audioUrl = '';
       }
@@ -74,6 +76,10 @@ class AppState extends ChangeNotifier {
   late BiliApi api;
   late ParseService parseService;
   late StreamDownloader downloader;
+
+  /// 当前语言的文案。任务消息、异常提示这些没有 BuildContext 的地方都从这里取，
+  /// 所以换语言之后新产生的消息立刻是新语言；已经写进任务的历史消息不回译。
+  AppLocalizations get l10n => AppLocalizations.fromCode(settings.localeCode);
 
   AccountState account = const AccountState.unknown();
   ParsedMedia? parsed;
@@ -109,6 +115,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
+  /// 不重启应用，也不重建任务与凭据，只影响文案。
+  Future<void> setLocale(String code) async {
+    final next = normalizeLocaleCode(code);
+    if (next == settings.localeCode) return;
+    settings.localeCode = next;
+    await store.saveSettings(settings);
+    notifyListeners();
+  }
+
   Future<void> refreshFfmpeg() async {
     ffmpegPath = await Muxer.locate(settings.ffmpegPath);
     notifyListeners();
@@ -119,7 +135,7 @@ class AppState extends ChangeNotifier {
   Future<void> applyCookieText(String text) async {
     final parsedCookie = CookieParser.parse(text);
     if (parsedCookie.isEmpty) {
-      throw BiliException('没有从内容里提取到 SESSDATA 字段');
+      throw BiliException(l10n.tr('err.noSessdata'));
     }
     cookie = parsedCookie;
     await store.saveCredentials(CredentialBundle(cookie: cookie, token: token));
@@ -130,8 +146,12 @@ class AppState extends ChangeNotifier {
       '｜DedeUserID ${parsedCookie.dedeUserId.isEmpty ? '无' : '有'}',
     );
     notice = parsedCookie.isComplete
-        ? '已写入 WEB Cookie'
-        : '已写入 WEB Cookie，但缺少 ${parsedCookie.biliJct.isEmpty ? 'bili_jct ' : ''}${parsedCookie.dedeUserId.isEmpty ? 'DedeUserID' : ''}';
+        ? l10n.tr('notice.cookieWritten')
+        : l10n.tr('notice.cookieWrittenMissing', {
+            'fields':
+                '${parsedCookie.biliJct.isEmpty ? 'bili_jct ' : ''}'
+                '${parsedCookie.dedeUserId.isEmpty ? 'DedeUserID' : ''}',
+          });
     notifyListeners();
     await refreshAccount();
   }
@@ -139,14 +159,14 @@ class AppState extends ChangeNotifier {
   Future<void> clearCookie() async {
     cookie = const WebCookie.empty();
     await store.saveCredentials(CredentialBundle(cookie: cookie, token: token));
-    account = const AccountState(loggedIn: false, message: '已清除 WEB Cookie');
+    account = AccountState(loggedIn: false, message: l10n.tr('notice.cookieCleared'));
     LogStore.instance.add('账号', 'WEB Cookie 已清除');
     notifyListeners();
   }
 
   Future<void> refreshAccount() async {
     if (cookie.isEmpty) {
-      account = const AccountState(loggedIn: false, message: '未配置 WEB Cookie');
+      account = AccountState(loggedIn: false, message: l10n.tr('notice.noCookie'));
       notifyListeners();
       return;
     }
@@ -176,10 +196,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> startAppAuth() async {
     if (cookie.isEmpty) {
-      throw BiliException('请先写入 WEB Cookie');
+      throw BiliException(l10n.tr('err.needWebCookie'));
     }
     pendingAuth = await api.requestAppAuthCode();
-    authStatus = '等待在浏览器中确认授权';
+    authStatus = l10n.tr('auth.waiting');
     _authDeadline = DateTime.now().add(const Duration(minutes: 5));
     _authTimer?.cancel();
     _authTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollAuth());
@@ -199,7 +219,7 @@ class AppState extends ChangeNotifier {
     if (auth == null) return;
     if (_authDeadline != null && DateTime.now().isAfter(_authDeadline!)) {
       await cancelAppAuth();
-      authStatus = '授权超时，请重新发起';
+      authStatus = l10n.tr('auth.timeout');
       notifyListeners();
       return;
     }
@@ -214,7 +234,7 @@ class AppState extends ChangeNotifier {
           _authTimer?.cancel();
           _authTimer = null;
           pendingAuth = null;
-          authStatus = 'APP Token 已获取';
+          authStatus = l10n.tr('auth.tokenReady');
           LogStore.instance.add(
             '账号',
             'APP Token 已获取：mid=${token?.mid ?? 0}'
@@ -229,7 +249,7 @@ class AppState extends ChangeNotifier {
           notifyListeners();
       }
     } on Exception catch (error) {
-      authStatus = '轮询失败：$error';
+      authStatus = l10n.tr('auth.pollFailed', {'error': '$error'});
       notifyListeners();
     }
   }
@@ -277,16 +297,18 @@ class AppState extends ChangeNotifier {
     Object error, {
     required bool hasCookie,
     required bool hasToken,
+    AppLocalizations? l10n,
   }) {
+    final t = l10n ?? const AppLocalizationsZh();
     final text = '$error';
     final code = error is BiliException ? error.code : null;
     final grpcUnauthorized =
         text.contains('grpc-status=16') || text.contains('UNAUTHENTICATED');
     if (code != -101 && !grpcUnauthorized) return null;
     // gRPC 只有 APP Token 一条路；REST 的 -101 优先归给 Cookie，没有才看 Token。
-    if (grpcUnauthorized) return hasToken ? 'APP Token 已失效，请重新登录' : null;
-    if (hasCookie) return 'Cookie 已失效，请重新登录';
-    if (hasToken) return 'APP Token 已失效，请重新登录';
+    if (grpcUnauthorized) return hasToken ? t.tr('notice.tokenInvalid') : null;
+    if (hasCookie) return t.tr('notice.cookieInvalid');
+    if (hasToken) return t.tr('notice.tokenInvalid');
     return null;
   }
 
@@ -295,6 +317,7 @@ class AppState extends ChangeNotifier {
       error,
       hasCookie: !cookie.isEmpty,
       hasToken: token?.accessToken.isNotEmpty ?? false,
+      l10n: l10n,
     );
     if (text != null) {
       LogStore.instance.add('账号', '$text｜原因：$error');
@@ -400,7 +423,7 @@ class AppState extends ChangeNotifier {
     if (task.stage != TaskStage.downloading) return;
     final control = _controls[id];
     if (control == null) return;
-    task.message = '正在暂停…';
+    task.message = l10n.tr('msg.pausing');
     notifyListeners();
     control.pause();
   }
@@ -412,7 +435,7 @@ class AppState extends ChangeNotifier {
     if (index < 0) return;
     final task = tasks[index];
     if (!_isRunning(task.stage)) return;
-    task.message = '正在强制结束…';
+    task.message = l10n.tr('msg.stopping');
     notifyListeners();
     final control = _controls[id];
     if (control == null) {
@@ -424,20 +447,20 @@ class AppState extends ChangeNotifier {
   }
 
   /// 继续：保留分片与档位，回队列重新跑。地址带时效，沿途会重新解析一次。
-  void resumeTask(String id) => retryTask(id, message: '继续下载（从断点接）');
+  void resumeTask(String id) => retryTask(id, message: l10n.tr('msg.resuming'));
 
   /// 取消之后的收尾：暂停留分片，强制结束删干净。
   Future<void> _finishAborted(DownloadTask task, TaskAborted abort) async {
     if (abort.isPause) {
       task.stage = TaskStage.paused;
-      task.message = '已暂停，分片已保留，点「继续」从断点接';
+      task.message = l10n.tr('msg.paused');
       LogStore.instance.add('任务', '${task.title}：已暂停');
     } else {
       var removed = await removeArtifacts(task.videoPath);
       removed += await removeArtifacts(task.audioPath);
       removed += await removeArtifacts(task.outputPath);
       task.stage = TaskStage.stopped;
-      task.message = '已强制结束，已删除 $removed 个残留文件';
+      task.message = l10n.tr('msg.stopped', {'count': '$removed'});
       LogStore.instance.add('任务', '${task.title}：强制结束，已删除 $removed 个残留文件');
     }
     notifyListeners();
@@ -445,10 +468,10 @@ class AppState extends ChangeNotifier {
 
   /// 重试保留原来的档位与编码：只清掉可能过期的 CDN 地址，重新解析时按原档位取，
   /// 用户不必回到解析页重选一次。分片留在盘上，「重试」与「继续」走的都是这条路。
-  void retryTask(String id, {String message = '等待重试'}) {
+  void retryTask(String id, {String? message}) {
     final task = tasks.firstWhere((item) => item.id == id);
     task.stage = TaskStage.pending;
-    task.message = message;
+    task.message = message ?? l10n.tr('msg.waitRetry');
     task.receivedBytes = 0;
     task.totalBytes = 0;
     task.merged = false;
@@ -488,7 +511,7 @@ class AppState extends ChangeNotifier {
     _controls[task.id] = control;
     try {
       if (task.engine != 'dart') {
-        throw BiliException('BBDownNext 兼容引擎尚未接入，请改用 Dart 内置引擎');
+        throw BiliException(l10n.tr('err.engineMissing'));
       }
       final dir = Directory(settings.downloadDir);
       if (!dir.existsSync()) {
@@ -497,7 +520,7 @@ class AppState extends ChangeNotifier {
       if ((task.videoQualityId != 0 && task.videoUrl.isEmpty) ||
           (task.audioQualityId != 0 && task.audioUrl.isEmpty)) {
         task.stage = TaskStage.resolving;
-        task.message = '地址已失效，按原档位重新解析';
+        task.message = l10n.tr('msg.urlExpired');
         notifyListeners();
         await _refreshTaskUrls(task);
       }
@@ -506,7 +529,7 @@ class AppState extends ChangeNotifier {
       final wantsVideo = task.videoQualityId != 0;
       final wantsAudio = task.audioQualityId != 0;
       if (!wantsVideo && !wantsAudio) {
-        throw BiliException('任务没有选择任何轨道');
+        throw BiliException(l10n.tr('err.noTrack'));
       }
 
       final base = sanitizeFileName(task.title);
@@ -522,7 +545,7 @@ class AppState extends ChangeNotifier {
         if (await _streamReady(task.videoPath)) {
           LogStore.instance.add('任务', '${task.title}：视频流已在本地，跳过下载');
         } else {
-          task.message = '下载视频流';
+          task.message = l10n.tr('msg.downloadVideo');
           task.receivedBytes = 0;
           task.totalBytes = 0;
           notifyListeners();
@@ -541,7 +564,7 @@ class AppState extends ChangeNotifier {
         if (await _streamReady(task.audioPath)) {
           LogStore.instance.add('任务', '${task.title}：音频流已在本地，跳过下载');
         } else {
-          task.message = '下载音频流';
+          task.message = l10n.tr('msg.downloadAudio');
           task.receivedBytes = 0;
           task.totalBytes = 0;
           notifyListeners();
@@ -558,10 +581,10 @@ class AppState extends ChangeNotifier {
 
       if (wantsVideo && wantsAudio) {
         if (!hasUsableFile(task.videoPath)) {
-          throw BiliException('视频分片为空');
+          throw BiliException(l10n.tr('err.emptyVideo'));
         }
         if (!hasUsableFile(task.audioPath)) {
-          throw BiliException('音频分片为空');
+          throw BiliException(l10n.tr('err.emptyAudio'));
         }
         await _muxTask(task, control: control);
         return;
@@ -570,7 +593,7 @@ class AppState extends ChangeNotifier {
       // 只下了一条轨道：没有可合并的东西，分片直接改名成产物。
       final source = wantsVideo ? task.videoPath : task.audioPath;
       if (!hasUsableFile(source)) {
-        throw BiliException(wantsVideo ? '视频分片为空' : '音频分片为空');
+        throw BiliException(wantsVideo ? l10n.tr('err.emptyVideo') : l10n.tr('err.emptyAudio'));
       }
       await _finalizeSingle(task, source);
     } on TaskAborted catch (abort) {
@@ -639,7 +662,7 @@ class AppState extends ChangeNotifier {
     }
     task.merged = false;
     task.stage = TaskStage.done;
-    task.message = '完成（单轨）：$path';
+    task.message = l10n.tr('msg.singleTrackDone', {'path': path});
     LogStore.instance.add('任务', '${task.title}：单轨完成 $path');
   }
 
@@ -648,7 +671,7 @@ class AppState extends ChangeNotifier {
   /// 合并期间「强制结束」会掐掉正在跑的 ffmpeg；取消异常交给调用方收尾。
   Future<void> _muxTask(DownloadTask task, {AbortControl? control}) async {
     task.stage = TaskStage.muxing;
-    task.message = '合并音视频';
+    task.message = l10n.tr('msg.muxing');
     notifyListeners();
     try {
       final outcome = await Muxer.merge(
@@ -667,14 +690,17 @@ class AppState extends ChangeNotifier {
       task.merged = true;
       task.stage = TaskStage.done;
       final removed = await _removeSources(task);
-      task.message = '完成（${outcome.engineLabel}）：${task.outputPath}'
+      task.message = l10n.tr(
+        'msg.done',
+        {'engine': outcome.engineLabel, 'path': task.outputPath},
+      )
           '${removed > 0 ? '（已清理 $removed 个分片）' : ''}';
     } on TaskAborted {
       rethrow;
     } on Exception catch (error) {
       task.merged = false;
       task.stage = TaskStage.done;
-      task.message = '合并失败，两个分片已保留，可稍后重试：$error';
+      task.message = l10n.tr('msg.muxFailed', {'error': '$error'});
       LogStore.instance.add('合并', '${task.title}：两条路径都失败，保留分片：$error');
     }
     notifyListeners();
@@ -685,12 +711,12 @@ class AppState extends ChangeNotifier {
     final task = tasks.firstWhere((item) => item.id == id);
     if (_isRunning(task.stage)) return;
     if (task.videoQualityId == 0 || task.audioQualityId == 0) {
-      task.message = '该任务只下了一条轨道，没有可合并的分片';
+      task.message = l10n.tr('msg.singleTrackNoMux');
       notifyListeners();
       return;
     }
     if (!hasUsableFile(task.videoPath) || !hasUsableFile(task.audioPath)) {
-      task.message = '缺少视频或音频分片，请重新下载';
+      task.message = l10n.tr('msg.missingFragments');
       notifyListeners();
       return;
     }
@@ -730,8 +756,10 @@ class AppState extends ChangeNotifier {
       );
       if (video == null) {
         throw BiliException(task.videoQualityId > 0
-            ? '原选择的视频档位（${qualityLabel(task.videoQualityId)}）本次解析没有返回'
-            : '本次解析没有返回任何视频流');
+            ? l10n.tr('msg.videoQualityGone', {
+                'quality': qualityLabel(task.videoQualityId, l10n),
+              })
+            : l10n.tr('msg.noVideoStream'));
       }
       task.videoUrl = video.url;
       task.videoBackups = video.backupUrls;
@@ -752,7 +780,9 @@ class AppState extends ChangeNotifier {
       if (audio == null) {
         if (task.audioQualityId > 0) {
           throw BiliException(
-            '原选择的音频档位（${audioLabel(task.audioQualityId)}）本次解析没有返回',
+            l10n.tr('msg.audioQualityGone', {
+              'quality': audioLabel(task.audioQualityId, l10n),
+            }),
           );
         }
         // 老任务本来要音频，这次解析没有独立音频流：改成只下视频。

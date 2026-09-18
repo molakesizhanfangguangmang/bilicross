@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/log_store.dart';
+import '../i18n/app_localizations.dart';
 
 /// 运行日志页。看解析走了哪条通道、为什么回退、下载与合并的细节。
 ///
@@ -12,30 +13,35 @@ class LogPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = LogStore.instance;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('运行日志'),
+        title: Text(l10n.tr('logs.title')),
         actions: [
           IconButton(
-            tooltip: '复制全部',
+            tooltip: l10n.tr('logs.copyAll'),
             icon: const Icon(Icons.copy_all_outlined),
             onPressed: () async {
               final text = store.dump;
               if (text.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('暂无日志')),
+                  SnackBar(content: Text(l10n.tr('logs.empty'))),
                 );
                 return;
               }
               await Clipboard.setData(ClipboardData(text: text));
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已复制 ${store.entries.length} 条')),
+                SnackBar(
+                  content: Text(
+                    l10n.tr('logs.copied', {'count': '${store.entries.length}'}),
+                  ),
+                ),
               );
             },
           ),
           IconButton(
-            tooltip: '清空',
+            tooltip: l10n.tr('logs.clear'),
             icon: const Icon(Icons.delete_outline),
             onPressed: store.clear,
           ),
@@ -50,25 +56,25 @@ class LogPage extends StatelessWidget {
               SwitchListTile(
                 value: store.verbose,
                 secondary: const Icon(Icons.bug_report_outlined),
-                title: const Text('详细日志'),
+                title: Text(l10n.tr('logs.verbose')),
                 subtitle: Text(
                   store.filePath == null
-                      ? '打开后记录请求地址与响应码；这台设备写不了日志文件，只留在内存'
-                      : '打开后记录请求地址与响应码，并追加到 ${store.filePath}',
+                      ? l10n.tr('logs.verboseNoFile')
+                      : l10n.tr('logs.verboseWithFile', {'path': '${store.filePath}'}),
                   style: const TextStyle(fontSize: 12),
                 ),
                 onChanged: (value) {
                   store.verbose = value;
                   store.add(
-                    '日志',
-                    value ? '已打开详细日志（凭据一律掩码）' : '已关闭详细日志',
+                    l10n.tr('logs.section'),
+                    value ? l10n.tr('logs.verboseOn') : l10n.tr('logs.verboseOff'),
                   );
                 },
               ),
               const Divider(height: 1),
               Expanded(
                 child: entries.isEmpty
-                    ? const Center(child: Text('暂无日志'))
+                    ? Center(child: Text(l10n.tr('logs.empty')))
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         itemCount: entries.length,

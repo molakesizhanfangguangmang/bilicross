@@ -3,14 +3,24 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../i18n/app_localizations.dart';
+
 /// 内置网页登录：加载 B 站登录页，登录完把 WebView 里的 Cookie 交给调用方。
 ///
 /// WebView 只有 Android 与 iOS 有实现，其它平台由调用方看 [isSupported] 决定是否显示入口。
 /// 这里只负责取 Cookie，写入与校验仍走账号页原有那一条路。
 class WebLoginPage extends StatefulWidget {
-  const WebLoginPage({required this.onCookie, super.key});
+  const WebLoginPage({
+    required this.onCookie,
+    this.localeCode = kLocaleZhCN,
+    super.key,
+  });
 
   final void Function(String cookieText) onCookie;
+
+  /// 跟随应用语言的设置代码，用来决定登录页请求的 Accept-Language。
+  /// 只影响页面语言，不参与 Cookie 的读取与回传。
+  final String localeCode;
 
   static bool get isSupported => Platform.isAndroid || Platform.isIOS;
 
@@ -31,7 +41,17 @@ class _WebLoginPageState extends State<WebLoginPage> {
   bool _loading = true;
   bool _reading = false;
   bool _handedOff = false;
-  String _status = '登录完成后会自动读取；也可以点右上角手动读取。';
+  bool _statusReady = false;
+  String _status = '';
+
+  /// 登录页请求带的 Accept-Language：跟随应用语言，另一种语言放低权重兜底，
+  /// 避免服务端完全不认识首选语言时给出更差的结果。
+  String get _acceptLanguage => switch (
+        AppLocalizations.resolveCode(widget.localeCode)
+      ) {
+      kLocaleEnUS => 'en-US,en;q=0.9,zh-CN;q=0.8',
+      _ => 'zh-CN,zh;q=0.9,en;q=0.8',
+    };
 
   @override
   void initState() {
@@ -49,11 +69,31 @@ class _WebLoginPageState extends State<WebLoginPage> {
           },
           onWebResourceError: (error) {
             if (!mounted) return;
-            setState(() => _status = '页面加载失败：${error.description}');
+            final l10n = AppLocalizations.of(context);
+            setState(
+              () => _status = l10n.tr(
+                'webLogin.loadFailed',
+                {'error': error.description},
+              ),
+            );
           },
         ),
       )
-      ..loadRequest(Uri.parse(_loginUrl));
+      ..loadRequest(
+        Uri.parse(_loginUrl),
+        headers: {'Accept-Language': _acceptLanguage},
+      );
+  }
+
+  // initState 里拿不到 Localizations（InheritedWidget 还没挂上），
+  // 首次状态文案在 didChangeDependencies 里补。
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_statusReady) {
+      _statusReady = true;
+      _status = AppLocalizations.of(context).tr('webLogin.hint');
+    }
   }
 
   Future<Map<String, String>> _collect() async {
@@ -76,7 +116,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
       final sessData = cookies['SESSDATA'];
       if (sessData == null || sessData.isEmpty) {
         if (!auto && mounted) {
-          setState(() => _status = '还没读到 SESSDATA，先在页面里完成登录。');
+          setState(() => _status = AppLocalizations.of(context).tr('webLogin.noSessdata'));
         }
         return;
       }
@@ -90,7 +130,12 @@ class _WebLoginPageState extends State<WebLoginPage> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _status = '读取 Cookie 失败：$error');
+        setState(
+          () => _status = AppLocalizations.of(context).tr(
+            'webLogin.readFailed',
+            {'error': '$error'},
+          ),
+        );
       }
     } finally {
       _reading = false;
@@ -99,13 +144,14 @@ class _WebLoginPageState extends State<WebLoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('网页登录'),
+        title: Text(l10n.tr('webLogin.title')),
         actions: [
           TextButton(
             onPressed: _reading ? null : () => _readCookies(),
-            child: const Text('读取 Cookie'),
+            child: Text(l10n.tr('webLogin.readCookie')),
           ),
         ],
       ),
