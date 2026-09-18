@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_state.dart';
 import '../core/bili_api.dart';
 import '../i18n/app_localizations.dart';
+import 'qr_login_page.dart';
 import 'web_login.dart';
 import 'widgets.dart';
 
@@ -57,6 +58,13 @@ class AccountPage extends StatelessWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        // 扫码登录是首选入口：只取网页 Cookie，成功后仍走原有
+                        // 保存 → 账号校验 → APP Token 流程。
+                        FilledButton.icon(
+                          onPressed: () => _qrLogin(context),
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: Text(l10n.tr('qr.entry')),
+                        ),
                         OutlinedButton.icon(
                           onPressed: () => _pasteCookie(context),
                           icon: const Icon(Icons.paste),
@@ -90,6 +98,12 @@ class AccountPage extends StatelessWidget {
                       WebLoginPage.isSupported
                           ? l10n.tr('account.webLoginHint')
                           : l10n.tr('account.noBrowserHint'),
+                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    ),
+                    const SizedBox(height: 6),
+                    // 两个入口都摆在明面上：扫码为主，网页/粘贴/导入为兜底。
+                    Text(
+                      l10n.tr('qr.entriesHint'),
                       style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                     ),
                   ],
@@ -196,6 +210,22 @@ class AccountPage extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(state.account.message)),
     );
+  }
+
+  /// 扫码登录：页面只负责拿到 Cookie 文本，后面的保存与校验跟网页登录同一条路。
+  Future<void> _qrLogin(BuildContext context) async {
+    String? captured;
+    await Navigator.of(context).push(
+      MaterialPageRoute<bool>(
+        builder: (routeContext) => QrLoginPage(
+          settings: state.settings,
+          onCookie: (text) => captured = text,
+        ),
+      ),
+    );
+    final text = captured;
+    if (text == null || !context.mounted) return;
+    await _apply(context, text);
   }
 
   Future<void> _webLogin(BuildContext context) async {

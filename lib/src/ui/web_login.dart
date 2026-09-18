@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 
 /// 内置网页登录：加载 B 站登录页，登录完把 WebView 里的 Cookie 交给调用方。
@@ -57,6 +58,9 @@ class _WebLoginPageState extends State<WebLoginPage> {
   void initState() {
     super.initState();
     _controller = WebViewController()
+      // 用桌面 UA：登录页要出 PC 版，扫码登录兜底才走得通；
+      // APP API 与下载各有自己的 UA，互不影响。
+      ..setUserAgent(kDesktopUserAgent)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(

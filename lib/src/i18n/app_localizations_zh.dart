@@ -269,6 +269,28 @@ class AppLocalizationsZh extends AppLocalizations {
     'webLogin.loadFailed': '页面加载失败：{error}',
     'webLogin.noSessdata': '还没读到 SESSDATA，先在页面里完成登录。',
     'webLogin.readFailed': '读取 Cookie 失败：{error}',
+
+    // 扫码登录
+    'qr.entry': '扫码登录',
+    'qr.entryHint': '在应用内显示二维码，用 B 站手机客户端扫码确认；只取网页 Cookie。',
+    'qr.entriesHint': '登录有两个入口：扫码登录；网页登录 / 粘贴 Cookie / 导入 cookie.txt。',
+    'qr.title': '扫码登录',
+    'qr.scanHint': '用 B 站手机客户端扫描二维码，然后在手机上确认登录。',
+    'qr.loading': '正在获取二维码…',
+    'qr.waitingScan': '等待扫码',
+    'qr.waitingConfirm': '已扫码，请在手机上确认',
+    'qr.success': '登录成功',
+    'qr.expired': '二维码已过期，请刷新',
+    'qr.canceled': '已取消扫码登录',
+    'qr.timeout': '等待超时，请刷新二维码',
+    'qr.networkError': '网络错误，正在重试；也可以改用网页登录',
+    'qr.unavailable': '扫码接口暂不可用，请改用网页登录或粘贴 Cookie',
+    'qr.incomplete': '扫码返回的 Cookie 缺少 {fields}，请重新扫码或改用网页登录',
+    'qr.refresh': '刷新二维码',
+    'qr.cancel': '取消登录',
+    'qr.back': '返回账号页',
+    'qr.fallbackHint': '扫码失败不影响其它登录方式：'
+        '网页登录、粘贴 Cookie、导入 cookie.txt 都仍然可用。',
   };
 
   @override

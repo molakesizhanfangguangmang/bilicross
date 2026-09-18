@@ -284,6 +284,32 @@ class AppLocalizationsEn extends AppLocalizations {
     'webLogin.loadFailed': 'Page failed to load: {error}',
     'webLogin.noSessdata': 'No SESSDATA yet. Finish signing in first.',
     'webLogin.readFailed': 'Failed to read cookie: {error}',
+
+    // QR sign-in
+    'qr.entry': 'Scan QR to sign in',
+    'qr.entryHint': 'Shows a QR code inside the app; scan it with the Bilibili '
+        'mobile app. Only the web cookie is taken.',
+    'qr.entriesHint': 'Two ways in: scan a QR code, or use web sign-in / paste a '
+        'cookie / import cookie.txt.',
+    'qr.title': 'QR sign-in',
+    'qr.scanHint': 'Scan the QR code with the Bilibili mobile app, then confirm '
+        'the sign-in on your phone.',
+    'qr.loading': 'Requesting QR code…',
+    'qr.waitingScan': 'Waiting for scan',
+    'qr.waitingConfirm': 'Scanned — confirm on your phone',
+    'qr.success': 'Signed in',
+    'qr.expired': 'QR code expired, refresh it',
+    'qr.canceled': 'QR sign-in canceled',
+    'qr.timeout': 'Timed out — refresh the QR code',
+    'qr.networkError': 'Network error, retrying; web sign-in still works',
+    'qr.unavailable': 'QR service unavailable — use web sign-in or paste a cookie',
+    'qr.incomplete': 'The cookie from the QR code is missing {fields}; scan again '
+        'or use web sign-in',
+    'qr.refresh': 'Refresh QR code',
+    'qr.cancel': 'Cancel sign-in',
+    'qr.back': 'Back to account',
+    'qr.fallbackHint': 'A failed scan does not affect the other ways in: web '
+        'sign-in, pasting a cookie and importing cookie.txt all still work.',
   };
 
   @override

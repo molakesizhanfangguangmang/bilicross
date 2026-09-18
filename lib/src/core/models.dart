@@ -20,6 +20,14 @@ const String kFallbackUserAgent = 'Mozilla/5.0';
 /// 网页地址下载必须带这个 Referer；移动端地址带了会被 CDN 403。
 const String kSiteReferer = 'https://www.bilibili.com/';
 
+/// 桌面浏览器 UA：扫码登录接口与内置网页登录页都用它。
+/// 这两处要的是 PC 站行为（二维码取码、登录页展示），
+/// 移动端 UA 会被 passport 按 H5 处理，走不到同一套网页 Cookie。
+/// 注意：下载与 APP API 不用它，那两条路各有自己的 UA（见 kAppUserAgent / kFallbackUserAgent）。
+const String kDesktopUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 /// UA 配置留空时回落到 [kFallbackUserAgent]。
 String effectiveUserAgent(String raw) {
   final value = raw.trim();

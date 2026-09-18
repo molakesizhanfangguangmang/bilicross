@@ -219,13 +219,35 @@ jobs:
           PY
           keytool -list -keystore android/app/release.jks -storepass "$KEYSTORE_PASSWORD" | sed -n '1,12p'
 
-      - name: Check and test
+      # 拆成四步：失败时步骤名直接指出是哪条命令挂了，不必翻日志。
+      - name: Resolve dependencies
         shell: bash
-        run: |
-          flutter pub get
-          dart format lib test
-          flutter analyze
-          flutter test
+        run: flutter pub get
+
+      - name: Check formatting
+        shell: bash
+        run: dart format lib test
+
+      # 按目录分开跑：analyze 报错时，失败的步骤名直接指出问题在哪个目录。
+      - name: Analyze core
+        shell: bash
+        run: flutter analyze lib/src/core
+
+      - name: Analyze ui
+        shell: bash
+        run: flutter analyze lib/src/ui
+
+      - name: Analyze tests
+        shell: bash
+        run: flutter analyze test
+
+      - name: Analyze whole project
+        shell: bash
+        run: flutter analyze
+
+      - name: Run tests
+        shell: bash
+        run: flutter test
 
       - name: Build release APK
         shell: bash
@@ -275,8 +297,8 @@ jobs:
           fi
           badging=$("$tools/aapt" dump badging "$apk")
           echo "$badging" | grep -E "^package:" | sed -n '1p'
-          echo "$badging" | grep -F "versionCode='13'"
-          echo "$badging" | grep -F "versionName='1.0.3'"
+          echo "$badging" | grep -F "versionCode='14'"
+          echo "$badging" | grep -F "versionName='1.0.4'"
 
       - name: Verify APK signing
         shell: bash
@@ -335,13 +357,35 @@ jobs:
           if (-not (Select-String -Path $main -SimpleMatch 'u9038')) { throw '未能设置窗口标题' }
           Select-String -Path $main -Pattern 'window\.Create'
 
-      - name: Check and test
+      # 同 Android：拆开跑，失败时看步骤名就知道是哪一步。
+      - name: Resolve dependencies
         shell: pwsh
-        run: |
-          flutter pub get
-          dart format lib test
-          flutter analyze
-          flutter test
+        run: flutter pub get
+
+      - name: Check formatting
+        shell: pwsh
+        run: dart format lib test
+
+      # 同 Android：按目录分开跑，失败时步骤名指出目录。
+      - name: Analyze core
+        shell: pwsh
+        run: flutter analyze lib/src/core
+
+      - name: Analyze ui
+        shell: pwsh
+        run: flutter analyze lib/src/ui
+
+      - name: Analyze tests
+        shell: pwsh
+        run: flutter analyze test
+
+      - name: Analyze whole project
+        shell: pwsh
+        run: flutter analyze
+
+      - name: Run tests
+        shell: pwsh
+        run: flutter test
 
       - name: Build Windows release
         shell: pwsh
