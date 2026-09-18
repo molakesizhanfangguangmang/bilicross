@@ -68,29 +68,6 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
-              SectionCard(
-                title: l10n.tr('settings.language'),
-                child: DropdownButtonFormField<String>(
-                  initialValue: settings.localeCode,
-                  decoration: InputDecoration(
-                    labelText: l10n.tr('settings.language'),
-                    prefixIcon: const Icon(Icons.translate),
-                  ),
-                  items: [
-                    for (final code in kLocaleCodes)
-                      DropdownMenuItem(
-                        value: code,
-                        child: Text(_localeName(l10n, code)),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    state.setLocale(value);
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
               SectionCard(
                 title: l10n.tr('settings.download'),
                 child: Column(
@@ -360,6 +337,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 24),
+              // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
+              // 放在最后：换语言是低频操作，没必要占着第一屏。
+              SectionCard(
+                title: l10n.tr('settings.language'),
+                child: DropdownButtonFormField<String>(
+                  initialValue: settings.localeCode,
+                  decoration: InputDecoration(
+                    labelText: l10n.tr('settings.language'),
+                    prefixIcon: const Icon(Icons.translate),
+                  ),
+                  items: [
+                    for (final code in kLocaleCodes)
+                      DropdownMenuItem(
+                        value: code,
+                        child: Text(_localeName(l10n, code)),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    state.setLocale(value);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.info_outline),
