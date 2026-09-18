@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -101,15 +100,9 @@ class _BackupCardState extends State<BackupCard> {
       );
       final file = picked.firstOrNull;
       if (file == null) return;
-      final Uint8List bytes;
       final path = file.path;
-      if (file.bytes != null) {
-        bytes = Uint8List.fromList(file.bytes!);
-      } else if (path != null) {
-        bytes = await File(path).readAsBytes();
-      } else {
-        return;
-      }
+      if (path == null) return;
+      final bytes = await File(path).readAsBytes();
 
       // 先校验再让用户确认：格式、认证标签、载荷结构都要过。
       final plan = await service.plan(bytes);
