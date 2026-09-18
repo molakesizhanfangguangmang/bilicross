@@ -613,6 +613,7 @@ class AppSettings {
     this.partsPerFile = 4,
     this.preferFfmpegMux = true,
     this.localeCode = kLocaleZhCN,
+    this.closeToTray = true,
   });
 
   String downloadDir;
@@ -642,6 +643,10 @@ class AppSettings {
   /// 默认与旧配置缺失时都是 'zh-CN'，新装和升级上来都从简体中文开始。
   String localeCode;
 
+  /// 关闭主窗口的行为：true 最小化到系统托盘（下载继续跑），false 直接退出。
+  /// 只对 Windows 生效；其它平台读不到也不使用。
+  bool closeToTray;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -659,6 +664,7 @@ class AppSettings {
         'parts_per_file': partsPerFile,
         'prefer_ffmpeg_mux': preferFfmpegMux,
         'locale_code': localeCode,
+        'close_to_tray': closeToTray,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -678,6 +684,7 @@ class AppSettings {
         partsPerFile: (json['parts_per_file'] as num?)?.toInt() ?? 4,
         preferFfmpegMux: json['prefer_ffmpeg_mux'] as bool? ?? true,
         localeCode: normalizeLocaleCode(json['locale_code'] as String?),
+        closeToTray: json['close_to_tray'] as bool? ?? true,
       );
 }
 

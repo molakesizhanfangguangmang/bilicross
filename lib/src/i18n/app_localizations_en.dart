@@ -331,6 +331,18 @@ class AppLocalizationsEn extends AppLocalizations {
     'backup.failed': 'Restore failed: {error}',
     'backup.noKey': 'This build has no backup key configured, exporting is not '
         'possible',
+
+    // Tray and close behaviour (Windows)
+    'tray.show': 'Show window',
+    'tray.folder': 'Open download folder',
+    'tray.pauseAll': 'Pause all tasks',
+    'tray.quit': 'Quit',
+    'settings.closeBehavior': 'Close behaviour',
+    'settings.closeToTray': 'Minimize to tray on close',
+    'settings.closeToExit': 'Exit on close',
+    'quit.title': 'Confirm exit',
+    'quit.body': 'Tasks are still running and will be interrupted. Quit anyway?',
+    'quit.ok': 'Quit',
   };
 
   @override

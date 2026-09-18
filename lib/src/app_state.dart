@@ -143,6 +143,27 @@ class AppState extends ChangeNotifier {
     await refreshAccount();
   }
 
+  /// 正在跑的任务数（解析中 / 下载中 / 合并中）。退出前用它判断要不要二次确认。
+  int get activeTaskCount => tasks
+      .where((task) =>
+          task.stage == TaskStage.resolving ||
+          task.stage == TaskStage.downloading ||
+          task.stage == TaskStage.muxing)
+      .length;
+
+  /// 暂停全部正在跑的任务（托盘菜单用）。暂停保留分片，之后可以继续；
+  /// 不会把用户主动暂停记成下载失败。
+  void pauseAllActive() {
+    for (final task in tasks) {
+      if (task.stage == TaskStage.resolving ||
+          task.stage == TaskStage.downloading ||
+          task.stage == TaskStage.muxing) {
+        pauseTask(task.id);
+      }
+    }
+    notifyListeners();
+  }
+
   /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
   /// 不重启应用，也不重建任务与凭据，只影响文案。
   /// 非法代码直接忽略——磁盘上的旧数据归一化交给 fromJson，这里不该把

@@ -307,6 +307,18 @@ class AppLocalizationsZh extends AppLocalizations {
     'backup.pending': '有 {count} 个任务指向的目录不存在，需要手动处理',
     'backup.failed': '恢复失败：{error}',
     'backup.noKey': '当前构建没有配置备份密钥，无法导出备份',
+
+    // 托盘与关闭行为（Windows）
+    'tray.show': '显示主窗口',
+    'tray.folder': '打开下载目录',
+    'tray.pauseAll': '暂停全部任务',
+    'tray.quit': '退出应用',
+    'settings.closeBehavior': '关闭行为',
+    'settings.closeToTray': '关闭窗口时最小化到托盘',
+    'settings.closeToExit': '关闭窗口时退出应用',
+    'quit.title': '确认退出',
+    'quit.body': '还有正在进行的任务，退出会中断它们。确定要退出吗？',
+    'quit.ok': '退出',
   };
 
   @override

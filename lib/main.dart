@@ -1,16 +1,24 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/app_state.dart';
+import 'src/core/log_store.dart';
 import 'src/core/update_check.dart';
 import 'src/i18n/app_localizations.dart';
 import 'src/i18n/app_localizations_zh.dart';
+import 'src/platform/windows/desktop_shell.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/widgets.dart';
+
+/// 全局导航键：托盘菜单与退出确认要在没有页面 context 的地方弹对话框。
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() => runApp(const BiliCrossApp());
 
@@ -56,6 +64,9 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         }
         // 换语言必须重建 MaterialApp：locale 变了整棵树的 Localizations 都要换，
         // 只重建 AppShell 不够。所以监听放在 MaterialApp 外面这一层。
+        // Windows 上把窗口与托盘接起来：只做平台外壳，业务动作走回调。
+        // 失败只记日志，不影响应用本身（托盘不可用也得能用软件）。
+        unawaited(_attachDesktopShell(state));
         return ListenableBuilder(
           listenable: state,
           builder: (context, _) => _buildApp(state),
@@ -64,11 +75,79 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     );
   }
 
+  DesktopShell? _shell;
+
+  Future<void> _attachDesktopShell(AppState state) async {
+    if (!DesktopShell.isSupported) return;
+    final l10n = AppLocalizations.fromCode(state.settings.localeCode);
+    final shell = _shell ??= DesktopShell(
+      labels: DesktopShellLabels(
+        show: l10n.tr('tray.show'),
+        openFolder: l10n.tr('tray.folder'),
+        pauseAll: l10n.tr('tray.pauseAll'),
+        quit: l10n.tr('tray.quit'),
+      ),
+      onShow: () async {},
+      onOpenFolder: () async {
+        final dir = state.settings.downloadDir.trim();
+        if (dir.isEmpty) return;
+        // 用系统文件管理器打开下载目录；失败只记日志，不打断用户。
+        try {
+          await Process.run('explorer', <String>[dir]);
+        } on Object catch (error) {
+          LogStore.instance.add('托盘', '打开下载目录失败：$error');
+        }
+      },
+      onPauseAll: () async {
+        state.pauseAllActive();
+      },
+      onConfirmQuit: () async {
+        if (state.activeTaskCount == 0) return true;
+        final context = navigatorKey.currentContext;
+        if (context == null) return true;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            final t = AppLocalizations.of(context);
+            return AlertDialog(
+              title: Text(t.tr('quit.title')),
+              content: Text(t.tr('quit.body')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(t.tr('common.cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(t.tr('quit.ok')),
+                ),
+              ],
+            );
+          },
+        );
+        // 用户取消：任务继续跑，什么都不做。
+        return confirmed ?? false;
+      },
+    );
+    if (_shellAttached) return;
+    await shell.initialize(closeToTray: state.settings.closeToTray);
+    _shellAttached = true;
+    // 设置里改了关闭行为，这里跟着换。
+    state.addListener(() {
+      shell.applyCloseBehavior(state.settings.closeToTray);
+    });
+  }
+
+  bool _shellAttached = false;
+
+  }
+
   Widget _buildApp(AppState state) {
     final l10n = AppLocalizations.fromCode(state.settings.localeCode);
     const seed = Color(0xff2f6f65);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       title: l10n.tr('app.name'),
       // 'system' 交给框架按系统语言挑，其余按设置锁定。
       locale: state.settings.localeCode == kLocaleSystem ? null : l10n.locale,

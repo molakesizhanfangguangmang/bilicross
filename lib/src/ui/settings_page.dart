@@ -342,6 +342,33 @@ class _SettingsPageState extends State<SettingsPage> {
               // 靠备份互相迁移；安卓侧不显示这个入口，界面保持原样。
               if (windows) ...[
                 BackupCard(state: state),
+                const SizedBox(height: 12),
+                // 关闭行为：默认最小化到托盘，任务继续跑；选「退出」才真退。
+                SectionCard(
+                  title: l10n.tr('settings.closeBehavior'),
+                  child: DropdownButtonFormField<bool>(
+                    initialValue: settings.closeToTray,
+                    decoration: InputDecoration(
+                      labelText: l10n.tr('settings.closeBehavior'),
+                      prefixIcon: const Icon(Icons.exit_to_app_outlined),
+                    ),
+                    items: [
+                      DropdownMenuItem<bool>(
+                        value: true,
+                        child: Text(l10n.tr('settings.closeToTray')),
+                      ),
+                      DropdownMenuItem<bool>(
+                        value: false,
+                        child: Text(l10n.tr('settings.closeToExit')),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      settings.closeToTray = value;
+                      setState(() {});
+                    },
+                  ),
+                ),
                 const SizedBox(height: 24),
               ],
               // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
