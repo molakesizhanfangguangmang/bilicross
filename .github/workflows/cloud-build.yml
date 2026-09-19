@@ -270,6 +270,12 @@ jobs:
         shell: bash
         run: node packaging/android/patch-secure-window.js
 
+      # 内部测试版：换 applicationId，让它能与正式版同时安装、数据各自隔离。
+      # 同包名不同签名会装不上，同包名同签名会覆盖安装，只有不同包名才能并存。
+      - name: Use test applicationId (allow side-by-side install)
+        shell: bash
+        run: node packaging/android/patch-app-id.js .test
+
       - name: Build release APK
         shell: bash
         # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。
