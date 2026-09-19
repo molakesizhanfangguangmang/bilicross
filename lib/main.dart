@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'src/app_state.dart';
 import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
+import 'src/core/splash_config.dart';
 import 'src/core/startup_check.dart';
 import 'src/core/update_check.dart';
 import 'src/i18n/app_localizations.dart';
@@ -17,6 +18,7 @@ import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
+import 'src/ui/splash_screen.dart';
 import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/widgets.dart';
@@ -58,6 +60,23 @@ class BiliCrossApp extends StatefulWidget {
 
 class _BiliCrossAppState extends State<BiliCrossApp> {
   final Future<AppState> _loading = AppState.load();
+
+  /// 开屏是否已经放完。null 表示还没判断（设置还没读出来）。
+  bool? _splashDone;
+
+  /// 需要显示的开屏图；没有就是 null。
+  File? _splashImage;
+
+  /// 开屏配置判完之后才有意义：只有「开启 + 图存在」才走开屏。
+  void _prepareSplash(AppState state) {
+    if (_splashDone != null) return;
+    final settings = state.settings;
+    final file = splashImageFile(state.store.root);
+    final usable = settings.splashEnabled && file.existsSync();
+    _splashImage = usable ? file : null;
+    // 不显示开屏时直接标记完成，主界面立刻出来。
+    _splashDone = !usable;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,9 +120,35 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
           _shellAttachStarted = true;
           unawaited(_attachDesktopShell(state));
         }
-        return ListenableBuilder(
-          listenable: state,
-          builder: (context, _) => _buildApp(state),
+        _prepareSplash(state);
+        final image = _splashImage;
+        final showingSplash = _splashDone != true && image != null;
+        // 开屏与主界面之间做交叉淡化：图渐隐、界面渐显，而不是硬切。
+        // AnimatedSwitcher 按 key 区分两个子树（两个 MaterialApp 是不同实例），
+        // 切换时同时跑淡出与淡入。
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 420),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: showingSplash
+              ? MaterialApp(
+                  key: const ValueKey<String>('splash'),
+                  debugShowCheckedModeBanner: false,
+                  home: SplashScreen(
+                    image: image,
+                    seconds: state.settings.splashSeconds,
+                    onDone: () {
+                      if (mounted) setState(() => _splashDone = true);
+                    },
+                  ),
+                )
+              : KeyedSubtree(
+                  key: const ValueKey<String>('main'),
+                  child: ListenableBuilder(
+                    listenable: state,
+                    builder: (context, _) => _buildApp(state),
+                  ),
+                ),
         );
       },
     );
@@ -241,7 +286,7 @@ class _AppShellState extends State<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdateOnce());
   }
 
-  /// 启动后静默查一次更新：有新版弹确认框，查不到提示一句，已是最新不出声。
+  /// 启动后静默查一次更新：有新版弹说明弹窗，查不到提示一句，已是最新不出声。
   /// Android 与 Windows 都查：前者换侧载包，后者换安装包/便携包。
   Future<void> _checkUpdateOnce() async {
     if (!mounted) return;
@@ -252,7 +297,13 @@ class _AppShellState extends State<AppShell> {
     }
     final result = await checkForUpdate();
     if (!mounted) return;
-    await handleUpdateResult(context, result, notifyWhenUpToDate: false);
+    // Android 的 apk 由 CI 按 ABI 出包，当前只发 arm64；能装上就说明是这一种。
+    await handleUpdateResult(
+      context,
+      result,
+      notifyWhenUpToDate: false,
+      androidAbi: Platform.isAndroid ? 'arm64-v8a' : null,
+    );
   }
 
   List<NavigationDestination> _destinations(AppLocalizations l10n) => [

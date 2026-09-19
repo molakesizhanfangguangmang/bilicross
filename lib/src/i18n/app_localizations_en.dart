@@ -38,7 +38,9 @@ class AppLocalizationsEn extends AppLocalizations {
     'about.version': 'Current version {version}',
     'about.upToDate': 'Already up to date',
     'about.checkFailed': 'Update check failed',
-    'about.updateFound': 'Update {version} found. Open the release page?',
+    'about.updateFound': 'Version {version} available',
+    'about.download': 'Download',
+    'about.openRelease': 'Open release page',
 
     // Account and authorization
     'account.title': 'Account & authorization',
@@ -261,6 +263,25 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.languageSystem': 'Follow system',
     'settings.languageZh': '简体中文',
     'settings.languageEn': 'English',
+    'settings.advanced': 'Advanced',
+    'settings.advancedHint': 'Splash screen, logs and about',
+
+    // Splash screen
+    'splash.title': 'Splash screen',
+    'splash.enable': 'Show splash screen',
+    'splash.enableHint': 'Show your own image while starting up',
+    'splash.imageSet': 'Image set',
+    'splash.imageNone': 'No image chosen',
+    'splash.pickImage': 'Choose image',
+    'splash.clearImage': 'Clear image',
+    'splash.imageSaved': 'Saved. Takes effect on next launch',
+    'splash.imageCleared': 'Cleared',
+    'splash.imageFailed': 'Failed to save the image',
+    'splash.imageFailedWith': 'Failed to save the image: {error}',
+    'splash.seconds': 'Hold for {value} s',
+    'splash.hint':
+        'The image is copied into the app data folder, so moving or deleting '
+        'the original does not affect it.',
 
     // Log page
     'logs.title': 'Run log',

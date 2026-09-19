@@ -152,11 +152,18 @@ void main() {
   });
 
   group('版本号', () {
-    test('pubspec 版本为 1.0.6+16', () {
+    test('pubspec 版本号格式为 x.y.z+build', () {
       final text = File('pubspec.yaml').readAsStringSync();
-      final match = RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(text);
+      final match =
+          RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(text);
       expect(match, isNotNull, reason: 'pubspec.yaml 里找不到 version 字段');
-      expect(match!.group(1), '1.0.6+16');
+      // 只校验格式，不锁定具体版本：发版时改 pubspec 即可，
+      // 不必连测试一起改（那样每发一次版都要动测试，容易漏）。
+      expect(
+        match!.group(1),
+        matches(RegExp(r'^\d+\.\d+\.\d+\+\d+$')),
+        reason: '版本号应形如 1.2.3+4',
+      );
     });
   });
 }

@@ -316,8 +316,8 @@ jobs:
           fi
           badging=$("$tools/aapt" dump badging "$apk")
           echo "$badging" | grep -E "^package:" | sed -n '1p'
-          echo "$badging" | grep -F "versionCode='16'"
-          echo "$badging" | grep -F "versionName='1.0.6'"
+          echo "$badging" | grep -F "versionCode='17'"
+          echo "$badging" | grep -F "versionName='1.0.7'"
 
       - name: Verify APK signing
         shell: bash
@@ -334,13 +334,34 @@ jobs:
             exit 1
           fi
 
+      - name: Name APK after version and ABI
+        shell: bash
+        run: |
+          # gradle 默认产物名是 app-release.apk，不含版本与架构。
+          # 发布产物统一成 BiliCross-<版本>-android-arm64.apk，
+          # 应用内更新按名字挑包时才能与 Windows 包用同一套规则。
+          version=$(sed -n 's/^version:[[:space:]]*\([0-9.]*\).*/\1/p' pubspec.yaml | head -1)
+          if [ -z "$version" ]; then
+            echo '未从 pubspec.yaml 读到版本号' >&2
+            exit 1
+          fi
+          cd build/app/outputs/flutter-apk
+          target="BiliCross-${version}-android-arm64.apk"
+          mv app-release.apk "$target"
+          if [ -f app-release.apk.sha256 ]; then
+            sum=$(cut -d' ' -f1 app-release.apk.sha256)
+            rm -f app-release.apk.sha256
+            printf '%s  %s\n' "$sum" "$target" > "$target.sha256"
+          fi
+          ls -la
+
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: BiliCross-android-arm64
           path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/app-release.apk.sha256
+            build/app/outputs/flutter-apk/BiliCross-*-android-arm64.apk
+            build/app/outputs/flutter-apk/BiliCross-*-android-arm64.apk.sha256
           if-no-files-found: error
 
   windows-x64:
@@ -375,6 +396,40 @@ jobs:
           Set-Content $main $text -NoNewline -Encoding utf8
           if (-not (Select-String -Path $main -SimpleMatch 'u9038')) { throw '未能设置窗口标题' }
           Select-String -Path $main -Pattern 'window\.Create'
+
+      # Flutter 首帧上屏之前，窗口显示的是系统默认白底；开了启动画面时尤其突兀。
+      # 给窗口挂深色画刷并立即重绘。只改 windows/runner/main.cpp（该目录不入仓）。
+      # 注意：main.cpp 是 UTF-8 with BOM，写回必须补回 BOM，否则 MSVC 按本地代码页
+      # 解析会报 C4819 并被 /WX 提升为错误；注入的注释一律用 ASCII。
+      - name: Use dark background before first frame
+        shell: pwsh
+        run: |
+          $main = 'windows\runner\main.cpp'
+          $text = [System.IO.File]::ReadAllText($main)
+          if ($text -notmatch 'kBiliCrossSplashBrush') {
+            $anchor = 'window.SetQuitOnClose(true);'
+            if ($text -notmatch [regex]::Escape($anchor)) { throw "main.cpp 里找不到 $anchor" }
+            $inject = @'
+window.SetQuitOnClose(true);
+
+  // Before the first Flutter frame reaches the screen the window shows the
+  // system default white background. Attach a dark brush and repaint once so
+  // startup does not flash white.
+  {
+    const COLORREF kBiliCrossSplashColor = RGB(0x14, 0x16, 0x18);
+    HBRUSH kBiliCrossSplashBrush = CreateSolidBrush(kBiliCrossSplashColor);
+    SetClassLongPtr(window.GetHandle(), GCLP_HBRBACKGROUND,
+                    reinterpret_cast<LONG_PTR>(kBiliCrossSplashBrush));
+    InvalidateRect(window.GetHandle(), nullptr, TRUE);
+    UpdateWindow(window.GetHandle());
+  }
+'@
+            $text = $text.Replace($anchor, $inject.TrimEnd("`r", "`n"))
+            $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+            [System.IO.File]::WriteAllText($main, $text, $utf8Bom)
+          }
+          if (-not (Select-String -Path $main -SimpleMatch 'kBiliCrossSplashBrush')) { throw '深色背景未注入' }
+          Select-String -Path $main -Pattern 'kBiliCrossSplashBrush'
 
       # flutter_inappwebview_windows 0.6.0 的 C++ 用了 <experimental/coroutine> + /await，
       # 新版 MSVC（CI 上是 14.51）把它升级成硬错误（STL1011）。定义

@@ -2,12 +2,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
-import '../core/log_store.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
-import 'about_dialog.dart';
+import 'advanced_page.dart';
 import 'backup_card.dart';
-import 'log_page.dart';
+import 'expand_page_route.dart';
 import 'widgets.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -20,6 +19,9 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  /// 高级设置入口卡片的 key：展开动画要以它的屏幕位置为起点。
+  final GlobalKey _advancedKey = GlobalKey();
+
   late final TextEditingController _dir =
       TextEditingController(text: widget.state.settings.downloadDir);
   late final TextEditingController _ffmpeg =
@@ -307,27 +309,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              SectionCard(
-                title: l10n.tr('settings.diagnostics'),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.receipt_long_outlined),
-                  title: Text(l10n.tr('settings.logs')),
-                  subtitle: Text(
-                    LogStore.instance.filePath == null
-                        ? l10n.tr('settings.logsHint')
-                        : l10n.tr('settings.logFile', {
-                            'path': '${LogStore.instance.filePath}',
-                          }),
-                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (context) => const LogPage()),
-                  ),
-                ),
-              ),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerLeft,
@@ -371,8 +352,32 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 24),
               ],
+              // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
+              // 放在主页会把常用设置挤下去。语言留在主页，新用户要能一眼找到。
+              Card(
+                key: _advancedKey,
+                child: ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: Text(l10n.tr('settings.advanced')),
+                  subtitle: Text(
+                    l10n.tr('settings.advancedHint'),
+                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    // 从这个卡片的位置展开到整页：先把矩形算出来再推路由。
+                    Navigator.of(context).push(
+                      ExpandPageRoute<void>(
+                        sourceRect: globalRectOf(_advancedKey.currentContext!),
+                        builder: (context) =>
+                            AdvancedSettingsPage(state: state),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
               // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
-              // 放在最后：换语言是低频操作，没必要占着第一屏。
               SectionCard(
                 title: l10n.tr('settings.language'),
                 child: DropdownButtonFormField<String>(
@@ -392,19 +397,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (value == null) return;
                     state.setLocale(value);
                   },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: Text(l10n.tr('settings.about')),
-                  subtitle: Text(
-                    l10n.tr('settings.aboutHint'),
-                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showAppAboutDialog(context),
                 ),
               ),
             ],

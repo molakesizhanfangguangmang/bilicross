@@ -5,6 +5,14 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/log_store.dart';
+import 'caption_color.dart';
+
+/// 原生窗口的标题。
+///
+/// 必须与 `windows/runner/main.cpp` 里 `window.Create(L"...")` 的值一致
+/// （CI 的 Apply icon and window title 步骤会把它设成同一串）。
+/// 给标题栏上色时按这个标题用 `FindWindowW` 找窗口。
+const String _kWindowTitle = '逸轨';
 
 /// Windows 的窗口与托盘外壳。
 ///
@@ -63,7 +71,16 @@ class DesktopShell with WindowListener, TrayListener {
       // （此时 _closeToTray 为 true，点关闭会隐藏到托盘，用户可以从任务栏图标唤回）。
       LogStore.instance.add('托盘', '初始化失败：$error');
     }
+    _applyCaptionColor();
     _initialized = true;
+  }
+
+  /// 把系统标题栏染成与界面同色。
+  ///
+  /// 放在托盘初始化之后：此时窗口已经创建并显示了标题，`FindWindowW` 才能按标题找到它。
+  void _applyCaptionColor() {
+    // 取界面底色 0xfff6f7f5 附近的一档，跟内容区贴近又不至于分不清边界。
+    applyCaptionColorByTitle(_kWindowTitle, 0xf3, 0xf4, 0xf2);
   }
 
   /// 设置页改了关闭行为：关闭即退出 / 最小化到托盘。

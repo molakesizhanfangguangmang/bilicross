@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/distribution.dart';
+import '../core/release_target.dart';
 import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
+import 'update_dialog.dart';
 
 /// 关于弹窗顶部的图：应用图标的原图（1440×2038，直接打进包里）。
 const String kAppIconAsset = 'assets/branding/app_icon.png';
@@ -20,14 +25,22 @@ Future<void> showAppAboutDialog(BuildContext context) async {
   await handleUpdateResult(context, result, notifyWhenUpToDate: true);
 }
 
-/// 更新检查结果的统一出口：有新版弹确认框，其余在底部给一句话。
+/// 更新检查结果的统一出口：有新版弹说明弹窗，其余在底部给一句话。
+///
+/// [androidAbi] 由调用方传 `Abi.current()` 的结果：Android 上拿不到
+/// `Platform.environment`，只能这样把 ABI 传进来。
 Future<void> handleUpdateResult(
   BuildContext context,
   UpdateCheckResult result, {
   required bool notifyWhenUpToDate,
+  String? androidAbi,
 }) async {
   if (result.outcome == UpdateOutcome.available) {
-    await showUpdateConfirmDialog(context, result);
+    await showUpdateAvailableDialog(
+      context,
+      result: result,
+      downloadUrl: _pickDownloadUrl(result.assets, androidAbi: androidAbi),
+    );
     return;
   }
   if (result.outcome == UpdateOutcome.upToDate && !notifyWhenUpToDate) return;
@@ -43,64 +56,18 @@ Future<void> handleUpdateResult(
     );
 }
 
-/// 「检测到更新 v1.0.2，是否前往」。
-Future<void> showUpdateConfirmDialog(
-  BuildContext context,
-  UpdateCheckResult result,
-) async {
-  final l10n = AppLocalizations.of(context);
-  final go = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) {
-      return Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              IconButton(
-                tooltip: l10n.tr('common.close'),
-                iconSize: 18,
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                icon: const Icon(Icons.close),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    l10n.tr('about.updateFound', {'version': result.latestLabel}),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: Text(l10n.tr('common.no')),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: Text(l10n.tr('common.yes')),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
+/// 按当前平台、架构与发行通道挑出该下载哪一个产物；挑不到返回 null。
+///
+/// 挑不到时弹窗会退回 Release 页面，不让用户卡在一个点不动的按钮上。
+String? _pickDownloadUrl(List<ReleaseAsset> assets, {String? androidAbi}) {
+  final asset = pickAssetFor(
+    assets: assets,
+    isWindows: Platform.isWindows,
+    isAndroid: Platform.isAndroid,
+    channel: channelFromDefine(),
+    arch: currentArch(abiName: androidAbi),
   );
-  if (go != true) return;
-  if (!context.mounted) return;
-  await openExternalUrl(context, result.releaseUrl);
+  return asset?.downloadUrl;
 }
 
 /// 用系统浏览器打开地址；打不开就提示一句，不往外抛异常。

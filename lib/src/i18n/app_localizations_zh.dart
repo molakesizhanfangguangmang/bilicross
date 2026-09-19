@@ -37,7 +37,9 @@ class AppLocalizationsZh extends AppLocalizations {
     'about.version': '当前版本 {version}',
     'about.upToDate': '已是最新',
     'about.checkFailed': '检测更新失败',
-    'about.updateFound': '检测到更新 {version}，是否前往',
+    'about.updateFound': '检测到新版本 {version}',
+    'about.download': '下载',
+    'about.openRelease': '前往 Release 页面',
 
     // 账号与授权
     'account.title': '账号与授权',
@@ -248,6 +250,23 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.languageSystem': '跟随系统',
     'settings.languageZh': '简体中文',
     'settings.languageEn': 'English',
+    'settings.advanced': '高级设置',
+    'settings.advancedHint': '启动画面、日志与关于',
+
+    // 启动画面
+    'splash.title': '启动画面',
+    'splash.enable': '显示启动画面',
+    'splash.enableHint': '启动时先显示你选的图片',
+    'splash.imageSet': '已设置图片',
+    'splash.imageNone': '还没有选图片',
+    'splash.pickImage': '选择图片',
+    'splash.clearImage': '清除图片',
+    'splash.imageSaved': '图片已保存，下次启动生效',
+    'splash.imageCleared': '已清除',
+    'splash.imageFailed': '图片保存失败',
+    'splash.imageFailedWith': '图片保存失败：{error}',
+    'splash.seconds': '停留时间 {value} 秒',
+    'splash.hint': '图片会复制到应用数据目录，原文件移动或删除都不影响。',
 
     // 日志页
     'logs.title': '运行日志',

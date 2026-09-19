@@ -32,6 +32,8 @@ class UpdateCheckResult {
     this.currentVersion = '',
     this.latestVersion = '',
     this.releaseUrl = kReleaseListUrl,
+    this.notes = '',
+    this.assets = const <ReleaseAsset>[],
   });
 
   final UpdateOutcome outcome;
@@ -44,6 +46,12 @@ class UpdateCheckResult {
 
   final String releaseUrl;
 
+  /// Release 说明原文（Markdown），可能为空。
+  final String notes;
+
+  /// 该 Release 附带的产物列表，用于按平台挑下载直链。
+  final List<ReleaseAsset> assets;
+
   /// 展示用的远端版本号，保证带 `v` 前缀。
   String get latestLabel {
     if (latestVersion.isEmpty) return latestVersion;
@@ -51,6 +59,29 @@ class UpdateCheckResult {
     if (first == 'v' || first == 'V') return latestVersion;
     return 'v$latestVersion';
   }
+}
+
+/// Release 里的一个产物文件。
+class ReleaseAsset {
+  const ReleaseAsset({
+    required this.name,
+    required this.downloadUrl,
+    this.sizeBytes = 0,
+  });
+
+  final String name;
+  final String downloadUrl;
+  final int sizeBytes;
+
+  /// 下载体积的展示文本；大小为 0 时返回空串。
+  String get readableSize {
+    if (sizeBytes <= 0) return '';
+    final mb = sizeBytes / 1024 / 1024;
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(sizeBytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  bool get isChecksum => name.toLowerCase().endsWith('.sha256');
 }
 
 /// 版本号只比数字段：去掉 `v` 前缀，丢掉 `+构建号` 与 `-预发布` 后缀。
@@ -98,6 +129,37 @@ Map<String, String>? readLatestRelease(Object? payload) {
   };
 }
 
+/// 取 Release 说明原文。GitHub 返回的 `body` 就是 Markdown 说明。
+String readReleaseNotes(Object? payload) {
+  if (payload is! Map) return '';
+  final body = payload['body'];
+  return body is String ? body.trim() : '';
+}
+
+/// 取 Release 附带的产物列表。结构异常或字段缺失的条目直接跳过。
+List<ReleaseAsset> readReleaseAssets(Object? payload) {
+  if (payload is! Map) return const <ReleaseAsset>[];
+  final raw = payload['assets'];
+  if (raw is! List) return const <ReleaseAsset>[];
+  final assets = <ReleaseAsset>[];
+  for (final item in raw) {
+    if (item is! Map) continue;
+    final name = item['name'];
+    final url = item['browser_download_url'];
+    if (name is! String || url is! String) continue;
+    if (name.trim().isEmpty || url.trim().isEmpty) continue;
+    final size = item['size'];
+    assets.add(
+      ReleaseAsset(
+        name: name.trim(),
+        downloadUrl: url.trim(),
+        sizeBytes: size is num ? size.toInt() : 0,
+      ),
+    );
+  }
+  return assets;
+}
+
 /// 把一次 Release 响应折算成检查结果（纯函数，便于离线自测）。
 UpdateCheckResult resultFromRelease(Object? payload, String currentVersion) {
   final release = readLatestRelease(payload);
@@ -114,6 +176,8 @@ UpdateCheckResult resultFromRelease(Object? payload, String currentVersion) {
       currentVersion: currentVersion,
       latestVersion: latest,
       releaseUrl: release['url'] ?? kReleaseListUrl,
+      notes: readReleaseNotes(payload),
+      assets: readReleaseAssets(payload),
     );
   }
   return UpdateCheckResult(

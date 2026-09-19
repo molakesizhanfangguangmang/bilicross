@@ -2,6 +2,7 @@
 
 import '../i18n/app_localizations.dart';
 import '../i18n/app_localizations_zh.dart';
+import 'splash_config.dart';
 
 const String kDefaultAppKey = '783bbb7264451d82';
 const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';
@@ -614,6 +615,8 @@ class AppSettings {
     this.preferFfmpegMux = true,
     this.localeCode = kLocaleZhCN,
     this.closeToTray = true,
+    this.splashEnabled = false,
+    this.splashSeconds = 2.0,
   });
 
   String downloadDir;
@@ -647,6 +650,12 @@ class AppSettings {
   /// 只对 Windows 生效；其它平台读不到也不使用。
   bool closeToTray;
 
+  /// 启动时是否显示自定义开屏。默认关，用户自己开了才有。
+  bool splashEnabled;
+
+  /// 开屏停留秒数，0 表示不停留（只闪一下过渡）。上限见 [kSplashMaxSeconds]。
+  double splashSeconds;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -665,6 +674,8 @@ class AppSettings {
         'prefer_ffmpeg_mux': preferFfmpegMux,
         'locale_code': localeCode,
         'close_to_tray': closeToTray,
+        'splash_enabled': splashEnabled,
+        'splash_seconds': splashSeconds,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -685,6 +696,10 @@ class AppSettings {
         preferFfmpegMux: json['prefer_ffmpeg_mux'] as bool? ?? true,
         localeCode: normalizeLocaleCode(json['locale_code'] as String?),
         closeToTray: json['close_to_tray'] as bool? ?? true,
+        splashEnabled: json['splash_enabled'] as bool? ?? false,
+        splashSeconds: clampSplashSeconds(
+          (json['splash_seconds'] as num?)?.toDouble() ?? 2.0,
+        ),
       );
 }
 

@@ -11,8 +11,10 @@
 ; 安装版不带 portable.marker（靠构建期常量认通道），故走安装版数据位置。
 
 #define MyAppName "逸轨 BiliCross"
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #define MyAppExeName "bilicross.exe"
+; AppId 必须保持不变：它决定安装器是否把新版识别为「同一个应用的升级」。
+; 一旦改动，新版本会与旧版本并存而不是覆盖安装，用户会看到两个逸轨。
 #define MyAppId "BiliCross-1-0-6-stable"
 
 [Setup]
