@@ -12,6 +12,8 @@ class AppLocalizationsEn extends AppLocalizations {
     // App and navigation
     'app.name': 'BiliCross',
     'app.internalBuild': 'Internal Build',
+    'about.testBuildWarning':
+        'This build is for technical validation only. Use with caution, and do not distribute.',
     'nav.download': 'Download',
     'nav.tasks': 'Tasks',
     'nav.account': 'Account',

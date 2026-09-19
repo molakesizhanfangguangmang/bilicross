@@ -214,9 +214,26 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Text(
-                _versionLine(l10n),
-                style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    _versionLine(l10n),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xff9aa3a0),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // 内部测试版的用途与传播限制，放在版本号下方。
+                  Text(
+                    l10n.tr('about.testBuildWarning'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xffb06a3b),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

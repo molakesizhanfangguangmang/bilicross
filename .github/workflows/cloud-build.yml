@@ -276,6 +276,11 @@ jobs:
         shell: bash
         run: node packaging/android/patch-app-id.js .test
 
+      # 内部测试版：应用显示名也带上标识，便于与正式版区分。
+      - name: Set test app label
+        shell: bash
+        run: node packaging/android/patch-app-label.js
+
       - name: Build release APK
         shell: bash
         # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。

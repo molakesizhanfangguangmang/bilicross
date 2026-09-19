@@ -34,14 +34,14 @@ class _WatermarkPainter extends CustomPainter {
   final String text;
 
   /// 平铺步距：密了显脏，疏了容易被裁掉。
-  static const double _stepX = 220;
-  static const double _stepY = 150;
+  static const double _stepX = 260;
+  static const double _stepY = 180;
 
   /// 倾斜角度（弧度），约 -26°。
   static const double _angle = -0.45;
 
-  /// 水印透明度：再高就会影响阅读。
-  static const double _opacity = 0.05;
+  /// 水印透明度：太淡会看不见，太深影响阅读。
+  static const double _opacity = 0.08;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -50,7 +50,8 @@ class _WatermarkPainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: 20,
+          fontWeight: FontWeight.w500,
           color: Colors.black.withValues(alpha: _opacity),
         ),
       ),
