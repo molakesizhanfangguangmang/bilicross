@@ -342,8 +342,8 @@ jobs:
           fi
           badging=$("$tools/aapt" dump badging "$apk")
           echo "$badging" | grep -E "^package:" | sed -n '1p'
-          echo "$badging" | grep -F "versionCode='17'"
-          echo "$badging" | grep -F "versionName='1.0.7'"
+          echo "$badging" | grep -F "versionCode='18'"
+          echo "$badging" | grep -F "versionName='1.1.0'"
 
       - name: Verify APK signing
         shell: bash

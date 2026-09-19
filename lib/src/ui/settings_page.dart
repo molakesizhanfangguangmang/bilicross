@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
-import '../core/anim_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
@@ -24,9 +21,6 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   /// 高级设置入口卡片的 key：展开动画要以它的屏幕位置为起点。
   final GlobalKey _advancedKey = GlobalKey();
-
-  /// 动画调节只在安卓生效（桌面端观感不同，维持原曲线与展开方式）。
-  bool get _isAndroid => Platform.isAndroid;
 
   /// 长按「高级设置」解锁动画调节。
   ///
@@ -397,13 +391,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         duration: Duration(
                           milliseconds: state.settings.animDurationMs,
                         ),
-                        // 曲线与展开形式只让安卓跟随设置，桌面端维持原观感。
-                        curveName: _isAndroid
-                            ? state.settings.animCurve
-                            : null,
-                        style: _isAndroid
-                            ? state.settings.animStyle
-                            : kAnimDefaultStyle,
+                        // 曲线与展开形式跟随设置，两端一致。
+                        curveName: state.settings.animCurve,
+                        style: state.settings.animStyle,
                         builder: (context) =>
                             AdvancedSettingsPage(state: state),
                       ),
