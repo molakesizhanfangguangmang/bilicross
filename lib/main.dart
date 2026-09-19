@@ -249,7 +249,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         children: <Widget>[
           ?child,
           const Positioned.fill(
-            child: Watermark(text: '逸轨 内部测试版 · 请勿外传'),
+            child: Watermark(text: '逸轨·技术验证专用'),
           ),
         ],
       ),

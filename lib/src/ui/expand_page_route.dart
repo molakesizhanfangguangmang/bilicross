@@ -131,10 +131,12 @@ Rect? globalRectOf(BuildContext context) {
 
 /// 展开动画的进度曲线，按平台取值。
 ///
-/// `easeOutExpo` 在手机上显得「一冲到底」—— 走完 80% 距离只用了约 22% 的时间，
-/// 减速段太短。安卓改用 `easeOutCubic`（约 42% 时间走完 80%），减速更从容。
+/// `easeOut` 族的**起始速度等于它的幂次**：`easeOutExpo` 起步最猛（约 5），
+/// `easeOutCubic` 是 3，`easeOutQuad` 是 2。手机上用 Expo/Cubic 时展开的第一下
+/// 冲得太快，换成 Quad 把起步速度降到 2/3，整体也更缓
+/// （走完 80% 距离从约 42% 时间变为约 55% 时间）。
 /// 桌面端屏幕大、观感不同，维持原曲线不动。
 Curve get _expandCurve =>
     defaultTargetPlatform == TargetPlatform.android
-        ? Curves.easeOutCubic
+        ? Curves.easeOutQuad
         : Curves.easeOutExpo;
