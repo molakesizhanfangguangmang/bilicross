@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 /// 从某个控件的位置展开到整页的过渡路由。
@@ -49,7 +51,7 @@ class ExpandPageRoute<T> extends PageRouteBuilder<T> {
     if (from == null || from.isEmpty) {
       return FadeTransition(opacity: animation, child: child);
     }
-    // 正向：前快后慢（easeOutExpo）。
+    // 正向：前快后慢。
     //
     // 反向不能直接把正向曲线填进 reverseCurve：CurvedAnimation 反向时执行的是
     // reverseCurve.transform(parentValue)，而 parentValue 从 1 降到 0，
@@ -57,7 +59,7 @@ class ExpandPageRoute<T> extends PageRouteBuilder<T> {
     // flipped(easeOutQuart) 约 34% 的时间走完 80% 路程。
     final curved = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutExpo,
+      curve: _expandCurve,
       reverseCurve: Curves.easeOutQuart.flipped,
     );
     return AnimatedBuilder(
@@ -126,3 +128,13 @@ Rect? globalRectOf(BuildContext context) {
   final origin = box.localToGlobal(Offset.zero);
   return origin & box.size;
 }
+
+/// 展开动画的进度曲线，按平台取值。
+///
+/// `easeOutExpo` 在手机上显得「一冲到底」—— 走完 80% 距离只用了约 22% 的时间，
+/// 减速段太短。安卓改用 `easeOutCubic`（约 42% 时间走完 80%），减速更从容。
+/// 桌面端屏幕大、观感不同，维持原曲线不动。
+Curve get _expandCurve =>
+    defaultTargetPlatform == TargetPlatform.android
+        ? Curves.easeOutCubic
+        : Curves.easeOutExpo;
