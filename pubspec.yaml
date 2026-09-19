@@ -27,9 +27,6 @@ dependencies:
   win32: ^6.4.0
   # Windows 网页登录用：flutter_inappwebview（WebView2）。Android 继续用 webview_flutter，不替换。
   flutter_inappwebview: ^6.1.5
-  # 内部测试版禁截图（Android 的 FLAG_SECURE）。该插件不支持 Windows，
-  # 调用处按平台判断，Windows 上不执行。
-  screen_protector: ^1.5.3
 
 dev_dependencies:
   flutter_test:

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:screen_protector/screen_protector.dart';
 
 import 'src/app_state.dart';
 import 'src/core/distribution.dart';
@@ -30,11 +29,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 内部测试版：安卓上禁止截屏与录屏（FLAG_SECURE），截图会得到黑屏。
-  // Windows 没有等价机制，该插件也不支持 Windows，所以只在安卓调用。
-  if (Platform.isAndroid) {
-    await ScreenProtector.preventScreenshotOn();
-  }
   // 先自检再起应用：数据目录写不了、资源读不出来、Windows 缺 WebView2，
   // 这三样任一缺失后面都会以更难看的方式炸开，不如当场说清楚。
   // 只查 Windows，其它平台直接跳过（Android 的路径与依赖不同，不在本次范围）。

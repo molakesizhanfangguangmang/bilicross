@@ -264,6 +264,12 @@ jobs:
         shell: bash
         run: flutter test
 
+      # 内部测试版：给 MainActivity 加 FLAG_SECURE，禁止截屏与录屏。
+      # 逻辑放在仓库内脚本里：android/ 目录不入仓，每次 flutter create 都会重生。
+      - name: Enable FLAG_SECURE (block screenshots)
+        shell: bash
+        run: node packaging/android/patch-secure-window.js
+
       - name: Build release APK
         shell: bash
         # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。
