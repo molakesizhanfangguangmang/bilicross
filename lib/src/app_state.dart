@@ -547,8 +547,14 @@ class AppState extends ChangeNotifier {
           channel: 'manifest',
           videoUrl: '',
           audioUrl: '',
-          videoQualityId: wantsVideo ? settings.preferredQuality : 0,
-          audioQualityId: settings.preferredAudio,
+          // -1 = 「要这条轨道，但档位等解析回来再定」。
+          //
+          // 批量入队时还不知道每集实际有哪些档位（各集可能不同），预填一个
+          // 具体档位会在该集没有这一档时直接失败 —— resolveRecordedStream 对
+          // 正数档位不兜底。负数会让它回落到解析结果的第一条（音频取最后一条），
+          // 拿回来后再写回真实档位 id。
+          videoQualityId: wantsVideo ? -1 : 0,
+          audioQualityId: -1,
           createdAtMs: now.millisecondsSinceEpoch,
           batchId: batchId,
           seasonId: manifest.seasonId,

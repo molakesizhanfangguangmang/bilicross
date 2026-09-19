@@ -162,7 +162,11 @@ class _DownloadPageState extends State<DownloadPage> {
                   ? null
                   : () => _enqueueManifest(context, state, media.info.season!),
               icon: const Icon(Icons.playlist_add),
-              label: Text(l10n.tr('manifest.enqueueSelected')),
+              label: Text(
+                l10n.tr('manifest.enqueueSelected', {
+                  'count': '${_selectedEpisodes.length}',
+                }),
+              ),
             ),
           ),
         ],
