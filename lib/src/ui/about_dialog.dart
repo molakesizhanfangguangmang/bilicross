@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/build_flags.dart';
 import '../core/distribution.dart';
 import '../core/release_target.dart';
 import '../core/update_check.dart';
@@ -224,15 +225,17 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                       color: Color(0xff9aa3a0),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  // 内部测试版的用途与传播限制，放在版本号下方。
-                  Text(
-                    l10n.tr('about.testBuildWarning'),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xffb06a3b),
+                  // 用途与传播限制只在测试构建里显示，正式版不出现。
+                  if (kTestBuild) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.tr('about.testBuildWarning'),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xffb06a3b),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

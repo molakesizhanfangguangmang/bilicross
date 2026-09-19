@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
+import 'src/core/build_flags.dart';
 import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
 import 'src/core/splash_config.dart';
@@ -245,12 +246,14 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       ],
       // 内部测试版水印：铺在所有页面之上，用 IgnorePointer 屏蔽指针，
       // 所以只影响观感、不影响操作。文字固定中文，不跟随界面语言。
+      // 水印只在内部测试构建里出现，正式版不带。
       builder: (context, child) => Stack(
         children: <Widget>[
           ?child,
-          const Positioned.fill(
-            child: Watermark(text: '逸轨·技术验证专用'),
-          ),
+          if (kTestBuild)
+            const Positioned.fill(
+              child: Watermark(text: '逸轨·技术验证专用'),
+            ),
         ],
       ),
       theme: ThemeData(
@@ -390,9 +393,11 @@ class _AppShellState extends State<AppShell> {
             final wide = constraints.maxWidth >= 760;
             return Scaffold(
               appBar: AppBar(
-                // 首页标题带内部测试版标识，便于与正式包区分。
+                // 首页标题在测试构建里带标识，便于与正式包区分。
                 title: Text(
-                  '${l10n.tr('app.name')} · ${l10n.tr('app.internalBuild')}',
+                  kTestBuild
+                      ? '${l10n.tr('app.name')} · ${l10n.tr('app.internalBuild')}'
+                      : l10n.tr('app.name'),
                 ),
                 actions: [
                   Padding(
