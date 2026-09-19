@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
+import '../core/season_selection.dart';
 import '../i18n/app_localizations.dart';
 
 /// 合集清单：合集 → 段 → 集 三级展示 + 勾选。
@@ -29,47 +30,25 @@ class SeasonManifestView extends StatefulWidget {
 }
 
 class _SeasonManifestViewState extends State<SeasonManifestView> {
-  /// 勾中的合集内序号集合。段与集共用这一份数据，段的状态由它推导。
-  final Set<int> _checked = <int>{};
+  /// 勾选状态。语义与边界都在 [SeasonSelection] 里，这里只负责重建与回调。
+  final SeasonSelection _selection = SeasonSelection();
 
-  void _notify() =>
-      widget.onSelectionChanged?.call(Set<int>.of(_checked));
-
-  bool _allChecked(SeasonSection section) =>
-      section.episodes.every((e) => _checked.contains(e.page));
-
-  bool _anyChecked(SeasonSection section) =>
-      section.episodes.any((e) => _checked.contains(e.page));
+  void _changed() => widget.onSelectionChanged?.call(_selection.pages);
 
   void _toggleEpisode(int page) => setState(() {
-        if (!_checked.remove(page)) _checked.add(page);
-        _notify();
+        _selection.toggleEpisode(page);
+        _changed();
       });
 
-  /// 勾段 = 批量勾/取消该段全部集。
-  void _toggleSection(SeasonSection section) {
-    setState(() {
-      if (_allChecked(section)) {
-        _checked.removeAll(section.episodes.map((e) => e.page));
-      } else {
-        _checked.addAll(section.episodes.map((e) => e.page));
-      }
-      _notify();
-    });
-  }
+  void _toggleSection(SeasonSection section) => setState(() {
+        _selection.toggleSection(section);
+        _changed();
+      });
 
-  void _toggleAll() {
-    setState(() {
-      if (_checked.length == widget.manifest.totalEpisodes) {
-        _checked.clear();
-      } else {
-        _checked
-          ..clear()
-          ..addAll(widget.manifest.allEpisodes.map((e) => e.page));
-      }
-      _notify();
-    });
-  }
+  void _toggleAll() => setState(() {
+        _selection.toggleManifest(widget.manifest);
+        _changed();
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +57,7 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
     // 硬加一层「无标题段」只会让清单看起来莫名其妙地多缩进一次。
     final singleUnnamedSection =
         manifest.sections.length == 1 && manifest.sections.first.title.isEmpty;
-    final allSelected = _checked.length == manifest.totalEpisodes;
+    final allSelected = _selection.allOfManifest(manifest);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,22 +73,22 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
             _EpisodeRow(
               episode: episode,
               depth: 0,
-              checked: _checked.contains(episode.page),
+              checked: _selection.contains(episode.page),
               onToggle: () => _toggleEpisode(episode.page),
             )
         else
           for (final section in manifest.sections) ...<Widget>[
             _SectionRow(
               section: section,
-              checked: _allChecked(section),
-              partial: !_allChecked(section) && _anyChecked(section),
+              checked: _selection.allOf(section),
+              partial: !_selection.allOf(section) && _selection.anyOf(section),
               onToggle: () => _toggleSection(section),
             ),
             for (final episode in section.episodes)
               _EpisodeRow(
                 episode: episode,
                 depth: 1,
-                checked: _checked.contains(episode.page),
+                checked: _selection.contains(episode.page),
                 onToggle: () => _toggleEpisode(episode.page),
               ),
             const SizedBox(height: 6),
@@ -128,7 +107,7 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
     return l10n.tr('manifest.countHint', {
       'episodes': '${manifest.totalEpisodes}',
       'sections': '${manifest.sections.length}',
-      'checked': '${_checked.length}',
+      'checked': '${_selection.count}',
     });
   }
 }
