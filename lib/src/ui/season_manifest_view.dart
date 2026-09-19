@@ -18,12 +18,20 @@ class SeasonManifestView extends StatefulWidget {
     super.key,
     required this.manifest,
     this.onSelectionChanged,
+    this.preflightOf,
+    this.isPreflighting,
   });
 
   final SeasonManifest manifest;
 
   /// 勾选集合变化时回调（传出当前勾中的合集内序号副本）。
   final ValueChanged<Set<int>>? onSelectionChanged;
+
+  /// 取某一集的预检结果（不传就不显示预检状态）。
+  final PreflightResult Function(int page)? preflightOf;
+
+  /// 某一集是否正在预检中。
+  final bool Function(int page)? isPreflighting;
 
   @override
   State<SeasonManifestView> createState() => _SeasonManifestViewState();
@@ -75,6 +83,9 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
               depth: 0,
               checked: _selection.contains(episode.page),
               onToggle: () => _toggleEpisode(episode.page),
+              preflight: widget.preflightOf?.call(episode.page),
+              preflighting:
+                  widget.isPreflighting?.call(episode.page) ?? false,
             )
         else
           for (final section in manifest.sections) ...<Widget>[
@@ -90,6 +101,9 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
                 depth: 1,
                 checked: _selection.contains(episode.page),
                 onToggle: () => _toggleEpisode(episode.page),
+                preflight: widget.preflightOf?.call(episode.page),
+                preflighting:
+                    widget.isPreflighting?.call(episode.page) ?? false,
               ),
             const SizedBox(height: 6),
           ],
@@ -219,12 +233,16 @@ class _EpisodeRow extends StatelessWidget {
     required this.depth,
     required this.checked,
     required this.onToggle,
+    this.preflight,
+    this.preflighting = false,
   });
 
   final SeasonEpisode episode;
   final int depth;
   final bool checked;
   final VoidCallback onToggle;
+  final PreflightResult? preflight;
+  final bool preflighting;
 
   @override
   Widget build(BuildContext context) {
@@ -250,9 +268,27 @@ class _EpisodeRow extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  episode.title.isEmpty ? '—' : episode.title,
-                  style: const TextStyle(fontSize: 13),
+                child: Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        episode.title.isEmpty ? '—' : episode.title,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    if (preflighting) ...<Widget>[
+                      const SizedBox(width: 6),
+                      const SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                      ),
+                    ] else if (preflight != null &&
+                        preflight!.status != PreflightStatus.ok) ...<Widget>[
+                      const SizedBox(width: 6),
+                      _StatusChip(result: preflight!),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -266,6 +302,43 @@ class _EpisodeRow extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 预检未通过时的小标记：缺档 / 不可用 / 风控，用颜色区分严重度。
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.result});
+
+  final PreflightResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final (String key, Color color) = switch (result.status) {
+      PreflightStatus.riskControl => (
+          'manifest.preflight.riskControl',
+          const Color(0xffc0392b),
+        ),
+      PreflightStatus.unavailable => (
+          'manifest.preflight.unavailable',
+          const Color(0xff6d716f),
+        ),
+      _ => ('manifest.preflight.missingQuality', const Color(0xffb06a3b)),
+    };
+    return Tooltip(
+      message: result.message.isEmpty ? l10n.tr(key) : result.message,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          l10n.tr(key),
+          style: TextStyle(fontSize: 11, color: color),
         ),
       ),
     );

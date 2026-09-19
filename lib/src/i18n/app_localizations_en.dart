@@ -33,6 +33,13 @@ class AppLocalizationsEn extends AppLocalizations {
     'manifest.untitledSection': 'Untitled section',
     'manifest.sectionEpisodes': '{count} episodes',
     'manifest.enqueueSelected': 'Add tasks ({count} selected)',
+    'manifest.preflighting': 'Checking {ready}/{total}',
+    'manifest.preflight.missingQuality': 'No such quality',
+    'manifest.preflight.unavailable': 'Unavailable',
+    'manifest.preflight.riskControl': 'Rate limited',
+    'settings.parallelPreflight': 'Parallel preflight',
+    'settings.parallelPreflightHint':
+        'On = 2 at a time; off = strictly sequential with a delay (safer, slower)',
     'manifest.nothingSelected': 'Select episodes to download first',
     'manifest.batchResult':
         'Added {enqueued}, skipped {skipped}, renamed {renamed}',

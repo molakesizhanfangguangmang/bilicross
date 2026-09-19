@@ -8,6 +8,7 @@ import 'core/bili_api.dart';
 import 'core/downloader.dart';
 import 'core/log_store.dart';
 import 'core/models.dart';
+import 'core/preflight.dart';
 import 'core/muxer.dart';
 import 'core/parser.dart';
 import 'core/signing.dart';
@@ -320,6 +321,8 @@ class AppState extends ChangeNotifier {
     busy = true;
     parsed = null;
     notice = '';
+    // 换了清单：旧的预检结果不能串到新合集上。
+    resetPreflight();
     LogStore.instance.add('解析', '地址：$input');
     notifyListeners();
     try {
@@ -500,6 +503,13 @@ class AppState extends ChangeNotifier {
     for (final section in manifest.sections) {
       for (final episode in section.episodes) {
         if (!selectedPages.contains(episode.page)) continue;
+        // 未通过预检的集不加入 —— 设计定案要求「未预检完的集不给下载」。
+        // 缺档 / 不可用 / 风控都由预检阶段标记，这里只认 downloadable。
+        final preflight = preflightOf(episode.page);
+        if (!preflight.downloadable) {
+          skipped += 1;
+          continue;
+        }
         final stem = sanitizeFileName('${_pad2(episode.page)} ${episode.title}');
         var candidate = '$seasonDir$separator$stem';
         var finalPath = '$candidate.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
@@ -531,7 +541,6 @@ class AppState extends ChangeNotifier {
           }
         }
 
-        final wantsVideo = episode.bvid.isNotEmpty;
         final task = DownloadTask(
           id: '${now.microsecondsSinceEpoch}-${episode.page}',
           title: candidate.split(separator).last,
@@ -545,16 +554,16 @@ class AppState extends ChangeNotifier {
           outputPath: finalPath,
           engine: engine,
           channel: 'manifest',
-          videoUrl: '',
-          audioUrl: '',
-          // -1 = 「要这条轨道，但档位等解析回来再定」。
-          //
-          // 批量入队时还不知道每集实际有哪些档位（各集可能不同），预填一个
-          // 具体档位会在该集没有这一档时直接失败 —— resolveRecordedStream 对
-          // 正数档位不兜底。负数会让它回落到解析结果的第一条（音频取最后一条），
-          // 拿回来后再写回真实档位 id。
-          videoQualityId: wantsVideo ? -1 : 0,
-          audioQualityId: -1,
+          // 地址直接复用预检结果：预检刚取过，没过期就不用再拉一遍。
+          // 真过期了下载侧的 resolving 阶段会自己按 source 重取。
+          videoUrl: preflight.video?.url ?? '',
+          audioUrl: preflight.audio?.url ?? '',
+          videoBackups: preflight.video?.backupUrls ?? const [],
+          audioBackups: preflight.audio?.backupUrls ?? const [],
+          videoQualityId: preflight.video?.id ?? 0,
+          audioQualityId: preflight.audio?.id ?? 0,
+          videoCodecs: preflight.video?.codecs ?? '',
+          audioCodecs: preflight.audio?.codecs ?? '',
           createdAtMs: now.millisecondsSinceEpoch,
           batchId: batchId,
           seasonId: manifest.seasonId,
@@ -582,6 +591,82 @@ class AppState extends ChangeNotifier {
       skipped: skipped,
       renamed: renamed,
     );
+  }
+
+  // ---------- 预检 ----------
+
+  /// 预检调度：批次号、并发策略、结果缓存都在里面（见 core/preflight.dart）。
+  late final PreflightRunner _preflight = PreflightRunner(
+    resolve: _preflightOne,
+    onChanged: notifyListeners,
+  );
+
+  bool get preflighting => _preflight.busy;
+
+  bool isPreflighting(int page) => _preflight.isInFlight(page);
+
+  PreflightResult preflightOf(int page) => _preflight.of(page);
+
+  /// 勾中且已通过预检的集数（判断能不能加入任务）。
+  int preflightReadyCount(Set<int> pages) => _preflight.readyCount(pages);
+
+  /// 换清单时清空，避免旧合集的结果串到新合集。
+  void resetPreflight() => _preflight.reset();
+
+  /// 对选中集做预检：只查选中的，取消勾选的会被清掉。
+  Future<void> preflightEpisodes({
+    required SeasonManifest manifest,
+    required Set<int> pages,
+  }) =>
+      _preflight.run(
+        episodes: manifest.allEpisodes,
+        pages: pages,
+        parallel: settings.parallelPreflight,
+      );
+
+  /// 查一集。异常在这里转成状态，不往外抛。
+  Future<PreflightResult> _preflightOne(SeasonEpisode episode) async {
+    try {
+      final media = await parseService.parseTarget(
+        episode.bvid.isEmpty
+            ? 'https://www.bilibili.com/video/av${episode.aid}'
+            : 'https://www.bilibili.com/video/${episode.bvid}',
+        cookie: cookie,
+        token: token ?? _emptyToken,
+      );
+      // 取这集实际能给的最高档：第一条视频、最后一条音频，
+      // 与下载侧「-1 档位」的回落规则一致。
+      final video = media.videos.isEmpty ? null : media.videos.first;
+      final audio = media.audios.isEmpty ? null : media.audios.last;
+      if (video == null && audio == null) {
+        return const PreflightResult(
+          status: PreflightStatus.missingQuality,
+          message: '这集没有可下载的流',
+        );
+      }
+      return PreflightResult(
+        status: PreflightStatus.ok,
+        video: video,
+        audio: audio,
+      );
+    } on BiliException catch (error) {
+      // -352 是风控，不是「没有数据」：必须分开，否则会被误读成这集不可用。
+      if (error.code == kRiskControlCode) {
+        return PreflightResult(
+          status: PreflightStatus.riskControl,
+          message: error.message,
+        );
+      }
+      return PreflightResult(
+        status: PreflightStatus.unavailable,
+        message: error.message,
+      );
+    } on Exception catch (error) {
+      return PreflightResult(
+        status: PreflightStatus.unavailable,
+        message: '$error',
+      );
+    }
   }
 
   /// 有没有等着开跑的活。任务页的「开始任务」按这个决定能不能点。

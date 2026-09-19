@@ -407,6 +407,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 12),
+              // 预检的并发策略：默认严格串行加间隔，稳；要快可开并行。
+              SectionCard(
+                title: l10n.tr('settings.parallelPreflight'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      l10n.tr('settings.parallelPreflightHint'),
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xff6d716f)),
+                    ),
+                    const SizedBox(height: 4),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.parallelPreflight,
+                      title: Text(l10n.tr('settings.parallelPreflight')),
+                      onChanged: (value) => _saveSettings(
+                        () => widget.state.settings.parallelPreflight = value,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               // 同名文件处理：批量下载几乎必然撞名，这里定撞名时的行为。
               // 即选即落盘，不等「保存设置」。
               SectionCard(

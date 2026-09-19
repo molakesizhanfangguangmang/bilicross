@@ -35,6 +35,12 @@ class AppLocalizationsZh extends AppLocalizations {
     'manifest.untitledSection': '未命名段',
     'manifest.sectionEpisodes': '{count} 集',
     'manifest.enqueueSelected': '加入任务（已选 {count} 集）',
+    'manifest.preflighting': '预检中 {ready}/{total}',
+    'manifest.preflight.missingQuality': '缺档',
+    'manifest.preflight.unavailable': '不可用',
+    'manifest.preflight.riskControl': '风控',
+    'settings.parallelPreflight': '允许并行预检',
+    'settings.parallelPreflightHint': '开＝2 路并行；关＝严格串行并留间隔，更稳但慢',
     'manifest.nothingSelected': '先勾选要下载的集',
     'manifest.batchResult': '已加入 {enqueued} 集，跳过 {skipped} 集，自动重命名 {renamed} 集',
     // 同名文件处理

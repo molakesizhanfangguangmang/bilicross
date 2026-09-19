@@ -407,6 +407,53 @@ class SeasonInfoList {
   final List<SeasonInfoEntry> series;
 }
 
+/// 预检状态。
+enum PreflightStatus {
+  /// 还没查（或已作废）。
+  unknown,
+
+  /// 档位齐全，可下。
+  ok,
+
+  /// 这集没有你选的档（也可能是权限拿不到，接口不区分这两者）。
+  missingQuality,
+
+  /// 整集取不到：已删除、私有、审核中等。
+  unavailable,
+
+  /// 被风控拦截（-352）。与「没有数据」是两回事。
+  riskControl,
+}
+
+/// 一集的预检结果。
+///
+/// 顺带缓存解析出来的流：加入任务时直接复用，过期了下载侧再自己重取，
+/// 避免预检与下载各拉一遍。
+class PreflightResult {
+  const PreflightResult({
+    required this.status,
+    this.video,
+    this.audio,
+    this.message = '',
+  });
+
+  const PreflightResult.unknown() : this(status: PreflightStatus.unknown);
+
+  final PreflightStatus status;
+
+  /// 命中的视频流（[status] 为 ok 时非空，除非该集本来就只有音频）。
+  final MediaStream? video;
+
+  /// 命中的音频流。
+  final MediaStream? audio;
+
+  /// 展示用说明，例如「这集最高可用 720P」。
+  final String message;
+
+  bool get downloadable =>
+      status == PreflightStatus.ok && (video != null || audio != null);
+}
+
 /// 一份合集清单：合集 → 段 → 集。
 class SeasonManifest {
   const SeasonManifest({
@@ -833,6 +880,7 @@ class AppSettings {
     this.animCurve = kAnimDefaultCurve,
     this.animStyle = kAnimDefaultStyle,
     this.duplicateMode = kDuplicateDefault,
+    this.parallelPreflight = false,
   });
 
   String downloadDir;
@@ -892,6 +940,9 @@ class AppSettings {
   /// 批量下载几乎必然撞名，这个开关决定撞名时的行为；默认跳过最保守。
   String duplicateMode;
 
+  /// 预检是否允许 2 路并行。关 = 严格串行且每集之间留间隔（默认，稳）。
+  bool parallelPreflight;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -917,6 +968,7 @@ class AppSettings {
         'anim_curve': animCurve,
         'anim_style': animStyle,
         'duplicate_mode': duplicateMode,
+        'parallel_preflight': parallelPreflight,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -948,6 +1000,7 @@ class AppSettings {
         animCurve: normalizeAnimCurve(json['anim_curve'] as String?),
         animStyle: normalizeAnimStyle(json['anim_style'] as String?),
         duplicateMode: normalizeDuplicateMode(json['duplicate_mode'] as String?),
+        parallelPreflight: json['parallel_preflight'] as bool? ?? false,
       );
 }
 

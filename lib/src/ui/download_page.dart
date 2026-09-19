@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -151,25 +153,52 @@ class _DownloadPageState extends State<DownloadPage> {
             title: l10n.tr('manifest.title'),
             child: SeasonManifestView(
               manifest: media.info.season!,
+              preflightOf: state.preflightOf,
+              isPreflighting: state.isPreflighting,
               // 必须 setState：勾选状态放在父级（按钮要读它决定可用性与集数），
               // 不回写的话按钮会一直停在「已选 0 集」的灰色状态。
-              onSelectionChanged: (pages) =>
-                  setState(() => _selectedEpisodes = pages),
+              onSelectionChanged: (pages) {
+                setState(() => _selectedEpisodes = pages);
+                // 勾选变了就补跑预检：只查选中的，取消勾选的会被清掉。
+                unawaited(
+                  state.preflightEpisodes(
+                    manifest: media.info.season!,
+                    pages: pages,
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-              onPressed: _selectedEpisodes.isEmpty
-                  ? null
-                  : () => _enqueueManifest(context, state, media.info.season!),
-              icon: const Icon(Icons.playlist_add),
-              label: Text(
-                l10n.tr('manifest.enqueueSelected', {
-                  'count': '${_selectedEpisodes.length}',
-                }),
-              ),
+            child: Builder(
+              builder: (context) {
+                final total = _selectedEpisodes.length;
+                final ready = state.preflightReadyCount(_selectedEpisodes);
+                final allReady = total > 0 && ready == total;
+                return FilledButton.icon(
+                  // 未预检完的集不给下载：按钮只在选中的集全部通过预检时可点。
+                  onPressed: allReady
+                      ? () =>
+                          _enqueueManifest(context, state, media.info.season!)
+                      : null,
+                  icon: const Icon(Icons.playlist_add),
+                  label: Text(
+                    total == 0
+                        ? l10n.tr('manifest.enqueueSelected', {'count': '0'})
+                        : allReady
+                            ? l10n.tr(
+                                'manifest.enqueueSelected',
+                                {'count': '$total'},
+                              )
+                            : l10n.tr('manifest.preflighting', {
+                                'ready': '$ready',
+                                'total': '$total',
+                              }),
+                  ),
+                );
+              },
             ),
           ),
         ],
