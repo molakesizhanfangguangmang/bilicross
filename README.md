@@ -1,80 +1,144 @@
+<div align="center">
+
+<img src="assets/branding/app_icon.png" width="200" alt="逸轨">
+
 # 逸轨（BiliCross）
 
-<img src="packaging/icon/app_icon.png" width="120" alt="逸轨">
+</div>
 
-逸轨是一个本地运行的 B 站媒体下载与整理客户端。界面用 Flutter 写，核心能力用 Dart 实现，
-解析、下载、合并都在本机完成，不依赖外部服务。
+逸轨是一个本地运行的 B 站媒体下载与整理客户端。解析、下载、合并在本机完成，
+不依赖外部服务。支持 Windows 与 Android，界面提供简体中文与 English 两种语言。
 
-当前版本：1.0.6（正式版）。
+当前版本：1.0.6
 
-## 平台
+## 释名
 
-- Windows x64
-- Android arm64-v8a，最低 Android 8.0（API 26）
+> 「逸」，《说文》曰「失也」，从辵从兔，谓兔脱而逸；兼有超逸、逸格之义。
+> 「轨」，车辙也，亦谓常度。
+>
+> 逸轨者，出于常轨而不离其本——把循着平台轨辙而行的影音，引归本机，另成一迹。
+>
+> *车各有轨，物各有主。*
+> *不越其分，只逸其轨。*
 
-## 能做什么
+## 快速开始
+
+1. 安装程序：Windows 下载安装包按提示安装，Android 安装 APK。详见[安装包说明](#安装包说明)。
+2. 登录账号：在「账号」页通过扫码登录或应用内网页登录。
+3. 提交任务：在「下载」页粘贴视频地址（`BV`/`av` 号、链接或 `b23.tv` 短链），选择档位后加入队列。
+4. 开始下载：点击「立即开始下载」。下载目录可在设置页调整。
+
+队列不会自动启动：加入任务仅排队，重新打开程序后仍需手动开始。
+
+## 功能
+
+### 下载
 
 - 识别 `BV`/`av` 号、`b23.tv` 短链、番剧 `ep`/`ss` 与课程地址，支持分 P 选择。
-- 两条解析通道：WBI 签名的网页通道与 APP 签名通道；APP 通道需要 Token。一条失败自动回退，
-  实际用的通道记在任务上。
-- 档位可选，顺序为 8K、HDR Vivid、杜比视界、HDR、4K……视频轨与音频轨可以各自保留或取消。
-- 下载：单文件最多 8 个 Range 分片并行，断点续传，队列限流；地址过期时按任务原本的档位重新解析。
-- 任务可控：下载中可以暂停（分片留着，继续时按断点接），也可以强制结束（连同分片一起删掉）。
-  空闲超过 30 秒没有数据的连接会被断开重连，不会停在最后一点等下去。
-- 队列由人启动：解析页的「加入任务」只是排进队列，点「立即开始下载」或在任务页点「开始任务」才开跑，
-  重开程序也一样；队列已经在跑时，新入队的任务自己跟在后面下。同时在跑几条在设置页可调。
-- 合并：优先用 ffmpeg 流复制；没有 ffmpeg 时用内置 fMP4 合并，按 `moof`/`mdat` 拼接，不重编码。
-- 界面语言：设置页可切换「跟随系统 / 简体中文 / English」，界面、任务状态与提示同步切换，
-  选择会保存，重启后保持。
-- 账号：扫码登录（应用内显示 B 站二维码，手机客户端确认）、网页登录、粘贴 Cookie 或导入 `cookie.txt`，
-  三条路都只取同一份网页 Cookie，之后照旧走 APP Token 授权；凭据只保存在本机并留有备份。
-  Windows 的网页登录在应用内用 WebView2 打开登录页，登录完成后自动取 Cookie；
-  需要系统安装 Microsoft Edge WebView2 运行时。
-- 关于：设置页底部有入口，弹窗里是应用图标、项目地址与当前版本号。Android 与 Windows 上可以点
-  「检测更新」查有没有新的正式版，启动后也会静默查一次，有新版再问要不要去 Release 页。
-- 备份与恢复（Windows）：设置页里可以导出应用备份，也可以从备份恢复，用于在 Windows 安装版与
-  便携版之间迁移账号信息、设置与任务。恢复操作将覆盖当前应用数据，覆盖前会自动留一份回滚备份，
-  请妥善保管备份文件。
-- 桌面行为（Windows）：关闭窗口默认最小化到系统托盘，下载继续；托盘菜单可以显示主窗口、
-  打开下载目录、暂停全部任务与退出；还有任务在跑时退出会先确认。设置页可以改成「关闭即退出」。
-- 启动自检（Windows）：启动时检查数据目录可写、应用资源可读、WebView2 运行时可用；
-  缺任一项会直接说明缺什么并退出，不带病进界面。
+- 档位最高 8K，支持 HDR Vivid、杜比视界、HDR；音轨支持杜比全景声与 Hi-Res 无损。
+- 视频轨与音频轨可分别保留或取消。
+- 单文件最多 8 个分片并行下载，支持断点续传；地址过期时按原档位自动重新解析。
+- 任务可暂停（保留分片）或强制结束（连同分片清理）。
 
-## 从哪拿安装包
+### 账号
 
-云编译产物在 Actions 的 `Cloud build` 工作流里。Android 出 APK；Windows 出两种包：
+- 支持扫码登录、应用内网页登录、粘贴 Cookie 与导入 `cookie.txt`。
+- 凭据仅保存在本机，并有备份机制。
+- Windows 网页登录在应用内完成，登录后自动读取凭据。
 
-- 安装版 `BiliCross-windows-x64-setup.exe`：Inno Setup 安装包，装到用户目录，数据放在
-  `%LOCALAPPDATA%\BiliCross`，可从「检测更新」跳 Release 页下载新安装包覆盖安装。
-- 便携版 `BiliCross-windows-x64-portable.zip`：解压即用，数据放在程序旁的 `data` 目录，
-  不提供自动更新，需要新版本时自行到 Release 页下载替换。
+### 桌面行为（Windows）
 
-两种包都自带 `ffmpeg.exe`（随包放在 `tools\ffmpeg`），合并默认用它；没有也能跑，
-会自动回落到内置 fMP4 合并。系统需要 Microsoft Visual C++ 运行库（Windows 10/11 通常已有）；
-程序目录请保留 `ffmpeg.exe`，删掉只会降级合并方式，不影响其它功能。
+- 关闭窗口默认最小化到系统托盘，下载继续进行。
+- 托盘菜单提供显示主窗口、打开下载目录、暂停全部任务与退出。
+- 有任务运行时退出前会请求确认。可在设置页改为「关闭即退出」。
 
-本机不做编译，本地构建产物不用于发布。
+### 备份与恢复（Windows）
+
+- 账号信息、设置与任务可导出为加密备份文件，用于安装版与便携版之间迁移。
+- 恢复为覆盖式操作，覆盖前自动保留一份回滚备份。
+
+### 其它
+
+- 界面语言：跟随系统 / 简体中文 / English，选择会保存。
+- 支持应用内检测更新，启动时也会静默检查一次。
+
+## 安装包说明
+
+安装包在 [Releases](../../releases) 页面提供。Windows 分为两种：
+
+| 包 | 数据位置 | 更新方式 |
+| --- | --- | --- |
+| `BiliCross-windows-x64-setup.exe`（安装版） | `%LOCALAPPDATA%\BiliCross` | 应用内「检测更新」跳转下载，覆盖安装 |
+| `BiliCross-windows-x64-portable.zip`（便携版） | 程序旁的 `data` 目录 | 手动下载新版本替换 |
+
+Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26）及以上。
+每个产物附有 `.sha256` 校验文件。
+
+依赖说明：
+
+- 两种 Windows 包均内置 `ffmpeg.exe`（`tools\ffmpeg`），用于合并；缺失时自动回落到内置 fMP4 合并。
+- Windows 需要 Microsoft Visual C++ 运行库（Windows 10/11 通常已自带）。
+- 网页登录需要 Microsoft Edge WebView2 运行时；启动自检会在缺失时提示并提供下载入口。
+
+## 常见问题
+
+**启动时提示缺少组件**
+启动自检会检查数据目录、应用资源与 WebView2 运行时，按提示安装对应组件即可。
+
+**下载的文件在哪里**
+安装版位于 `%LOCALAPPDATA%\BiliCross\downloads`，便携版位于程序目录下 `data\downloads`，均可在设置页修改。
+
+**合并是否会重新编码**
+不会。优先使用 ffmpeg 流复制；无 ffmpeg 时使用内置 fMP4 合并，按 `moof`/`mdat` 拼接，不损失画质与音质。
+
+**支持哪些画质与音质**
+取决于视频提供的档位：视频最高 8K 及 HDR Vivid、杜比视界等；音频最高 Hi-Res 无损与杜比全景声。
+
+---
+
+以下内容面向开发者。
+
+## 技术说明
+
+**解析通道**
+
+提供两条独立通道：WBI 签名的网页通道与 APP 签名通道（需 Token）。默认使用网页通道，
+失败时自动回退，实际使用的通道记录在任务上。
+
+**档位与轨道**
+
+按 DASH 清单分别获取视频与音频流，档位顺序为 8K、HDR Vivid、杜比视界、HDR、4K 等，
+合并时不做转码。
+
+**下载**
+
+单文件最多 8 个 Range 分片并行；空闲超过 30 秒的连接会被断开重连。
+
+**合并**
+
+优先 ffmpeg 流复制；无 ffmpeg 时使用内置 fMP4 合并。
 
 ## 构建
 
-推送到 `main` 或手动触发 `Cloud build`。工作流在干净的 runner 上安装 Flutter stable、
-生成平台壳、注入图标与显示名、配置发布签名，跑 `flutter analyze` 与 `flutter test` 后出包。
+推送至 `main` 或手动触发 `Cloud build` 工作流。工作流在干净的 runner 上安装 Flutter stable、
+生成平台壳、注入图标与显示名、配置发布签名，执行 `flutter analyze` 与 `flutter test` 后出包。
 
 ## 目录
 
 - `lib/src/core` — 地址解析、签名、接口访问、DASH 组装、下载、合并、备份、持久化。
-- `lib/src/platform/windows` — Windows 专用外壳：托盘子窗口行为、WebView2 网页登录。
-- `lib/src/ui` — 下载、任务、账号、设置四个页面，以及启动自检阻塞页。
-- `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、暂停与强制结束、fMP4 合并、档位选择、版本号比较与更新检查、发行通道与数据目录、备份编解码与服务、启动自检。
+- `lib/src/platform/windows` — Windows 外壳：托盘与窗口行为、WebView2 网页登录。
+- `lib/src/ui` — 下载、任务、账号、设置四个页面与启动自检阻塞页。
+- `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、暂停与强制结束、
+  fMP4 合并、档位选择、版本号比较与更新检查、发行通道与数据目录、备份编解码与服务、启动自检。
 - `packaging` — 图标资源（Android 各密度图标与自适应图标、Windows `ico`）与 Inno Setup 安装脚本。
 
-## 贡献者
+## 致谢
 
-- tricky — 作者，需求与验收
-
-致谢：BBDownNext（KaiHuaDou）、neo-BBDown（bili-vd-bak，BBDown 的 Deno 实现）提供行为参考；
-bilibili-API-collect（SocialSisterYi）提供接口资料。
+- [BBDownNext](https://github.com/KaiHuaDou)（KaiHuaDou）与 neo-BBDown（bili-vd-bak）提供行为参考。
+- [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)（SocialSisterYi）提供接口资料。
 
 ## 说明
 
-仅供个人备份自己有权访问的内容。
+本项目仅供个人备份自己有权访问的内容，请遵守相关服务条款与法律法规。
+
+作者：tricky
