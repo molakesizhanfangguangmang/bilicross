@@ -12,6 +12,21 @@ class AppLocalizationsZh extends AppLocalizations {
     'app.name': '逸轨',
     // 内部测试版标识，加在首页标题与关于页版本旁。
     'app.internalBuild': '内部测试版',
+    // 动画调节（长按设置页的「高级设置」入口解锁，解锁不可逆）
+    'settings.animUnlocked': '已解锁动画调节，可在高级设置里调整',
+    'settings.animTitle': '展开动画',
+    'settings.animHint': '长按解锁的调试项，仅对安卓生效',
+    'settings.animDuration': '时长',
+    'settings.animCurve': '曲线',
+    'settings.animCurve.sine': '最缓',
+    'settings.animCurve.quad': '缓',
+    'settings.animCurve.cubic': '中',
+    'settings.animCurve.quart': '急',
+    'settings.animCurve.expo': '最急',
+    'settings.animStyle': '展开方式',
+    'settings.animStyle.expand': '矩形展开',
+    'settings.animStyle.fade': '淡入',
+    'settings.animStyle.scale': '缩放',
     // 关于页的测试版警示语。
     'about.testBuildWarning': '该版本仅用于技术验证，请谨慎使用，禁止外泄',
     'nav.download': '下载',

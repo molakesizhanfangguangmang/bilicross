@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../core/log_store.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
+import 'anim_tuning_card.dart';
 import 'log_page.dart';
 import 'splash_card.dart';
 
@@ -25,6 +26,11 @@ class AdvancedSettingsPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           SplashCard(state: state),
+          // 动画调节：长按设置页的「高级设置」入口解锁后才出现，解锁不可逆。
+          if (state.settings.animTuningUnlocked) ...<Widget>[
+            const SizedBox(height: 12),
+            AnimTuningCard(state: state),
+          ],
           const SizedBox(height: 12),
           Card(
             child: ListTile(

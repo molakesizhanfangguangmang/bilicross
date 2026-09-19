@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/anim_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
@@ -21,6 +24,24 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   /// 高级设置入口卡片的 key：展开动画要以它的屏幕位置为起点。
   final GlobalKey _advancedKey = GlobalKey();
+
+  /// 动画调节只在安卓生效（桌面端观感不同，维持原曲线与展开方式）。
+  bool get _isAndroid => Platform.isAndroid;
+
+  /// 长按「高级设置」解锁动画调节。
+  ///
+  /// 解锁是**单向**的：这里只置位、不提供关回去的入口。
+  Future<void> _unlockAnimTuning(AppSettings settings) async {
+    if (settings.animTuningUnlocked) return;
+    settings.animTuningUnlocked = true;
+    await widget.state.saveSettings();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context).tr('settings.animUnlocked')),
+      ),
+    );
+  }
 
   late final TextEditingController _dir =
       TextEditingController(text: widget.state.settings.downloadDir);
@@ -364,11 +385,25 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
                   ),
                   trailing: const Icon(Icons.chevron_right),
+                  // 长按解锁动画调节。解锁后不再提供关回去的入口。
+                  onLongPress: state.settings.animTuningUnlocked
+                      ? null
+                      : () => _unlockAnimTuning(state.settings),
                   onTap: () {
                     // 从这个卡片的位置展开到整页：先把矩形算出来再推路由。
                     Navigator.of(context).push(
                       ExpandPageRoute<void>(
                         sourceRect: globalRectOf(_advancedKey.currentContext!),
+                        duration: Duration(
+                          milliseconds: state.settings.animDurationMs,
+                        ),
+                        // 曲线与展开形式只让安卓跟随设置，桌面端维持原观感。
+                        curveName: _isAndroid
+                            ? state.settings.animCurve
+                            : null,
+                        style: _isAndroid
+                            ? state.settings.animStyle
+                            : kAnimDefaultStyle,
                         builder: (context) =>
                             AdvancedSettingsPage(state: state),
                       ),

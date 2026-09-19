@@ -2,6 +2,7 @@
 
 import '../i18n/app_localizations.dart';
 import '../i18n/app_localizations_zh.dart';
+import 'anim_config.dart';
 import 'splash_config.dart';
 
 const String kDefaultAppKey = '783bbb7264451d82';
@@ -617,6 +618,10 @@ class AppSettings {
     this.closeToTray = true,
     this.splashEnabled = false,
     this.splashSeconds = 2.0,
+    this.animTuningUnlocked = false,
+    this.animDurationMs = kAnimDefaultDurationMs,
+    this.animCurve = kAnimDefaultCurve,
+    this.animStyle = kAnimDefaultStyle,
   });
 
   String downloadDir;
@@ -656,6 +661,21 @@ class AppSettings {
   /// 开屏停留秒数，0 表示不停留（只闪一下过渡）。上限见 [kSplashMaxSeconds]。
   double splashSeconds;
 
+  /// 展开动画的可调参数是否已解锁。
+  ///
+  /// 长按「高级设置」入口解锁。**解锁后不再提供关回去的入口** —— 这是刻意的：
+  /// 它属于测试版调试项，不需要回退路径。
+  bool animTuningUnlocked;
+
+  /// 展开动画时长（毫秒），范围见 [kAnimMinDurationMs] / [kAnimMaxDurationMs]。
+  int animDurationMs;
+
+  /// 展开动画曲线档位，取值见 [kAnimCurves]。
+  String animCurve;
+
+  /// 展开动画形式，取值见 [kAnimStyles]。
+  String animStyle;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -676,6 +696,10 @@ class AppSettings {
         'close_to_tray': closeToTray,
         'splash_enabled': splashEnabled,
         'splash_seconds': splashSeconds,
+        'anim_tuning_unlocked': animTuningUnlocked,
+        'anim_duration_ms': animDurationMs,
+        'anim_curve': animCurve,
+        'anim_style': animStyle,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -700,6 +724,12 @@ class AppSettings {
         splashSeconds: clampSplashSeconds(
           (json['splash_seconds'] as num?)?.toDouble() ?? 2.0,
         ),
+        animTuningUnlocked: json['anim_tuning_unlocked'] as bool? ?? false,
+        animDurationMs: clampAnimDuration(
+          (json['anim_duration_ms'] as num?)?.toInt() ?? kAnimDefaultDurationMs,
+        ),
+        animCurve: normalizeAnimCurve(json['anim_curve'] as String?),
+        animStyle: normalizeAnimStyle(json['anim_style'] as String?),
       );
 }
 
