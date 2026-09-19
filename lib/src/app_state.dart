@@ -25,8 +25,9 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  static Future<AppState> load() async {
-    final store = await Store.open();
+  /// [isWindows] 只给测试用：真机不传。见 [Store.open] 的说明。
+  static Future<AppState> load({bool? isWindows}) async {
+    final store = await Store.open(isWindows: isWindows);
     final settings = await store.loadSettings();
     final l10n = AppLocalizations.fromCode(settings.localeCode);
     if (settings.downloadDir.trim().isEmpty) {

@@ -62,7 +62,10 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
       PathProviderPlatform.instance = _FakePathProvider(dir);
 
-      final state = await AppState.load();
+      // isWindows: false —— 强制走 systemSupportDirectory 分支，
+      // 否则在 Windows 上会优先读 %LOCALAPPDATA%\BiliCross，
+      // 绕过上面这个临时目录，读到真实用户数据（测试互相污染）。
+      final state = await AppState.load(isWindows: false);
       expect(state.settings.localeCode, kLocaleZhCN);
 
       var notified = 0;
@@ -73,7 +76,7 @@ void main() {
       expect(notified, greaterThan(0), reason: '切换语言后必须 notifyListeners');
 
       // 重新加载走的是磁盘上那份设置：验证语言选择确实持久化了。
-      final reloaded = await AppState.load();
+      final reloaded = await AppState.load(isWindows: false);
       expect(reloaded.settings.localeCode, kLocaleEnUS);
 
       await state.setLocale('not-a-locale');

@@ -27,10 +27,17 @@ class Store {
   /// Windows 安装版在 `%LOCALAPPDATA%\BiliCross`，便携版在程序旁的 `data`，
   /// 其它平台仍是系统应用支持目录下的 `bilicross`（与旧版本一致）。
   /// 老版本 Windows 用户的数据会被整体搬过来，不会看起来像丢了账号。
-  static Future<Store> open() async {
+  ///
+  /// [isWindows] 只给测试用：真机不传。测试要隔离数据目录时必须显式传 false，
+  /// 否则在 Windows 上会绕过假的 applicationSupportPath、读到真实用户数据，
+  /// 让测试互相污染（CI 跑 Linux 时不会暴露这个问题）。
+  static Future<Store> open({bool? isWindows}) async {
     final base = await getApplicationSupportDirectory();
     final systemSupport = Directory(base.path);
-    final target = resolveDataRoot(systemSupportDirectory: systemSupport);
+    final target = resolveDataRoot(
+      isWindows: isWindows,
+      systemSupportDirectory: systemSupport,
+    );
     final root = await migrateIfNeeded(
       target: target,
       legacyCandidates: legacyDataRoots(systemSupport),

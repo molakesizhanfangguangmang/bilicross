@@ -169,4 +169,40 @@ void main() {
       }
     }
   });
+
+  // 下面这组跑真实探针，不是注入的假对象。
+  // 起因：Windows 上真实运行时资源探针一直失败、WebView2 一直误报——
+  // 因为清单文件名和注册表 GUID 都写错了，而纯注入的测试永远发现不了。
+  group('真实探针', () {
+    test('资源探针认得出当前 Flutter 的资产清单', () async {
+      // rootBundle 依赖 ServicesBinding，测试里要先初始化。
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final probe = await runStartupChecks(
+        dataRoot: sandbox,
+        // 不传 assetsProbe，走默认实现：读 AssetManifest.bin / .json。
+      );
+      final assets = probe.results.firstWhere((r) => r.id == 'assets');
+      expect(
+        assets.ok,
+        isTrue,
+        reason: '资源清单探测失败：${assets.detail}',
+      );
+    });
+
+    test('WebView2 探针在 Windows 上认得出本机运行时', () async {
+      if (!Platform.isWindows) return;
+      final probe = await runStartupChecks(
+        dataRoot: sandbox,
+        isWindows: true,
+      );
+      final wv = probe.results.firstWhere((r) => r.id == 'webview2');
+      // 本机确实装了 WebView2（Edge 自带的 Evergreen 运行时）。
+      // 这条会守住 GUID 写错这类问题：GUID 一错这里立刻红。
+      expect(
+        wv.ok,
+        isTrue,
+        reason: 'WebView2 探测失败：${wv.detail}',
+      );
+    });
+  });
 }

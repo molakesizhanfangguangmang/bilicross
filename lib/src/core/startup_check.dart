@@ -118,36 +118,44 @@ Future<CheckResult> _checkDataDir(Directory dir) async {
 }
 
 Future<CheckResult> _defaultAssetsProbe() async {
-  try {
-    final manifest = await rootBundle.loadString('AssetManifest.json');
-    if (manifest.isEmpty) {
-      return const CheckResult(
-        id: 'assets',
-        labelKey: 'startup.check.assets',
-        ok: false,
-        severity: CheckSeverity.required,
-        detail: '资源清单为空',
-      );
+  // 资源可用性：Flutter 打包后一定会有 flutter_assets 清单。
+  // Flutter 3.47 起清单文件名从 AssetManifest.json 换成了 AssetManifest.bin，
+  // 只认旧名字会让所有新版构建都误报 —— 两个名字都试，任一命中即算可读。
+  const candidates = <String>[
+    'AssetManifest.bin',
+    'AssetManifest.json',
+  ];
+  Object? lastError;
+  for (final name in candidates) {
+    try {
+      final data = await rootBundle.load(name);
+      if (data.lengthInBytes > 0) {
+        return const CheckResult(
+          id: 'assets',
+          labelKey: 'startup.check.assets',
+          ok: true,
+          severity: CheckSeverity.required,
+        );
+      }
+    } on Object catch (error) {
+      lastError = error;
     }
-    return const CheckResult(
-      id: 'assets',
-      labelKey: 'startup.check.assets',
-      ok: true,
-      severity: CheckSeverity.required,
-    );
-  } on Object catch (error) {
-    return CheckResult(
-      id: 'assets',
-      labelKey: 'startup.check.assets',
-      ok: false,
-      severity: CheckSeverity.required,
-      detail: _brief(error),
-    );
   }
+  return CheckResult(
+    id: 'assets',
+    labelKey: 'startup.check.assets',
+    ok: false,
+    severity: CheckSeverity.required,
+    detail: lastError == null ? '资源清单为空' : _brief(lastError),
+  );
 }
 
 /// WebView2 运行时在注册表里的客户端 GUID（Evergreen 运行时）。
-const String _webView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A08C11}';
+///
+/// 实测确认：`{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` 这一项
+/// `name` = "Microsoft Edge WebView2 Runtime"，`pv` 是运行时版本。
+/// 注意 `F3C4FE00-…` 是 Edge 更新器、`56EB18F8-…` 是 Edge 本体，都不是它。
+const String _webView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
 Future<CheckResult> _defaultWebView2Probe() async {
   const wow = 'Software\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\';
@@ -173,6 +181,29 @@ Future<CheckResult> _defaultWebView2Probe() async {
       }
     } on ProcessException {
       // reg 不可用，试下一个位置。
+    }
+  }
+  // 注册表没命中时再看安装目录：Evergreen 运行时固定装在
+  // `<ProgramFiles(x86)>\Microsoft\EdgeWebView\Application\<版本>\`。
+  // 单独查目录是为了容错 —— 注册表项缺失但文件在，运行时其实能用。
+  final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ??
+      Platform.environment['ProgramFiles'];
+  if (programFilesX86 != null && programFilesX86.isNotEmpty) {
+    final dir = Directory(
+      '$programFilesX86${Platform.pathSeparator}Microsoft'
+      '${Platform.pathSeparator}EdgeWebView${Platform.pathSeparator}Application',
+    );
+    try {
+      if (dir.existsSync() && dir.listSync().isNotEmpty) {
+        return const CheckResult(
+          id: 'webview2',
+          labelKey: 'startup.check.webview2',
+          ok: true,
+          severity: CheckSeverity.required,
+        );
+      }
+    } on Object {
+      // 目录列举失败，按未安装处理。
     }
   }
   return const CheckResult(

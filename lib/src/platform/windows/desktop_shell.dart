@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/log_store.dart';
+
 /// Windows 的窗口与托盘外壳。
 ///
 /// 只在 Windows 调用（见 [isSupported] 与调用处的平台判断）：
@@ -52,8 +54,15 @@ class DesktopShell with WindowListener, TrayListener {
     await windowManager.ensureInitialized();
     windowManager.addListener(this);
     // 拦截关闭：交给 onWindowClose 决定是隐藏还是真退。
+    // 这一步必须先做：万一下面的托盘初始化抛异常，窗口也不能变成"点一下就跑"。
     await windowManager.setPreventClose(true);
-    await _setupTray();
+    try {
+      await _setupTray();
+    } on Object catch (error) {
+      // 托盘起不来不影响软件本身：窗口照常显示，关闭仍然走拦截逻辑
+      // （此时 _closeToTray 为 true，点关闭会隐藏到托盘，用户可以从任务栏图标唤回）。
+      LogStore.instance.add('托盘', '初始化失败：$error');
+    }
     _initialized = true;
   }
 
@@ -112,9 +121,17 @@ class DesktopShell with WindowListener, TrayListener {
 
   @override
   void onTrayIconMouseDown() {
-    // 双击托盘图标恢复窗口（插件已经把双击收敛成 mouse down 回调）。
+    // 左键单击/双击：把窗口叫回前台。
     windowManager.show();
     windowManager.focus();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    // Windows 上 tray_manager 不会自动弹菜单：原生只把右键事件转成这个回调，
+    // 必须由 Dart 侧主动 popUpContextMenu，否则右键什么都不出。
+    // 参数照插件默认值传：把本体窗口置前，避免菜单弹出后点外面不收。
+    trayManager.popUpContextMenu();
   }
 
   @override

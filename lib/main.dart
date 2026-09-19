@@ -93,7 +93,14 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 只重建 AppShell 不够。所以监听放在 MaterialApp 外面这一层。
         // Windows 上把窗口与托盘接起来：只做平台外壳，业务动作走回调。
         // 失败只记日志，不影响应用本身（托盘不可用也得能用软件）。
-        unawaited(_attachDesktopShell(state));
+        //
+        // 注意：这里是 build()，可能被调用多次。必须**同步**置位守卫再启动异步初始化，
+        // 否则并发进来会重复执行 initialize()，把 windowManager / trayManager
+        // 的原生状态搞乱 —— 表现为窗口闪一下就自己关掉。
+        if (!_shellAttachStarted) {
+          _shellAttachStarted = true;
+          unawaited(_attachDesktopShell(state));
+        }
         return ListenableBuilder(
           listenable: state,
           builder: (context, _) => _buildApp(state),
@@ -103,7 +110,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
   }
 
   DesktopShell? _shell;
-  bool _shellAttached = false;
+  bool _shellAttachStarted = false;
 
   Future<void> _attachDesktopShell(AppState state) async {
     if (!DesktopShell.isSupported) return;
@@ -157,9 +164,9 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         return confirmed ?? false;
       },
     );
-    if (_shellAttached) return;
+    // 并发守卫已在调用处（build 里同步置位 _shellAttachStarted）拦住了，
+    // 这里不再需要 _shellAttached 二次判断。
     await shell.initialize(closeToTray: state.settings.closeToTray);
-    _shellAttached = true;
     // 设置里改了关闭行为，这里跟着换。
     state.addListener(() {
       shell.applyCloseBehavior(state.settings.closeToTray);
