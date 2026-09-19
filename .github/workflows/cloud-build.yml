@@ -1,7 +1,16 @@
 name: Cloud build
 
 on:
+  # 手动触发时可选平台：内测只出安卓包，发版时选 both 出全平台。
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: '构建平台'
+        type: choice
+        options:
+          - android
+          - both
+        default: android
   push:
     branches: [main]
 
@@ -383,6 +392,9 @@ jobs:
 
   windows-x64:
     name: Windows x64
+    # 平时 push 只出安卓包（内测迭代更快、产物更小）；
+    # 需要 Windows 包（发版）时手动触发并选 both。
+    if: github.event_name == 'workflow_dispatch' && inputs.platforms == 'both'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
