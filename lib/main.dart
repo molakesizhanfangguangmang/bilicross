@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:screen_protector/screen_protector.dart';
 
 import 'src/app_state.dart';
 import 'src/core/distribution.dart';
@@ -21,6 +22,7 @@ import 'src/ui/settings_page.dart';
 import 'src/ui/splash_screen.dart';
 import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
+import 'src/ui/watermark.dart';
 import 'src/ui/widgets.dart';
 
 /// 全局导航键：托盘菜单与退出确认要在没有页面 context 的地方弹对话框。
@@ -28,6 +30,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 内部测试版：安卓上禁止截屏与录屏（FLAG_SECURE），截图会得到黑屏。
+  // Windows 没有等价机制，该插件也不支持 Windows，所以只在安卓调用。
+  if (Platform.isAndroid) {
+    await ScreenProtector.preventScreenshotOn();
+  }
   // 先自检再起应用：数据目录写不了、资源读不出来、Windows 缺 WebView2，
   // 这三样任一缺失后面都会以更难看的方式炸开，不如当场说清楚。
   // 只查 Windows，其它平台直接跳过（Android 的路径与依赖不同，不在本次范围）。
@@ -242,6 +249,16 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // 内部测试版水印：铺在所有页面之上，用 IgnorePointer 屏蔽指针，
+      // 所以只影响观感、不影响操作。文字固定中文，不跟随界面语言。
+      builder: (context, child) => Stack(
+        children: <Widget>[
+          ?child,
+          const Positioned.fill(
+            child: Watermark(text: '逸轨 内部测试版 · 请勿外传'),
+          ),
+        ],
+      ),
       theme: ThemeData(
         colorScheme: scheme,
         scaffoldBackgroundColor: const Color(0xfff6f7f5),
@@ -379,7 +396,10 @@ class _AppShellState extends State<AppShell> {
             final wide = constraints.maxWidth >= 760;
             return Scaffold(
               appBar: AppBar(
-                title: Text(l10n.tr('app.name')),
+                // 首页标题带内部测试版标识，便于与正式包区分。
+                title: Text(
+                  '${l10n.tr('app.name')} · ${l10n.tr('app.internalBuild')}',
+                ),
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 16),

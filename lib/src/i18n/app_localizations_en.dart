@@ -11,6 +11,7 @@ class AppLocalizationsEn extends AppLocalizations {
   static const Map<String, String> data = {
     // App and navigation
     'app.name': 'BiliCross',
+    'app.internalBuild': 'Internal Build',
     'nav.download': 'Download',
     'nav.tasks': 'Tasks',
     'nav.account': 'Account',

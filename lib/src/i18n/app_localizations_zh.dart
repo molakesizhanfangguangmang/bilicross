@@ -10,6 +10,8 @@ class AppLocalizationsZh extends AppLocalizations {
   static const Map<String, String> data = {
     // 应用与导航
     'app.name': '逸轨',
+    // 内部测试版标识，加在首页标题与关于页版本旁。
+    'app.internalBuild': '内部测试版',
     'nav.download': '下载',
     'nav.tasks': '任务',
     'nav.account': '账号',

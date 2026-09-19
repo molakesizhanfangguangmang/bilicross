@@ -126,7 +126,9 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
     final version = _version;
     if (version == null) return '';
     if (version.isEmpty) return l10n.tr('about.versionUnknown');
-    return l10n.tr('about.version', {'version': version});
+    // 版本号后带内部测试版标识，与首页标题保持一致。
+    return '${l10n.tr('about.version', {'version': version})}'
+        ' · ${l10n.tr('app.internalBuild')}';
   }
 
   @override
