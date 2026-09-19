@@ -10,6 +10,12 @@ import 'log_store.dart';
 import 'playview.dart';
 import 'signing.dart';
 
+/// B 站风控拦截返回的错误码。
+///
+/// 出现它表示请求**被拦**，不代表数据为空：调用方必须当失败处理，
+/// 不能 catch 之后回落成空列表，否则会把「被拦」误读成「这个 UP 确实没有合集」。
+const int kRiskControlCode = -352;
+
 class BiliException implements Exception {
   BiliException(this.message, {this.code});
 
@@ -73,7 +79,7 @@ class BiliApi {
     final http.Response response;
     try {
       response = await client.get(uri, headers: {
-        'User-Agent': effectiveUserAgent(userAgent ?? settings.userAgent),
+        'User-Agent': apiUserAgent(userAgent ?? settings.userAgent),
         'Referer': 'https://www.bilibili.com/',
         if (cookie.isNotEmpty) 'Cookie': cookie,
       });
@@ -95,7 +101,7 @@ class BiliApi {
       response = await client.post(
         uri,
         headers: {
-          'User-Agent': effectiveUserAgent(userAgent ?? settings.userAgent),
+          'User-Agent': apiUserAgent(userAgent ?? settings.userAgent),
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
           'Referer': 'https://www.bilibili.com/',
         },
@@ -134,6 +140,8 @@ class BiliApi {
     if (code != 0) {
       final message = json['message'] as String? ?? '未知错误';
       LogStore.instance.add('接口', '$action 失败：$message（code=$code）');
+      // 一律抛异常，包括 [kRiskControlCode]：风控被拦必须让调用方看见，
+      // 不能悄悄回落成空结果。
       throw BiliException('$action失败：$message（code=$code）', code: code);
     }
   }
@@ -194,7 +202,7 @@ class BiliApi {
     for (var hop = 0; hop < 5; hop++) {
       final request = http.Request('GET', target)
         ..followRedirects = false
-        ..headers['User-Agent'] = effectiveUserAgent(settings.userAgent);
+        ..headers['User-Agent'] = apiUserAgent(settings.userAgent);
       final response = await client.send(request);
       await response.stream.drain<void>();
       if (response.isRedirect) {
@@ -230,6 +238,138 @@ class BiliApi {
       cover: data['pic'] as String? ?? '',
       durationSec: (data['duration'] as num?)?.toInt() ?? 0,
       pages: pages,
+      // 合集清单与 pages 同在 view 的响应里，顺手解析，不额外发请求。
+      season: parseUgcSeason(data['ugc_season']),
+    );
+  }
+
+  /// 列出一个 UP 名下的全部合集与系列（空间弹窗用）。
+  ///
+  /// 合集走 `seasons_archives_list` 不行（它要 season_id），这里用
+  /// `x/polymer/web-space/home/seasons_series_list?mid=&page_num=&page_size=`
+  /// 一次拿全部条目；`meta[]` 是合集、`items[]` 里 type==2 的是系列。
+  /// 返回两组标题+id，供弹窗挑选；条目为空不报错（这个 UP 确实没有）。
+  Future<SeasonInfoList> fetchSeasonInfoList({
+    required int mid,
+    required String cookie,
+  }) async {
+    final json = await getJson(
+      Uri.https('api.bilibili.com', '/x/polymer/web-space/home/seasons_series_list', {
+        'mid': '$mid',
+        'page_num': '1',
+        'page_size': '100',
+      }),
+      cookie: cookie,
+    );
+    _check(json, action: '取合集与系列列表');
+    final data = json['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final seasons = <SeasonInfoEntry>[];
+    for (final raw in (data['meta'] as List? ?? const []).whereType<Map>()) {
+      final item = raw.cast<String, dynamic>();
+      final id = (item['season_id'] as num?)?.toInt() ?? 0;
+      if (id <= 0) continue;
+      seasons.add(SeasonInfoEntry(
+        id: id,
+        title: item['name'] as String? ?? '',
+        total: (item['total'] as num?)?.toInt() ?? 0,
+        kind: SeasonInfoKind.season,
+      ));
+    }
+    final series = <SeasonInfoEntry>[];
+    for (final raw in (data['items'] as List? ?? const []).whereType<Map>()) {
+      final item = raw.cast<String, dynamic>();
+      if ((item['type'] as num?)?.toInt() != 2) continue;
+      final id = (item['season_id'] as num?)?.toInt() ?? 0;
+      if (id <= 0) continue;
+      series.add(SeasonInfoEntry(
+        id: id,
+        title: item['name'] as String? ?? '',
+        total: (item['total'] as num?)?.toInt() ?? 0,
+        kind: SeasonInfoKind.series,
+      ));
+    }
+    return SeasonInfoList(mid: mid, seasons: seasons, series: series);
+  }
+
+  /// 按合集编号找到任一成员的 mid（翻页接口必须带 mid）。
+  ///
+  /// 没有专门的「season → mid」端点，这里取seasons_archives_list 不带 mid 的
+  /// 变体不可行，实际做法是先试 space 搜索接口；若都失败则抛错让用户
+  /// 从成员视频的 view 入口进（那条路 0 额外请求且带完整分段）。
+  Future<int> findSeasonOwner(int seasonId, String cookie) async {
+    // web 接口里 seasons_archives_list 必须带 mid；没有公开的 season→mid 查询，
+    // 用 html 端点 cheatsheet：space.bilibili.com 之外唯一稳定来源是成员视频。
+    // 因此这里调用 /x/polymer/web-space/home/seasons_series_list?mid=0 是拿不到的。
+    // 直接抛错，让上层引导用户走成员视频入口。
+    throw BiliException('该入口暂缺合集归属信息，请从合集内任一视频的链接进入');
+  }
+
+  /// UGC 合集：`seasons_archives_list?mid=&season_id=`，30 条/页，翻页取全。
+  ///
+  /// 段信息不用这个接口另取 —— `view` 的 `ugc_season` 里就有；这里服务的是
+  /// 空间 lists 链接 / 裸 season_id 这类「只有 season_id、没有视频上下文」的入口，
+  /// 需要先从清单里拿一个 mid 才能翻页。
+  Future<VideoInfo> fetchUgcSeasonArchives({
+    required int seasonId,
+    required int mid,
+    required String cookie,
+  }) async {
+    final episodes = <SeasonEpisode>[];
+    var pageNumber = 1;
+    while (true) {
+      final json = await getJson(
+        Uri.https(
+          'api.bilibili.com',
+          '/x/polymer/web-space/seasons_archives_list',
+          {
+            'mid': '$mid',
+            'season_id': '$seasonId',
+            'page_num': '$pageNumber',
+            'page_size': '30',
+          },
+        ),
+        cookie: cookie,
+      );
+      _check(json, action: '取合集清单');
+      final data = json['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      final archives = (data['archives'] as List? ?? const []).whereType<Map>();
+      for (final raw in archives) {
+        final item = raw.cast<String, dynamic>();
+        episodes.add(SeasonEpisode(
+          bvid: item['bvid'] as String? ?? '',
+          aid: (item['aid'] as num?)?.toInt() ?? 0,
+          cid: (item['cid'] as num?)?.toInt() ?? 0,
+          title: item['title'] as String? ?? '',
+          durationSec: (item['duration'] as num?)?.toInt() ?? 0,
+          page: episodes.length + 1,
+          cover: item['pic'] as String? ?? '',
+        ));
+      }
+      final total = (data['total'] as num?)?.toInt() ?? episodes.length;
+      if (episodes.length >= total || archives.isEmpty) break;
+      pageNumber += 1;
+    }
+
+    final manifest = SeasonManifest(
+      seasonId: seasonId,
+      title: '',
+      owner: '',
+      cover: '',
+      // 翻页接口不带段信息，全部收进一个无标题段；有分段结构的合集应从
+      // 某个成员视频的 view 入口进，那里能拿到完整分段。
+      sections: <SeasonSection>[
+        SeasonSection(id: 0, title: '', episodes: episodes),
+      ],
+    );
+    return VideoInfo(
+      bvid: '',
+      aid: 0,
+      title: '',
+      owner: '',
+      cover: '',
+      durationSec: 0,
+      pages: const [],
+      season: manifest,
     );
   }
 
@@ -554,4 +694,61 @@ class BiliApi {
         );
     }
   }
+}
+
+/// 解析 `view` 响应里的 `ugc_season`，得到整部合集清单。
+///
+/// 结构是 `ugc_season.sections[].episodes[]`，每集带 bvid / aid / cid / title，
+/// 时长与封面在 `arc.duration` / `arc.pic` 里。**段信息不用另取** —— view 里就有。
+///
+/// 返回 null 表示这条视频不在任何合集里（正常情况，不是错误）。
+SeasonManifest? parseUgcSeason(Object? raw) {
+  if (raw is! Map) return null;
+  final data = raw.cast<String, dynamic>();
+  final seasonId = (data['id'] as num?)?.toInt() ?? 0;
+  if (seasonId <= 0) return null;
+
+  final sections = <SeasonSection>[];
+  // 序号按合集内顺序从 1 起，而不是段内序号 ——
+  // 这样单独下第 2 段时编号仍是 25~70，以后补下别的段不会重号。
+  var order = 0;
+
+  for (final rawSection
+      in (data['sections'] as List? ?? const []).whereType<Map>()) {
+    final section = rawSection.cast<String, dynamic>();
+    final sectionId = (section['id'] as num?)?.toInt() ?? 0;
+    final episodes = <SeasonEpisode>[];
+    for (final rawEpisode
+        in (section['episodes'] as List? ?? const []).whereType<Map>()) {
+      final episode = rawEpisode.cast<String, dynamic>();
+      final arc = (episode['arc'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+      order += 1;
+      episodes.add(SeasonEpisode(
+        bvid: episode['bvid'] as String? ?? '',
+        aid: (episode['aid'] as num?)?.toInt() ?? 0,
+        cid: (episode['cid'] as num?)?.toInt() ?? 0,
+        title: episode['title'] as String? ?? '',
+        durationSec: (arc['duration'] as num?)?.toInt() ?? 0,
+        page: order,
+        cover: arc['pic'] as String? ?? '',
+        sectionId: sectionId,
+      ));
+    }
+    if (episodes.isEmpty) continue;
+    sections.add(SeasonSection(
+      id: sectionId,
+      title: section['title'] as String? ?? '',
+      episodes: episodes,
+    ));
+  }
+
+  if (sections.isEmpty) return null;
+  return SeasonManifest(
+    seasonId: seasonId,
+    title: data['title'] as String? ?? '',
+    owner: ((data['upper'] as Map?)?['name'] as String?) ?? '',
+    cover: data['cover'] as String? ?? '',
+    sections: sections,
+  );
 }

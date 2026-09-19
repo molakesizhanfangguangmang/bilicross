@@ -27,6 +27,26 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.animStyle.expand': '矩形展开',
     'settings.animStyle.fade': '淡入',
     'settings.animStyle.scale': '缩放',
+    // 合集清单（合集 → 段 → 集）
+    'manifest.title': '合集清单',
+    'manifest.summary': '共 {episodes} 集 · {sections} 段',
+    'manifest.countHint': '共 {episodes} 集 · {sections} 段',
+    'manifest.untitled': '未命名合集',
+    'manifest.untitledSection': '未命名段',
+    'manifest.sectionEpisodes': '{count} 集',
+    'manifest.enqueueSelected': '加入任务（已选 {count} 集）',
+    'manifest.nothingSelected': '先勾选要下载的集',
+    'manifest.batchResult': '已加入 {enqueued} 集，跳过 {skipped} 集，自动重命名 {renamed} 集',
+    // 同名文件处理
+    'settings.duplicate': '同名文件处理',
+    'settings.duplicateHint': '下载目录里已存在同名文件、或队列里已有相同目标时的行为',
+    'settings.duplicate.skip': '跳过',
+    'settings.duplicate.overwrite': '覆盖',
+    'settings.duplicate.rename': '自动重命名',
+    // 空间弹窗
+    'spaceSheet.seasons': '合集',
+    'spaceSheet.series': '系列',
+    'spaceSheet.empty': '这个 UP 没有公开的合集或系列',
     // 关于页的测试版警示语。
     'about.testBuildWarning': '该版本仅用于技术验证，请谨慎使用，禁止外泄',
     'nav.download': '下载',

@@ -1,0 +1,294 @@
+import 'package:flutter/material.dart';
+
+import '../core/models.dart';
+import '../i18n/app_localizations.dart';
+
+/// 合集清单：合集 → 段 → 集 三级展示 + 勾选。
+///
+/// 勾选语义（设计定案第 2 节）：
+/// - 合集行有勾：勾上 = 整个合集全下；
+/// - 段行有勾：可全选、可多选、可一个不勾；勾段 = 批量把该段的集勾上；
+/// - 段与集是**同一份勾选数据**：段内集全勾则段显示全勾，
+///   全不勾显示空勾，部分勾显示半勾 —— 不是两套状态；
+/// - 段全不勾时照样能手勾单个集。
+/// 默认全不勾（背后没有合集的单集清单默认勾，那种情况不走这个组件）。
+class SeasonManifestView extends StatefulWidget {
+  const SeasonManifestView({
+    super.key,
+    required this.manifest,
+    this.onSelectionChanged,
+  });
+
+  final SeasonManifest manifest;
+
+  /// 勾选集合变化时回调（传出当前勾中的合集内序号副本）。
+  final ValueChanged<Set<int>>? onSelectionChanged;
+
+  @override
+  State<SeasonManifestView> createState() => _SeasonManifestViewState();
+}
+
+class _SeasonManifestViewState extends State<SeasonManifestView> {
+  /// 勾中的合集内序号集合。段与集共用这一份数据，段的状态由它推导。
+  final Set<int> _checked = <int>{};
+
+  void _notify() =>
+      widget.onSelectionChanged?.call(Set<int>.of(_checked));
+
+  bool _allChecked(SeasonSection section) =>
+      section.episodes.every((e) => _checked.contains(e.page));
+
+  bool _anyChecked(SeasonSection section) =>
+      section.episodes.any((e) => _checked.contains(e.page));
+
+  void _toggleEpisode(int page) => setState(() {
+        if (!_checked.remove(page)) _checked.add(page);
+        _notify();
+      });
+
+  /// 勾段 = 批量勾/取消该段全部集。
+  void _toggleSection(SeasonSection section) {
+    setState(() {
+      if (_allChecked(section)) {
+        _checked.removeAll(section.episodes.map((e) => e.page));
+      } else {
+        _checked.addAll(section.episodes.map((e) => e.page));
+      }
+      _notify();
+    });
+  }
+
+  void _toggleAll() {
+    setState(() {
+      if (_checked.length == widget.manifest.totalEpisodes) {
+        _checked.clear();
+      } else {
+        _checked
+          ..clear()
+          ..addAll(widget.manifest.allEpisodes.map((e) => e.page));
+      }
+      _notify();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final manifest = widget.manifest;
+    // 只有一个段且没有标题时，段这一层不显示 —— 那是「合集没分段」的兜底形状，
+    // 硬加一层「无标题段」只会让清单看起来莫名其妙地多缩进一次。
+    final singleUnnamedSection =
+        manifest.sections.length == 1 && manifest.sections.first.title.isEmpty;
+    final allSelected = _checked.length == manifest.totalEpisodes;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _Header(
+          manifest: manifest,
+          checked: allSelected,
+          onToggle: _toggleAll,
+        ),
+        const SizedBox(height: 8),
+        if (singleUnnamedSection)
+          for (final episode in manifest.sections.first.episodes)
+            _EpisodeRow(
+              episode: episode,
+              depth: 0,
+              checked: _checked.contains(episode.page),
+              onToggle: () => _toggleEpisode(episode.page),
+            )
+        else
+          for (final section in manifest.sections) ...<Widget>[
+            _SectionRow(
+              section: section,
+              checked: _allChecked(section),
+              partial: !_allChecked(section) && _anyChecked(section),
+              onToggle: () => _toggleSection(section),
+            ),
+            for (final episode in section.episodes)
+              _EpisodeRow(
+                episode: episode,
+                depth: 1,
+                checked: _checked.contains(episode.page),
+                onToggle: () => _toggleEpisode(episode.page),
+              ),
+            const SizedBox(height: 6),
+          ],
+        const SizedBox(height: 4),
+        Text(
+          _countHint(context, manifest),
+          style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+        ),
+      ],
+    );
+  }
+
+  String _countHint(BuildContext context, SeasonManifest manifest) {
+    final l10n = AppLocalizations.of(context);
+    return l10n.tr('manifest.countHint', {
+      'episodes': '${manifest.totalEpisodes}',
+      'sections': '${manifest.sections.length}',
+      'checked': '${_checked.length}',
+    });
+  }
+}
+
+/// 合集标题行：勾选框 + 标题 + 「共 N 集 · M 段」。
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.manifest,
+    required this.checked,
+    required this.onToggle,
+  });
+
+  final SeasonManifest manifest;
+  final bool checked;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Checkbox(value: checked, onChanged: (_) => onToggle()),
+        const SizedBox(width: 4),
+        const Icon(Icons.video_library_outlined, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                manifest.title.isEmpty
+                    ? l10n.tr('manifest.untitled')
+                    : manifest.title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                l10n.tr('manifest.summary', {
+                  'episodes': '${manifest.totalEpisodes}',
+                  'sections': '${manifest.sections.length}',
+                }),
+                style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 段行：勾选框 + 段名 · N 集。
+class _SectionRow extends StatelessWidget {
+  const _SectionRow({
+    required this.section,
+    required this.checked,
+    required this.partial,
+    required this.onToggle,
+  });
+
+  final SeasonSection section;
+  final bool checked;
+  final bool partial;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 0, 4),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 34,
+            child: Checkbox(
+              value: checked ? true : (partial ? null : false),
+              tristate: true,
+              onChanged: (_) => onToggle(),
+            ),
+          ),
+          const Icon(Icons.folder_outlined, size: 15, color: Color(0xff6d716f)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              section.title.isEmpty
+                  ? l10n.tr('manifest.untitledSection')
+                  : section.title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Text(
+            l10n.tr(
+              'manifest.sectionEpisodes',
+              {'count': '${section.episodes.length}'},
+            ),
+            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 集行：勾选框 + 序号 · 标题 · 时长。
+class _EpisodeRow extends StatelessWidget {
+  const _EpisodeRow({
+    required this.episode,
+    required this.depth,
+    required this.checked,
+    required this.onToggle,
+  });
+
+  final SeasonEpisode episode;
+  final int depth;
+  final bool checked;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(depth == 0 ? 26 : 48, 0, 0, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            SizedBox(
+              width: 34,
+              child: Checkbox(value: checked, onChanged: (_) => onToggle()),
+            ),
+            SizedBox(
+              width: 30,
+              child: Text(
+                // 序号是合集内编号，补下别的段时不会重号，所以直接展示。
+                '${episode.page}',
+                style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  episode.title.isEmpty ? '—' : episode.title,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ),
+            if (episode.durationSec > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, right: 12),
+                child: Text(
+                  formatDuration(episode.durationSec),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

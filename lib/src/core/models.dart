@@ -8,6 +8,30 @@ import 'splash_config.dart';
 const String kDefaultAppKey = '783bbb7264451d82';
 const String kDefaultAppSec = '2653583c8873dea268ab9386918b1d65';
 
+/// 同名文件处理模式。
+///
+/// - [kDuplicateSkip]：目标已存在就不建任务，结果里提示跳过。
+/// - [kDuplicateOverwrite]：允许建任务，任务真正开始下载时才覆盖旧文件，
+///   并清理属于该任务的旧临时分片 —— 排队期间不动旧文件。
+/// - [kDuplicateRename]：保留旧文件，新文件名加递增编号；
+///   最终文件、视频分片、音频分片、断点文件必须用同一套新名，
+///   否则恢复下载时会对不上。
+const String kDuplicateSkip = 'skip';
+const String kDuplicateOverwrite = 'overwrite';
+const String kDuplicateRename = 'rename';
+const String kDuplicateDefault = kDuplicateSkip;
+const List<String> kDuplicateModes = <String>[
+  kDuplicateSkip,
+  kDuplicateOverwrite,
+  kDuplicateRename,
+];
+
+/// 非法或缺失的模式回落到默认（跳过）。
+String normalizeDuplicateMode(String? raw) {
+  final value = (raw ?? '').trim().toLowerCase();
+  return kDuplicateModes.contains(value) ? value : kDuplicateDefault;
+}
+
 const String kWebUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0';
@@ -30,10 +54,23 @@ const String kDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-/// UA 配置留空时回落到 [kFallbackUserAgent]。
+/// 下载请求用的 UA：留空时回落到 [kFallbackUserAgent]。
+///
+/// 下载地址（CDN）对 UA 很挑：空 UA 直接 403，桌面长串又会被移动端
+/// （platform=android）地址拒绝，实测两类都能过的只有这个短串。
 String effectiveUserAgent(String raw) {
   final value = raw.trim();
   return value.isEmpty ? kFallbackUserAgent : value;
+}
+
+/// API 请求用的 UA：留空时回落到完整的桌面浏览器串。
+///
+/// 与下载不同，**空间类接口**（`seasons_series_list` 等）用短串会被风控拦成
+/// -352，必须带完整浏览器 UA 才稳定返回 code=0。API 侧不涉及 CDN 的
+/// platform 判断，所以用长串没有副作用。
+String apiUserAgent(String raw) {
+  final value = raw.trim();
+  return value.isEmpty ? kDesktopUserAgent : value;
 }
 
 /// playurl 的 fnval 位：16 DASH + 64 HDR + 128 4K + 256 杜比音频 + 512 杜比视界
@@ -169,7 +206,7 @@ String codecShortName(String codecs) {
 }
 
 /// 地址识别结果。
-enum TargetKind { video, bangumi, cheese, shortLink, unknown }
+enum TargetKind { video, bangumi, cheese, shortLink, ugcSeason, unknown }
 
 class BiliTarget {
   const BiliTarget({
@@ -195,7 +232,10 @@ class BiliTarget {
   final String source;
 
   bool get isSupported =>
-      kind == TargetKind.video || kind == TargetKind.bangumi || kind == TargetKind.cheese;
+      kind == TargetKind.video ||
+      kind == TargetKind.bangumi ||
+      kind == TargetKind.cheese ||
+      kind == TargetKind.ugcSeason;
 
   String get displayId {
     if (bvid != null) return page > 1 ? '$bvid P$page' : bvid!;
@@ -253,6 +293,7 @@ class VideoInfo {
     required this.cover,
     required this.durationSec,
     required this.pages,
+    this.season,
   });
 
   final String bvid;
@@ -262,6 +303,144 @@ class VideoInfo {
   final String cover;
   final int durationSec;
   final List<PlayPage> pages;
+
+  /// 这条视频所属的 UGC 合集；不在合集里时为 null。
+  ///
+  /// 直接来自 `view` 接口的 `ugc_season` 字段，所以「列出整部合集」是 0 额外请求。
+  final SeasonManifest? season;
+}
+
+/// 合集清单里的一集。
+class SeasonEpisode {
+  const SeasonEpisode({
+    required this.bvid,
+    required this.aid,
+    required this.cid,
+    required this.title,
+    required this.durationSec,
+    required this.page,
+    this.cover = '',
+    this.sectionId = 0,
+  });
+
+  final String bvid;
+  final int aid;
+  final int cid;
+  final String title;
+  final int durationSec;
+
+  /// 合集内序号，从 1 起。文件名按它编号 ——
+  /// 单独下第 2 段时编号仍是 25~70，以后补下别的段不会重号。
+  final int page;
+
+  final String cover;
+
+  /// 所属段的 id。段只当分组标识，不用它寻址。
+  final int sectionId;
+
+  /// 清单占位用：把这一集转成普通分 P 结构，复用 ResolvedTarget 的形状。
+  PlayPage get asPlayPage => PlayPage(
+        page: 1,
+        cid: cid,
+        part: title,
+        durationSec: durationSec,
+        aid: aid,
+      );
+}
+
+/// 合集里的一个段（分区）。
+///
+/// 段不建目录、不做独立对象（没有段级状态机），只活在清单和任务列表里。
+class SeasonSection {
+  const SeasonSection({
+    required this.id,
+    required this.title,
+    required this.episodes,
+  });
+
+  final int id;
+  final String title;
+  final List<SeasonEpisode> episodes;
+}
+
+/// 批量入队的统计结果，供「加入 N 集，跳过 M 集，重命名 K 集」这类汇总提示用。
+class DuplicateBatchOutcome {
+  const DuplicateBatchOutcome({
+    required this.enqueued,
+    required this.skipped,
+    required this.renamed,
+  });
+
+  final int enqueued;
+  final int skipped;
+  final int renamed;
+}
+
+/// 空间弹窗里的条目类型：合集（meta）/ 系列（items 里 type==2）。
+enum SeasonInfoKind { season, series }
+
+/// 空间弹窗列表里的一条：标题 + 编号 + 集数。
+class SeasonInfoEntry {
+  const SeasonInfoEntry({
+    required this.id,
+    required this.title,
+    required this.total,
+    required this.kind,
+  });
+
+  final int id;
+  final String title;
+  final int total;
+  final SeasonInfoKind kind;
+}
+
+/// 一个 UP 名下的合集与系列清单（空间弹窗的数据源）。
+class SeasonInfoList {
+  const SeasonInfoList({
+    required this.mid,
+    required this.seasons,
+    required this.series,
+  });
+
+  final int mid;
+  final List<SeasonInfoEntry> seasons;
+  final List<SeasonInfoEntry> series;
+}
+
+/// 一份合集清单：合集 → 段 → 集。
+class SeasonManifest {
+  const SeasonManifest({
+    required this.seasonId,
+    required this.title,
+    required this.owner,
+    required this.cover,
+    required this.sections,
+  });
+
+  final int seasonId;
+  final String title;
+  final String owner;
+  final String cover;
+
+  /// 合集没分段时，用一个空标题的段兜住所有集，
+  /// 这样 UI 与勾选逻辑只需处理一种形状。
+  final List<SeasonSection> sections;
+
+  int get totalEpisodes =>
+      sections.fold(0, (sum, section) => sum + section.episodes.length);
+
+  /// 把所有集按顺序摊平。
+  List<SeasonEpisode> get allEpisodes => <SeasonEpisode>[
+        for (final section in sections) ...section.episodes,
+      ];
+
+  /// 清单第一集（用于给只有 season_id 的入口占位一个 ResolvedTarget.page）。
+  SeasonEpisode? get firstEpisode {
+    for (final section in sections) {
+      if (section.episodes.isNotEmpty) return section.episodes.first;
+    }
+    return null;
+  }
 }
 
 class MediaStream {
@@ -495,6 +674,12 @@ class DownloadTask {
     this.audioCodecs = '',
     this.merged = false,
     this.createdAtMs = 0,
+    this.batchId = '',
+    this.seasonId = 0,
+    this.seasonTitle = '',
+    this.sectionId = 0,
+    this.sectionTitle = '',
+    this.episodeIndex = 0,
   });
 
   final String id;
@@ -527,6 +712,19 @@ class DownloadTask {
   String audioCodecs;
   bool merged;
   final int createdAtMs;
+
+  /// 清单信息：同一批入队的任务共用一个 [batchId]，任务页按它分组。
+  ///
+  /// 单集下载这些字段都是空/0，分组逻辑按「没有清单字段」的旧任务处理，
+  /// 旧记录不需要迁移。
+  final String batchId;
+  final int seasonId;
+  final String seasonTitle;
+  final int sectionId;
+  final String sectionTitle;
+
+  /// 合集内序号（从 1 起），文件名编号用它，补下别的段不会重号。
+  final int episodeIndex;
 
   double get progress {
     if (totalBytes <= 0) return 0;
@@ -563,6 +761,12 @@ class DownloadTask {
         'audio_codecs': audioCodecs,
         'merged': merged,
         'created_at_ms': createdAtMs,
+        'batch_id': batchId,
+        'season_id': seasonId,
+        'season_title': seasonTitle,
+        'section_id': sectionId,
+        'section_title': sectionTitle,
+        'episode_index': episodeIndex,
       };
 
   static DownloadTask fromJson(Map<String, dynamic> json) => DownloadTask(
@@ -594,6 +798,12 @@ class DownloadTask {
         audioCodecs: json['audio_codecs'] as String? ?? '',
         merged: json['merged'] as bool? ?? false,
         createdAtMs: (json['created_at_ms'] as num?)?.toInt() ?? 0,
+        batchId: json['batch_id'] as String? ?? '',
+        seasonId: (json['season_id'] as num?)?.toInt() ?? 0,
+        seasonTitle: json['season_title'] as String? ?? '',
+        sectionId: (json['section_id'] as num?)?.toInt() ?? 0,
+        sectionTitle: json['section_title'] as String? ?? '',
+        episodeIndex: (json['episode_index'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -622,6 +832,7 @@ class AppSettings {
     this.animDurationMs = kAnimDefaultDurationMs,
     this.animCurve = kAnimDefaultCurve,
     this.animStyle = kAnimDefaultStyle,
+    this.duplicateMode = kDuplicateDefault,
   });
 
   String downloadDir;
@@ -676,6 +887,11 @@ class AppSettings {
   /// 展开动画形式，取值见 [kAnimStyles]。
   String animStyle;
 
+  /// 同名文件处理：`skip` 跳过 / `overwrite` 覆盖 / `rename` 自动重命名。
+  ///
+  /// 批量下载几乎必然撞名，这个开关决定撞名时的行为；默认跳过最保守。
+  String duplicateMode;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -700,6 +916,7 @@ class AppSettings {
         'anim_duration_ms': animDurationMs,
         'anim_curve': animCurve,
         'anim_style': animStyle,
+        'duplicate_mode': duplicateMode,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -730,6 +947,7 @@ class AppSettings {
         ),
         animCurve: normalizeAnimCurve(json['anim_curve'] as String?),
         animStyle: normalizeAnimStyle(json['anim_style'] as String?),
+        duplicateMode: normalizeDuplicateMode(json['duplicate_mode'] as String?),
       );
 }
 

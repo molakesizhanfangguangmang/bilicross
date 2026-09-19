@@ -41,6 +41,26 @@ class ParseService {
     int? pageOverride,
   }) async {
     final VideoInfo info;
+    if (target.kind == TargetKind.ugcSeason) {
+      if (target.seasonId == null || target.seasonId! <= 0) {
+        throw BiliException('合集编号缺失');
+      }
+      // 只有 season_id 没有视频上下文（空间 lists 链接 / 裸 season 编号）：
+      // 翻页接口必须带 mid，先用清单接口按 season_id 找一个成员的 mid。
+      final mid = await api.findSeasonOwner(target.seasonId!, cookie);
+      info = await api.fetchUgcSeasonArchives(
+        seasonId: target.seasonId!,
+        mid: mid,
+        cookie: cookie,
+      );
+      if (info.season == null || info.season!.totalEpisodes == 0) {
+        throw BiliException('这个合集没有可下载的集');
+      }
+      // 清单没有「当前分 P」的概念，占位用第一集，让 ResolvedTarget 结构成立。
+      final placeholder = info.season!.firstEpisode?.asPlayPage ??
+          const PlayPage(page: 1, cid: 0, part: '', durationSec: 0);
+      return ResolvedTarget(info: info, page: placeholder);
+    }
     if (target.kind == TargetKind.video) {
       info = await api.fetchVideo(cookie, bvid: target.bvid, aid: target.aid);
     } else {

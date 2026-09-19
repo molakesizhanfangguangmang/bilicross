@@ -25,6 +25,11 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 长按「高级设置」解锁动画调节。
   ///
   /// 解锁是**单向**的：这里只置位、不提供关回去的入口。
+  Future<void> _saveSettings(VoidCallback change) async {
+    change();
+    await widget.state.saveSettings();
+  }
+
   Future<void> _unlockAnimTuning(AppSettings settings) async {
     if (settings.animTuningUnlocked) return;
     settings.animTuningUnlocked = true;
@@ -399,6 +404,37 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     );
                   },
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 同名文件处理：批量下载几乎必然撞名，这里定撞名时的行为。
+              // 即选即落盘，不等「保存设置」。
+              SectionCard(
+                title: l10n.tr('settings.duplicate'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(l10n.tr('settings.duplicateHint'),
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xff6d716f))),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        for (final mode in kDuplicateModes)
+                          ChoiceChip(
+                            label: Text(
+                              l10n.tr('settings.duplicate.$mode'),
+                            ),
+                            selected: settings.duplicateMode == mode,
+                            onSelected: (_) => _saveSettings(
+                              () => widget.state.settings.duplicateMode = mode,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),

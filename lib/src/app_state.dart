@@ -86,6 +86,11 @@ class AppState extends ChangeNotifier {
   AccountState account = const AccountState.unknown();
   ParsedMedia? parsed;
   String addressInput = '';
+
+  /// 当前解析结果所属的合集清单；不在合集里时为 null。
+  ///
+  /// 清单直接来自 `view` 的 `ugc_season`，所以「列出整部合集」不额外发请求。
+  SeasonManifest? get manifest => parsed?.info.season;
   String notice = '';
   bool busy = false;
   bool queueRunning = false;
@@ -389,14 +394,18 @@ class AppState extends ChangeNotifier {
 
   // ---------- 任务 ----------
 
-  void enqueue({
+  /// 把一条解析结果加入队列，返回新建的任务（视频与音频都为空时返回 null）。
+  ///
+  /// **参数化而非读全局 [parsed]**：清单批量入队时每一项都有自己的解析结果，
+  /// 全局单例只存得下最后一个，若沿用单例会让整批任务全指向同一集。
+  DownloadTask? enqueueItem({
+    required ParsedMedia media,
     required MediaStream? video,
     required MediaStream? audio,
     required String engine,
+    String? source,
   }) {
-    final media = parsed;
-    if (media == null) return;
-    if (video == null && audio == null) return;
+    if (video == null && audio == null) return null;
     final dir = settings.downloadDir;
     final name = sanitizeFileName(
       '${media.info.title}${media.page.page > 1 ? ' P${media.page.page} ${media.page.part}' : ''}',
@@ -404,7 +413,7 @@ class AppState extends ChangeNotifier {
     final task = DownloadTask(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       title: name,
-      source: addressInput,
+      source: source ?? addressInput,
       infoId: media.info.bvid.isEmpty ? '${media.info.aid}' : media.info.bvid,
       page: media.page.page,
       cid: media.page.cid,
@@ -426,6 +435,147 @@ class AppState extends ChangeNotifier {
     unawaited(store.saveTasks(tasks));
     LogStore.instance.add('任务', '入队：${task.title}（等待开始）');
     notifyListeners();
+    return task;
+  }
+
+  /// 单集入队：用当前解析结果（[parsed]）走 [enqueueItem]。
+  ///
+  /// 只在「清单里只有一项」或用户手动选流的场景用；清单批量入队请直接调
+  /// [enqueueItem]，把每一项自己的解析结果传进去。
+  void enqueue({
+    required MediaStream? video,
+    required MediaStream? audio,
+    required String engine,
+  }) {
+    final media = parsed;
+    if (media == null) return;
+    enqueueItem(media: media, video: video, audio: audio, engine: engine);
+  }
+
+  /// 路径比较键：Windows 文件系统不区分大小写，比较前统一成小写正斜杠。
+  static String _pathKey(String path) => Platform.isWindows
+      ? path.replaceAll('\\', '/').toLowerCase()
+      : path;
+
+  /// 两位序号：1 -> 01，25 -> 25。
+  static String _pad2(int value) => value.toString().padLeft(2, '0');
+
+  /// 批量把清单里勾中的集登记进队列。
+  ///
+  /// **只登记、不解析**：每集的 playurl 要按各自的 cid 单独取，一整部合集
+  /// 一口气解析既慢又容易触发风控。任务以 videoUrl 为空的状态入队，开跑时
+  /// [_runTask] 走 resolving 阶段按 source（每集自己的 bvid 地址）逐个解析 ——
+  /// 与「地址过期重试」走的是同一条路。
+  ///
+  /// 同名处理按 [AppSettings.duplicateMode]：
+  /// - `skip`：磁盘或队列里已有同名目标就不登记，计入 skipped；
+  /// - `overwrite`：照常登记（覆盖发生在任务真正开下时，排队期间不动旧文件）；
+  /// - `rename`：保留旧文件，新文件名加递增编号，且任务的所有临时文件
+  ///   都从这份新名派生，恢复下载才不会对不上。
+  ///
+  /// 同名判断同时查**磁盘**与**当前队列**（含本批次前面刚登记的），避免同批
+  /// 或跨批产生路径冲突。全程不弹窗，统计结果由调用方统一展示。
+  DuplicateBatchOutcome enqueueEpisodes({
+    required SeasonManifest manifest,
+    required Set<int> selectedPages,
+    required String engine,
+  }) {
+    final batchId = 'batch-${DateTime.now().microsecondsSinceEpoch}';
+    final dir = settings.downloadDir;
+    final separator = Platform.pathSeparator;
+    final seasonFolder = sanitizeFileName(manifest.title);
+    final seasonDir = '$dir$separator$seasonFolder';
+    final duplicateMode = settings.duplicateMode;
+
+    // 队列里已有任务占用的路径（规范化后），本批次新登记的也会持续并入。
+    final taken = <String>{
+      for (final task in tasks) _pathKey(task.outputPath),
+    };
+
+    var enqueued = 0;
+    var skipped = 0;
+    var renamed = 0;
+    final now = DateTime.now();
+
+    for (final section in manifest.sections) {
+      for (final episode in section.episodes) {
+        if (!selectedPages.contains(episode.page)) continue;
+        final stem = sanitizeFileName('${_pad2(episode.page)} ${episode.title}');
+        var candidate = '$seasonDir$separator$stem';
+        var finalPath = '$candidate.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
+
+        if (taken.contains(_pathKey(finalPath))) {
+          switch (duplicateMode) {
+            case kDuplicateSkip:
+              skipped += 1;
+              continue;
+            case kDuplicateRename:
+              // 001 标题.mp4 撞了就试 001 标题 (1).mp4、(2)…… 编号挂在扩展名前，
+              // 所有临时文件从同一个 stem 派生，恢复下载才对得上。
+              var attempt = 1;
+              var renamedStem = stem;
+              while (true) {
+                renamedStem = '$stem ($attempt)';
+                finalPath =
+                    '$seasonDir$separator$renamedStem.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
+                if (!taken.contains(_pathKey(finalPath))) break;
+                attempt += 1;
+              }
+              candidate = '$seasonDir$separator$renamedStem';
+              renamed += 1;
+              break;
+            case kDuplicateOverwrite:
+            default:
+              // 覆盖：什么都不做，等任务开下时由下载器写穿旧文件。
+              break;
+          }
+        }
+
+        final wantsVideo = episode.bvid.isNotEmpty;
+        final task = DownloadTask(
+          id: '${now.microsecondsSinceEpoch}-${episode.page}',
+          title: candidate.split(separator).last,
+          // source 存每集自己的地址：重解析按它走，才能取到这一集的流。
+          source: episode.bvid.isEmpty
+              ? 'https://www.bilibili.com/video/av${episode.aid}'
+              : 'https://www.bilibili.com/video/${episode.bvid}',
+          infoId: episode.bvid.isEmpty ? '${episode.aid}' : episode.bvid,
+          page: 1,
+          cid: episode.cid,
+          outputPath: finalPath,
+          engine: engine,
+          channel: 'manifest',
+          videoUrl: '',
+          audioUrl: '',
+          videoQualityId: wantsVideo ? settings.preferredQuality : 0,
+          audioQualityId: settings.preferredAudio,
+          createdAtMs: now.millisecondsSinceEpoch,
+          batchId: batchId,
+          seasonId: manifest.seasonId,
+          seasonTitle: manifest.title,
+          sectionId: section.id,
+          sectionTitle: section.title,
+          episodeIndex: episode.page,
+        );
+        taken.add(_pathKey(finalPath));
+        tasks.insert(0, task);
+        enqueued += 1;
+      }
+    }
+
+    if (enqueued > 0) {
+      unawaited(store.saveTasks(tasks));
+      LogStore.instance.add(
+        '任务',
+        '批量入队：${manifest.title} —— 加入 $enqueued，跳过 $skipped，重命名 $renamed',
+      );
+      notifyListeners();
+    }
+    return DuplicateBatchOutcome(
+      enqueued: enqueued,
+      skipped: skipped,
+      renamed: renamed,
+    );
   }
 
   /// 有没有等着开跑的活。任务页的「开始任务」按这个决定能不能点。
@@ -571,6 +721,12 @@ class AppState extends ChangeNotifier {
       if (!dir.existsSync()) {
         await dir.create(recursive: true);
       }
+      // 合集任务的产物与分片都放在合集子目录（outputPath 的父目录）里；
+      // 不建这个子目录的话分片会散落在下载根目录，跟产物对不上。
+      final outDir = Directory(File(task.outputPath).parent.path);
+      if (!outDir.existsSync()) {
+        await outDir.create(recursive: true);
+      }
       if ((task.videoQualityId != 0 && task.videoUrl.isEmpty) ||
           (task.audioQualityId != 0 && task.audioUrl.isEmpty)) {
         task.stage = TaskStage.resolving;
@@ -588,9 +744,9 @@ class AppState extends ChangeNotifier {
 
       final base = sanitizeFileName(task.title);
       final separator = Platform.pathSeparator;
-      task.videoPath = '${dir.path}$separator$base.video.m4s';
-      task.audioPath = '${dir.path}$separator$base.audio.m4s';
-      task.outputPath = '${dir.path}$separator$base.${wantsVideo ? 'mp4' : 'm4a'}';
+      task.videoPath = '${outDir.path}$separator$base.video.m4s';
+      task.audioPath = '${outDir.path}$separator$base.audio.m4s';
+      task.outputPath = '${outDir.path}$separator$base.${wantsVideo ? 'mp4' : 'm4a'}';
 
       task.stage = TaskStage.downloading;
       // 已经落盘的流不再重下：暂停后继续、合并失败后重试都靠这一条，

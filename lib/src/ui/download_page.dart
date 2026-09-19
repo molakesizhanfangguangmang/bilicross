@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
+import 'season_manifest_view.dart';
 import 'widgets.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -19,6 +20,9 @@ class _DownloadPageState extends State<DownloadPage> {
       TextEditingController(text: widget.state.addressInput);
   int? _videoIndex;
   int? _audioIndex;
+
+  /// 清单里勾中的合集内序号（由 SeasonManifestView 回报）。
+  Set<int> _selectedEpisodes = <int>{};
 
   @override
   void dispose() {
@@ -139,6 +143,29 @@ class _DownloadPageState extends State<DownloadPage> {
             ],
           ),
         ),
+        // 这条视频属于某个合集时，把整部合集列出来 —— 数据就在 view 的响应里，
+        // 不额外发请求。第 1 步只做只读展示，勾选在第 2 步接入。
+        if (media.info.season != null) ...<Widget>[
+          const SizedBox(height: 12),
+          SectionCard(
+            title: l10n.tr('manifest.title'),
+            child: SeasonManifestView(
+              manifest: media.info.season!,
+              onSelectionChanged: (pages) => _selectedEpisodes = pages,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: _selectedEpisodes.isEmpty
+                  ? null
+                  : () => _enqueueManifest(context, state, media.info.season!),
+              icon: const Icon(Icons.playlist_add),
+              label: Text(l10n.tr('manifest.enqueueSelected')),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         SectionCard(
           title: l10n.tr('download.videoStreams'),
@@ -228,6 +255,32 @@ class _DownloadPageState extends State<DownloadPage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 清单批量入队：勾中的集交给 [AppState.enqueueEpisodes] 登记进队列。
+  /// 全程不逐集弹窗，结束后统一弹一条「加入/跳过/重命名」统计。
+  void _enqueueManifest(
+    BuildContext context,
+    AppState state,
+    SeasonManifest manifest,
+  ) {
+    final outcome = state.enqueueEpisodes(
+      manifest: manifest,
+      selectedPages: _selectedEpisodes,
+      engine: 'dart',
+    );
+    final l10n = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.tr('manifest.batchResult', {
+            'enqueued': '${outcome.enqueued}',
+            'skipped': '${outcome.skipped}',
+            'renamed': '${outcome.renamed}',
+          }),
+        ),
+      ),
     );
   }
 

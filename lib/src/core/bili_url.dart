@@ -9,6 +9,8 @@ class BiliUrl {
   static final RegExp _ep = RegExp(r'\bep(\d+)\b', caseSensitive: false);
   static final RegExp _ss = RegExp(r'\bss(\d+)\b', caseSensitive: false);
   static final RegExp _page = RegExp(r'[?&]p=(\d+)');
+  static final RegExp _seasonId = RegExp(r'\bseason(\d+)\b', caseSensitive: false);
+  static final RegExp _spaceList = RegExp(r'space\.bilibili\.com/(\d+)/lists/(\d+)', caseSensitive: false);
 
   static BiliTarget parse(String input) {
     final text = input.trim();
@@ -65,6 +67,27 @@ class BiliUrl {
         kind: TargetKind.video,
         bvid: bvid,
         page: page,
+        source: text,
+      );
+    }
+
+    // 空间合集列表页（space.bilibili.com/<mid>/lists/<seasonId>）直接当合集入口。
+    final spaceList = _spaceList.firstMatch(text);
+    if (spaceList != null) {
+      return BiliTarget(
+        kind: TargetKind.ugcSeason,
+        seasonId: int.parse(spaceList.group(2)!),
+        source: text,
+      );
+    }
+
+    // 裸编号 season3144260（大小写不敏感）同样当合集入口；
+    // 注意要在 ss 判断之后，避免与番剧 ss 编号混淆 —— 本身的字面就是 season 前缀。
+    final seasonMatch = _seasonId.firstMatch(text);
+    if (seasonMatch != null) {
+      return BiliTarget(
+        kind: TargetKind.ugcSeason,
+        seasonId: int.parse(seasonMatch.group(1)!),
         source: text,
       );
     }
