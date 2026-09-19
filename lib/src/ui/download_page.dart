@@ -151,7 +151,10 @@ class _DownloadPageState extends State<DownloadPage> {
             title: l10n.tr('manifest.title'),
             child: SeasonManifestView(
               manifest: media.info.season!,
-              onSelectionChanged: (pages) => _selectedEpisodes = pages,
+              // 必须 setState：勾选状态放在父级（按钮要读它决定可用性与集数），
+              // 不回写的话按钮会一直停在「已选 0 集」的灰色状态。
+              onSelectionChanged: (pages) =>
+                  setState(() => _selectedEpisodes = pages),
             ),
           ),
           const SizedBox(height: 10),
