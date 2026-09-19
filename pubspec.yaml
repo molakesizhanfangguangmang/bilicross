@@ -1,7 +1,7 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 1.0.5+15
+version: 1.0.6+16
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -12,13 +12,18 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   crypto: ^3.0.7
+  cryptography: ^2.9.0
   file_picker: ^13.1.0
   http: ^1.6.0
   package_info_plus: ^10.2.1
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
+  tray_manager: ^0.5.3
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
+  window_manager: ^0.5.2
+  # Windows 网页登录用：flutter_inappwebview（WebView2）。Android 继续用 webview_flutter，不替换。
+  flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
   flutter_test:
@@ -30,3 +35,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
+    - packaging/windows/app_icon.ico

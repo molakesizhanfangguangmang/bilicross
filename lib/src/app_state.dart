@@ -25,8 +25,9 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  static Future<AppState> load() async {
-    final store = await Store.open();
+  /// [isWindows] 只给测试用：真机不传。见 [Store.open] 的说明。
+  static Future<AppState> load({bool? isWindows}) async {
+    final store = await Store.open(isWindows: isWindows);
     final settings = await store.loadSettings();
     final l10n = AppLocalizations.fromCode(settings.localeCode);
     if (settings.downloadDir.trim().isEmpty) {
@@ -113,6 +114,54 @@ class AppState extends ChangeNotifier {
     await store.saveSettings(settings);
     await _rebuildApi();
     await refreshFfmpeg();
+    notifyListeners();
+  }
+
+  /// 恢复备份之后重新读盘并重新验证。
+  ///
+  /// 恢复是覆盖式的：内存里的设置、凭据与任务必须整体换成磁盘上的新内容，
+  /// 否则界面还显示恢复前的账号。凭据过期时保留其它配置，账号状态回到「需要重新登录」，
+  /// 不在这里清空设置或任务。
+  Future<void> reloadAfterRestore() async {
+    final restored = await store.loadSettings();
+    if (restored.downloadDir.trim().isEmpty) {
+      restored.downloadDir =
+          '${store.root.path}${Platform.pathSeparator}downloads';
+    }
+    settings = restored;
+    final credentials = await store.loadCredentials();
+    cookie = credentials.cookie;
+    token = credentials.token;
+    tasks
+      ..clear()
+      ..addAll(await store.loadTasks());
+    account = const AccountState.unknown();
+    parsed = null;
+    await _rebuildApi();
+    await refreshFfmpeg();
+    notifyListeners();
+    // 重新验证：Cookie 与 Token 有效就刷新账号状态，失效就停在「未登录」，不抛错给用户。
+    await refreshAccount();
+  }
+
+  /// 正在跑的任务数（解析中 / 下载中 / 合并中）。退出前用它判断要不要二次确认。
+  int get activeTaskCount => tasks
+      .where((task) =>
+          task.stage == TaskStage.resolving ||
+          task.stage == TaskStage.downloading ||
+          task.stage == TaskStage.muxing)
+      .length;
+
+  /// 暂停全部正在跑的任务（托盘菜单用）。暂停保留分片，之后可以继续；
+  /// 不会把用户主动暂停记成下载失败。
+  void pauseAllActive() {
+    for (final task in tasks) {
+      if (task.stage == TaskStage.resolving ||
+          task.stage == TaskStage.downloading ||
+          task.stage == TaskStage.muxing) {
+        pauseTask(task.id);
+      }
+    }
     notifyListeners();
   }
 

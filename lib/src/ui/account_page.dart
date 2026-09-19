@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../core/bili_api.dart';
 import '../i18n/app_localizations.dart';
 import 'qr_login_page.dart';
 import 'web_login.dart';
+import '../platform/windows/web_login_page.dart';
 import 'widgets.dart';
 
 class AccountPage extends StatelessWidget {
@@ -23,6 +25,8 @@ class AccountPage extends StatelessWidget {
       listenable: state,
       builder: (context, _) {
         final cookie = state.cookie;
+        final webLoginSupported =
+            Platform.isAndroid || Platform.isIOS || Platform.isWindows;
         return PageFrame(
           title: l10n.tr('account.title'),
           child: Column(
@@ -64,7 +68,7 @@ class AccountPage extends StatelessWidget {
                           icon: const Icon(Icons.qr_code_scanner),
                           label: Text(l10n.tr('qr.entry')),
                         ),
-                        if (WebLoginPage.isSupported)
+                        if (webLoginSupported)
                           OutlinedButton.icon(
                             onPressed: () => _webLogin(context),
                             icon: const Icon(Icons.public),
@@ -112,7 +116,7 @@ class AccountPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      WebLoginPage.isSupported
+                      webLoginSupported
                           ? l10n.tr('account.webLoginHint')
                           : l10n.tr('account.noBrowserHint'),
                       style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
@@ -247,13 +251,20 @@ class AccountPage extends StatelessWidget {
 
   Future<void> _webLogin(BuildContext context) async {
     String? captured;
+    final Widget page;
+    if (Platform.isWindows) {
+      page = WindowsWebLoginPage(
+        onCookie: (text) => captured = text,
+        localeCode: state.settings.localeCode,
+      );
+    } else {
+      page = WebLoginPage(
+        onCookie: (text) => captured = text,
+        localeCode: state.settings.localeCode,
+      );
+    }
     await Navigator.of(context).push(
-      MaterialPageRoute<bool>(
-        builder: (routeContext) => WebLoginPage(
-          onCookie: (text) => captured = text,
-          localeCode: state.settings.localeCode,
-        ),
-      ),
+      MaterialPageRoute<bool>(builder: (routeContext) => page),
     );
     final text = captured;
     if (text == null || !context.mounted) return;

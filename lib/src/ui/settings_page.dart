@@ -6,6 +6,7 @@ import '../core/log_store.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
+import 'backup_card.dart';
 import 'log_page.dart';
 import 'widgets.dart';
 
@@ -337,6 +338,39 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 24),
+              // 备份与恢复只给 Windows 的安装版与便携版用：两边数据目录不同，
+              // 靠备份互相迁移；安卓侧不显示这个入口，界面保持原样。
+              if (windows) ...[
+                BackupCard(state: state),
+                const SizedBox(height: 12),
+                // 关闭行为：默认最小化到托盘，任务继续跑；选「退出」才真退。
+                SectionCard(
+                  title: l10n.tr('settings.closeBehavior'),
+                  child: DropdownButtonFormField<bool>(
+                    initialValue: settings.closeToTray,
+                    decoration: InputDecoration(
+                      labelText: l10n.tr('settings.closeBehavior'),
+                      prefixIcon: const Icon(Icons.exit_to_app_outlined),
+                    ),
+                    items: [
+                      DropdownMenuItem<bool>(
+                        value: true,
+                        child: Text(l10n.tr('settings.closeToTray')),
+                      ),
+                      DropdownMenuItem<bool>(
+                        value: false,
+                        child: Text(l10n.tr('settings.closeToExit')),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      settings.closeToTray = value;
+                      setState(() {});
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
               // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
               // 放在最后：换语言是低频操作，没必要占着第一屏。
               SectionCard(

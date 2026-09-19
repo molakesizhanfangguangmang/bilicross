@@ -291,6 +291,46 @@ class AppLocalizationsZh extends AppLocalizations {
     'qr.back': '返回账号页',
     'qr.fallbackHint': '扫码失败不影响其它登录方式：'
         '网页登录、粘贴 Cookie、导入 cookie.txt 都仍然可用。',
+
+    // 备份与恢复（Windows 的安装版与便携版）
+    'settings.backup': '备份与恢复',
+    'backup.hint': '导出账号信息、设置与任务，用于安装版与便携版之间迁移。恢复会覆盖当前数据。',
+    'backup.export': '导出备份',
+    'backup.restore': '从备份恢复',
+    'backup.working': '处理中…',
+    'backup.exported': '已导出备份：{path}',
+    'backup.confirmTitle': '确认恢复',
+    'backup.confirmBody': '这份备份来自 {source}。恢复会覆盖当前账号、设置与任务，'
+        '覆盖前会自动留一份回滚备份。要继续吗？',
+    'backup.confirmOk': '覆盖并恢复',
+    'backup.restored': '已恢复 {count} 项数据',
+    'backup.pending': '有 {count} 个任务指向的目录不存在，需要手动处理',
+    'backup.failed': '恢复失败：{error}',
+    'backup.noKey': '当前构建没有配置备份密钥，无法导出备份',
+
+    // 托盘与关闭行为（Windows）
+    'tray.show': '显示主窗口',
+    'tray.folder': '打开下载目录',
+    'tray.pauseAll': '暂停全部任务',
+    'tray.quit': '退出应用',
+    'settings.closeBehavior': '关闭行为',
+    'settings.closeToTray': '关闭窗口时最小化到托盘',
+    'settings.closeToExit': '关闭窗口时退出应用',
+    'quit.title': '确认退出',
+    'quit.body': '还有正在进行的任务，退出会中断它们。确定要退出吗？',
+    'quit.ok': '退出',
+
+    // 启动环境自检
+    'startup.title': '无法启动',
+    'startup.body': '运行环境缺少必需组件，请按下面的提示处理后重新打开。',
+    'startup.check.dataDir': '数据目录可写',
+    'startup.check.assets': '应用资源可读',
+    'startup.check.webview2': 'WebView2 运行时',
+    'startup.reason': '原因：{detail}',
+    'startup.webview2Hint': '网页登录需要系统安装 Microsoft Edge WebView2 运行时，'
+        '可从微软官网下载 Evergreen 安装包。',
+    'startup.webview2Download': '打开下载页面',
+    'startup.exit': '退出应用',
   };
 
   @override

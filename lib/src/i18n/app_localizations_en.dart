@@ -310,6 +310,53 @@ class AppLocalizationsEn extends AppLocalizations {
     'qr.back': 'Back to account',
     'qr.fallbackHint': 'A failed scan does not affect the other ways in: web '
         'sign-in, pasting a cookie and importing cookie.txt all still work.',
+
+    // Backup & restore (Windows installer and portable editions)
+    'settings.backup': 'Backup & restore',
+    'backup.hint': 'Export your account information, settings and tasks to move '
+        'them between the installer and portable editions. Restoring overwrites '
+        'the current data.',
+    'backup.export': 'Export backup',
+    'backup.restore': 'Restore from backup',
+    'backup.working': 'Working…',
+    'backup.exported': 'Backup exported: {path}',
+    'backup.confirmTitle': 'Confirm restore',
+    'backup.confirmBody': 'This backup comes from {source}. Restoring overwrites '
+        'the current account, settings and tasks. A rollback copy is saved first. '
+        'Continue?',
+    'backup.confirmOk': 'Overwrite and restore',
+    'backup.restored': 'Restored {count} items',
+    'backup.pending': '{count} tasks point to a folder that no longer exists and '
+        'need manual attention',
+    'backup.failed': 'Restore failed: {error}',
+    'backup.noKey': 'This build has no backup key configured, exporting is not '
+        'possible',
+
+    // Tray and close behaviour (Windows)
+    'tray.show': 'Show window',
+    'tray.folder': 'Open download folder',
+    'tray.pauseAll': 'Pause all tasks',
+    'tray.quit': 'Quit',
+    'settings.closeBehavior': 'Close behaviour',
+    'settings.closeToTray': 'Minimize to tray on close',
+    'settings.closeToExit': 'Exit on close',
+    'quit.title': 'Confirm exit',
+    'quit.body': 'Tasks are still running and will be interrupted. Quit anyway?',
+    'quit.ok': 'Quit',
+
+    // Startup environment self-check
+    'startup.title': 'Cannot start',
+    'startup.body': 'A required component is missing from the environment. '
+        'Please follow the notes below, then open the app again.',
+    'startup.check.dataDir': 'Data folder is writable',
+    'startup.check.assets': 'Application resources readable',
+    'startup.check.webview2': 'WebView2 runtime',
+    'startup.reason': 'Reason: {detail}',
+    'startup.webview2Hint': 'Web login needs the Microsoft Edge WebView2 runtime '
+        'installed on the system. It is available as an Evergreen installer from '
+        'Microsoft.',
+    'startup.webview2Download': 'Open download page',
+    'startup.exit': 'Exit',
   };
 
   @override

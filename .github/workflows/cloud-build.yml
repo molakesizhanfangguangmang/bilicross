@@ -224,6 +224,21 @@ jobs:
         shell: bash
         run: flutter pub get
 
+      # flutter_inappwebview_android 1.1.3 的 build.gradle 仍用已废弃的
+      # getDefaultProguardFile('proguard-android.txt')，新版 AGP 已移除该文件，编译直接失败。
+      # 替换为 AGP 推荐的 proguard-android-optimize.txt（等价且受支持）。仅改插件缓存副本，不碰仓库。
+      - name: Patch in-app WebView Android plugin for current AGP
+        shell: bash
+        run: |
+          f=$(find "$HOME/.pub-cache" -path '*flutter_inappwebview_android*/android/build.gradle' 2>/dev/null | head -1)
+          if [ -z "$f" ]; then
+            echo "未找到 flutter_inappwebview_android 的 build.gradle，跳过补丁（路径可能已变，需复查）"
+            exit 0
+          fi
+          echo "patching $f"
+          sed -i 's/proguard-android\.txt/proguard-android-optimize.txt/g' "$f"
+          grep -n 'proguard-android' "$f"
+
       - name: Check formatting
         shell: bash
         run: dart format lib test
@@ -251,7 +266,11 @@ jobs:
 
       - name: Build release APK
         shell: bash
-        run: flutter build apk --release --target-platform android-arm64
+        # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。
+        # 测试另有独立测试密钥，不使用这里的值。
+        env:
+          BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
+        run: flutter build apk --release --target-platform android-arm64 $BACKUP_KEY_DEFINE
 
       - name: Verify APK architecture
         shell: bash
@@ -297,8 +316,8 @@ jobs:
           fi
           badging=$("$tools/aapt" dump badging "$apk")
           echo "$badging" | grep -E "^package:" | sed -n '1p'
-          echo "$badging" | grep -F "versionCode='15'"
-          echo "$badging" | grep -F "versionName='1.0.5'"
+          echo "$badging" | grep -F "versionCode='16'"
+          echo "$badging" | grep -F "versionName='1.0.6'"
 
       - name: Verify APK signing
         shell: bash
@@ -357,6 +376,22 @@ jobs:
           if (-not (Select-String -Path $main -SimpleMatch 'u9038')) { throw '未能设置窗口标题' }
           Select-String -Path $main -Pattern 'window\.Create'
 
+      # flutter_inappwebview_windows 0.6.0 的 C++ 用了 <experimental/coroutine> + /await，
+      # 新版 MSVC（CI 上是 14.51）把它升级成硬错误（STL1011）。定义
+      # _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS 抑制该 static_assert，让插件照常编译。
+      # 仅注入到 windows/CMakeLists.txt（每次 flutter create 重生），不改应用代码、不改插件源码。
+      - name: Patch Windows toolchain for in-app WebView2 plugin
+        shell: pwsh
+        run: |
+          $cmake = 'windows\CMakeLists.txt'
+          if (-not (Test-Path $cmake)) { throw "未找到 $cmake" }
+          $text = Get-Content $cmake -Raw
+          if ($text -notmatch '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS') {
+            $text = $text -replace 'cmake_minimum_required\(VERSION (\d+\.\d+)\)', "cmake_minimum_required(VERSION `$1)`nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)"
+            Set-Content $cmake $text -NoNewline -Encoding utf8
+          }
+          Select-String -Path $cmake -Pattern '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS'
+
       # 同 Android：拆开跑，失败时看步骤名就知道是哪一步。
       - name: Resolve dependencies
         shell: pwsh
@@ -389,22 +424,93 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
-        run: flutter build windows --release
+        # 与 Android 同一个 Secret；值不会被打印到日志。
+        # 同一份产物既给安装版也给便携版：便携版靠包里的 portable.marker 在运行期认通道，
+        # 不必为两种包各编一次。
+        env:
+          BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
+        run: |
+          flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
 
-      - name: Package and checksum
+      # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
+      # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，
+      # 因此这里取“最新的版本化发布”——既能拿到校验和做 SHA-256 校验，也顺带锁定当次构建用到的具体版本。
+      # ffmpeg 不进仓库、不进 Release 说明，仅作运行期可选依赖；缺了会自动回落内置合并。
+      - name: Fetch and verify ffmpeg (BtbN LGPL win64)
         shell: pwsh
         run: |
-          $source = 'build\windows\x64\runner\Release'
-          if (-not (Test-Path "$source\bilicross.exe")) { throw 'Windows executable not found' }
-          Compress-Archive -Path "$source\*" -DestinationPath BiliCross-windows-x64.zip
-          $hash = (Get-FileHash BiliCross-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  BiliCross-windows-x64.zip" | Set-Content BiliCross-windows-x64.zip.sha256 -Encoding ascii
+          $hdr = @{ 'User-Agent' = 'bilicross-ci' }
+          $list = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=10' -Headers $hdr
+          $rel = $null; $assetName = $null; $zipUrl = $null; $sumsUrl = $null
+          foreach ($r in $list) {
+            if ($r.tag_name -eq 'latest') { continue }
+            $zip = $r.assets | Where-Object { $_.name -match 'win64-lgpl\.zip$' -and $_.name -notmatch 'shared' } | Select-Object -First 1
+            $sums = $r.assets | Where-Object { $_.name -eq 'checksums.sha256' } | Select-Object -First 1
+            if ($zip -and $sums) { $rel = $r; $assetName = $zip.name; $zipUrl = $zip.browser_download_url; $sumsUrl = $sums.browser_download_url; break }
+          }
+          if (-not $rel) { throw '找不到带 checksums.sha256 的 FFmpeg 发布' }
+          Write-Output ("选定 ffmpeg 版本: " + $rel.tag_name + " / " + $assetName)
+          Invoke-WebRequest -Uri $zipUrl -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri $sumsUrl -OutFile checksums.sha256
+          $line = Select-String -Path checksums.sha256 -Pattern "[0-9a-fA-F]{64}" | Where-Object { $_.Line -match [regex]::Escape($assetName) } | Select-Object -First 1
+          if (-not $line) { throw "checksums.sha256 里找不到 $assetName 的校验值" }
+          $expected = ($line.Line -replace '[^0-9a-fA-F].*$','').Trim().ToLower()
+          $actual = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "ffmpeg SHA256 不匹配：期望 $expected 实际 $actual" }
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_extracted
+          $src = Get-ChildItem ffmpeg_extracted -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $src) { throw 'ffmpeg.exe 未找到' }
+          New-Item tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item $src.FullName tools\ffmpeg\ffmpeg.exe -Force
+          Write-Output ("ffmpeg 就绪: " + (Get-Item tools\ffmpeg\ffmpeg.exe).Length + " 字节, sha256=" + $actual)
 
-      - name: Upload Windows artifact
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            (Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup 6" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue |
+              Select-Object -First 1).FullName
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            try { choco install innosetup -y --no-progress 2>$null } catch { }
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) {
+            $url = 'https://jrsoftware.org/download.php/is.exe'
+            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\innosetup.exe" -MaximumRedirection 10
+            Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw '未找到 ISCC.exe（Inno Setup 安装可能失败）' }
+          & $iscc packaging\windows\BiliCross.iss
+          if (-not (Test-Path BiliCross-windows-x64-setup.exe)) { throw '安装包未生成' }
+          $hash = (Get-FileHash BiliCross-windows-x64-setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-x64-setup.exe" | Set-Content BiliCross-windows-x64-setup.exe.sha256 -Encoding ascii
+
+      # 便携版：同一份安装版产物，只在包里塞一个 portable.marker 让运行期认出便携通道，
+      # 数据目录因此落到 <程序目录>\data。ffmpeg 也一并带进去。
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $rel = 'build\windows\x64\runner\Release'
+          if (-not (Test-Path "$rel\bilicross.exe")) { throw 'Windows executable not found' }
+          New-Item dist-portable -ItemType Directory -Force | Out-Null
+          Copy-Item "$rel\*" dist-portable -Recurse -Force
+          New-Item dist-portable\tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item tools\ffmpeg\ffmpeg.exe dist-portable\tools\ffmpeg\ffmpeg.exe -Force
+          New-Item dist-portable\portable.marker -ItemType File -Force | Out-Null
+          Compress-Archive -Path dist-portable\* -DestinationPath BiliCross-windows-x64-portable.zip -Force
+          $hash = (Get-FileHash BiliCross-windows-x64-portable.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-x64-portable.zip" | Set-Content BiliCross-windows-x64-portable.zip.sha256 -Encoding ascii
+
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BiliCross-windows-x64
           path: |
-            BiliCross-windows-x64.zip
-            BiliCross-windows-x64.zip.sha256
+            BiliCross-windows-x64-setup.exe
+            BiliCross-windows-x64-setup.exe.sha256
+            BiliCross-windows-x64-portable.zip
+            BiliCross-windows-x64-portable.zip.sha256
           if-no-files-found: error

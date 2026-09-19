@@ -1,18 +1,53 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
+import 'src/core/distribution.dart';
+import 'src/core/log_store.dart';
+import 'src/core/startup_check.dart';
 import 'src/core/update_check.dart';
 import 'src/i18n/app_localizations.dart';
 import 'src/i18n/app_localizations_zh.dart';
+import 'src/platform/windows/desktop_shell.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
+import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/widgets.dart';
 
-void main() => runApp(const BiliCrossApp());
+/// 全局导航键：托盘菜单与退出确认要在没有页面 context 的地方弹对话框。
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // 先自检再起应用：数据目录写不了、资源读不出来、Windows 缺 WebView2，
+  // 这三样任一缺失后面都会以更难看的方式炸开，不如当场说清楚。
+  // 只查 Windows，其它平台直接跳过（Android 的路径与依赖不同，不在本次范围）。
+  if (DesktopShell.isSupported) {
+    final report = await runStartupChecks(
+      dataRoot: await _resolveStartupDataRoot(),
+      isWindows: true,
+    );
+    if (!report.allRequiredOk) {
+      runApp(StartupFailureApp(report: report));
+      return;
+    }
+  }
+  runApp(const BiliCrossApp());
+}
+
+/// 自检阶段的数据目录：此时 AppState 还没加载，只能按通道约定先算一份。
+/// 与 AppState 用的是同一套判定（见 core/distribution.dart），不会打架。
+Future<Directory> _resolveStartupDataRoot() async {
+  final support = await getApplicationSupportDirectory();
+  return resolveDataRoot(systemSupportDirectory: support);
+}
 
 class BiliCrossApp extends StatefulWidget {
   const BiliCrossApp({super.key});
@@ -56,6 +91,16 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         }
         // 换语言必须重建 MaterialApp：locale 变了整棵树的 Localizations 都要换，
         // 只重建 AppShell 不够。所以监听放在 MaterialApp 外面这一层。
+        // Windows 上把窗口与托盘接起来：只做平台外壳，业务动作走回调。
+        // 失败只记日志，不影响应用本身（托盘不可用也得能用软件）。
+        //
+        // 注意：这里是 build()，可能被调用多次。必须**同步**置位守卫再启动异步初始化，
+        // 否则并发进来会重复执行 initialize()，把 windowManager / trayManager
+        // 的原生状态搞乱 —— 表现为窗口闪一下就自己关掉。
+        if (!_shellAttachStarted) {
+          _shellAttachStarted = true;
+          unawaited(_attachDesktopShell(state));
+        }
         return ListenableBuilder(
           listenable: state,
           builder: (context, _) => _buildApp(state),
@@ -64,11 +109,76 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     );
   }
 
+  DesktopShell? _shell;
+  bool _shellAttachStarted = false;
+
+  Future<void> _attachDesktopShell(AppState state) async {
+    if (!DesktopShell.isSupported) return;
+    final l10n = AppLocalizations.fromCode(state.settings.localeCode);
+    final shell = _shell ??= DesktopShell(
+      labels: DesktopShellLabels(
+        show: l10n.tr('tray.show'),
+        openFolder: l10n.tr('tray.folder'),
+        pauseAll: l10n.tr('tray.pauseAll'),
+        quit: l10n.tr('tray.quit'),
+      ),
+      onShow: () async {},
+      onOpenFolder: () async {
+        final dir = state.settings.downloadDir.trim();
+        if (dir.isEmpty) return;
+        // 用系统文件管理器打开下载目录；失败只记日志，不打断用户。
+        try {
+          await Process.run('explorer', <String>[dir]);
+        } on Object catch (error) {
+          LogStore.instance.add('托盘', '打开下载目录失败：$error');
+        }
+      },
+      onPauseAll: () async {
+        state.pauseAllActive();
+      },
+      onConfirmQuit: () async {
+        if (state.activeTaskCount == 0) return true;
+        final context = navigatorKey.currentContext;
+        if (context == null) return true;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            final t = AppLocalizations.of(context);
+            return AlertDialog(
+              title: Text(t.tr('quit.title')),
+              content: Text(t.tr('quit.body')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(t.tr('common.cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(t.tr('quit.ok')),
+                ),
+              ],
+            );
+          },
+        );
+        // 用户取消：任务继续跑，什么都不做。
+        return confirmed ?? false;
+      },
+    );
+    // 并发守卫已在调用处（build 里同步置位 _shellAttachStarted）拦住了，
+    // 这里不再需要 _shellAttached 二次判断。
+    await shell.initialize(closeToTray: state.settings.closeToTray);
+    // 设置里改了关闭行为，这里跟着换。
+    state.addListener(() {
+      shell.applyCloseBehavior(state.settings.closeToTray);
+    });
+  }
+
   Widget _buildApp(AppState state) {
     final l10n = AppLocalizations.fromCode(state.settings.localeCode);
     const seed = Color(0xff2f6f65);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       title: l10n.tr('app.name'),
       // 'system' 交给框架按系统语言挑，其余按设置锁定。
       locale: state.settings.localeCode == kLocaleSystem ? null : l10n.locale,
@@ -132,9 +242,12 @@ class _AppShellState extends State<AppShell> {
   }
 
   /// 启动后静默查一次更新：有新版弹确认框，查不到提示一句，已是最新不出声。
-  /// 目前只给 Android 侧载包用，其它平台不显示「检测更新」也没必要去查。
+  /// Android 与 Windows 都查：前者换侧载包，后者换安装包/便携包。
   Future<void> _checkUpdateOnce() async {
-    if (!mounted || Theme.of(context).platform != TargetPlatform.android) {
+    if (!mounted) return;
+    final platform = Theme.of(context).platform;
+    if (platform != TargetPlatform.android &&
+        platform != TargetPlatform.windows) {
       return;
     }
     final result = await checkForUpdate();
