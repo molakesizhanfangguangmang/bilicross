@@ -399,37 +399,10 @@ jobs:
 
       # Flutter 首帧上屏之前，窗口显示的是系统默认白底；开了启动画面时尤其突兀。
       # 给窗口挂深色画刷并立即重绘。只改 windows/runner/main.cpp（该目录不入仓）。
-      # 注意：main.cpp 是 UTF-8 with BOM，写回必须补回 BOM，否则 MSVC 按本地代码页
-      # 解析会报 C4819 并被 /WX 提升为错误；注入的注释一律用 ASCII。
+      # 注入逻辑放在 packaging/windows/patch-dark-background.js：脚本要处理 BOM 与
+      # 编码细节，直接写在 YAML 里既难读，也容易因缩进破坏整个文件的结构。
       - name: Use dark background before first frame
-        shell: pwsh
-        run: |
-          $main = 'windows\runner\main.cpp'
-          $text = [System.IO.File]::ReadAllText($main)
-          if ($text -notmatch 'kBiliCrossSplashBrush') {
-            $anchor = 'window.SetQuitOnClose(true);'
-            if ($text -notmatch [regex]::Escape($anchor)) { throw "main.cpp 里找不到 $anchor" }
-            $inject = @'
-window.SetQuitOnClose(true);
-
-  // Before the first Flutter frame reaches the screen the window shows the
-  // system default white background. Attach a dark brush and repaint once so
-  // startup does not flash white.
-  {
-    const COLORREF kBiliCrossSplashColor = RGB(0x14, 0x16, 0x18);
-    HBRUSH kBiliCrossSplashBrush = CreateSolidBrush(kBiliCrossSplashColor);
-    SetClassLongPtr(window.GetHandle(), GCLP_HBRBACKGROUND,
-                    reinterpret_cast<LONG_PTR>(kBiliCrossSplashBrush));
-    InvalidateRect(window.GetHandle(), nullptr, TRUE);
-    UpdateWindow(window.GetHandle());
-  }
-'@
-            $text = $text.Replace($anchor, $inject.TrimEnd("`r", "`n"))
-            $utf8Bom = New-Object System.Text.UTF8Encoding($true)
-            [System.IO.File]::WriteAllText($main, $text, $utf8Bom)
-          }
-          if (-not (Select-String -Path $main -SimpleMatch 'kBiliCrossSplashBrush')) { throw '深色背景未注入' }
-          Select-String -Path $main -Pattern 'kBiliCrossSplashBrush'
+        run: node packaging/windows/patch-dark-background.js
 
       # flutter_inappwebview_windows 0.6.0 的 C++ 用了 <experimental/coroutine> + /await，
       # 新版 MSVC（CI 上是 14.51）把它升级成硬错误（STL1011）。定义
