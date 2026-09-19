@@ -5,14 +5,18 @@ import 'package:flutter/animation.dart';
 /// 这些参数平时不暴露，长按「高级设置」入口才解锁（见 [AppSettings.animTuningUnlocked]）。
 
 /// 动画时长范围与默认值（毫秒）。
+///
+/// 默认 300ms + 最缓曲线（`sine`）是本项目的统一观感基准：
+/// 短促但不突兀，展开过程仍看得清。可调项只在解锁后才会被用户改动。
 const int kAnimMinDurationMs = 200;
 const int kAnimMaxDurationMs = 800;
-const int kAnimDefaultDurationMs = 480;
+const int kAnimDefaultDurationMs = 300;
 
 /// 曲线档位。键是存进设置的字符串，值是实际曲线。
 ///
 /// 用 `easeOut` 族：起始速度等于幂次，档位从缓到急依次为 sine < quad < cubic < quart < expo。
-const String kAnimDefaultCurve = 'quad';
+/// 默认取最缓的 `sine`。
+const String kAnimDefaultCurve = 'sine';
 const Map<String, Curve> kAnimCurves = <String, Curve>{
   'sine': Curves.easeOutSine,
   'quad': Curves.easeOutQuad,
