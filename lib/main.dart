@@ -221,6 +221,12 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
   Widget _buildApp(AppState state) {
     final l10n = AppLocalizations.fromCode(state.settings.localeCode);
     const seed = Color(0xff2f6f65);
+    // 提前取出配色：导航栏的指示器色与选中态图标色都要引用它。
+    final scheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.light,
+      surface: const Color(0xfff6f7f5),
+    );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
@@ -237,13 +243,43 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.light,
-          surface: const Color(0xfff6f7f5),
-        ),
+        colorScheme: scheme,
         scaffoldBackgroundColor: const Color(0xfff6f7f5),
         useMaterial3: true,
+        // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
+        // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
+        navigationBarTheme: NavigationBarThemeData(
+          indicatorColor: scheme.primary,
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return IconThemeData(
+              color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+            );
+          }),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            );
+          }),
+        ),
+        // 宽屏走 NavigationRail，配色要与底部导航保持一致，否则两端观感不同。
+        navigationRailTheme: NavigationRailThemeData(
+          indicatorColor: scheme.primary,
+          selectedIconTheme: IconThemeData(color: scheme.onPrimary),
+          unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+          selectedLabelTextStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: scheme.primary,
+          ),
+          unselectedLabelTextStyle: TextStyle(
+            fontSize: 12,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
