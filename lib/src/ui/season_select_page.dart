@@ -277,20 +277,18 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                     ),
                   ),
                   const Divider(height: 1),
-                  // 清单本体。
+                  // 清单本体。它自己带滚动（懒加载要 CustomScrollView），
+                  // 外面不能再套一层 SingleChildScrollView。
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      child: SeasonManifestView(
-                        manifest: widget.manifest,
-                        preflightOf: state.preflightOf,
-                        isPreflighting: state.isPreflighting,
-                        onSelectionChanged: _onSelectionChanged,
-                        flaggedPages: flagged,
-                        focusPage: _focusPage,
-                        qualityOverrideOf: (page) => _qualityOverrides[page],
-                        onOverrideQuality: _overrideQuality,
-                      ),
+                    child: SeasonManifestView(
+                      manifest: widget.manifest,
+                      preflightOf: state.preflightOf,
+                      isPreflighting: state.isPreflighting,
+                      onSelectionChanged: _onSelectionChanged,
+                      flaggedPages: flagged,
+                      focusPage: _focusPage,
+                      qualityOverrideOf: (page) => _qualityOverrides[page],
+                      onOverrideQuality: _overrideQuality,
                     ),
                   ),
                 ],

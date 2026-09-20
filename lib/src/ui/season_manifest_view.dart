@@ -60,6 +60,19 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
   /// 每集一个 key，用来把指定行滚进视野（`Scrollable.ensureVisible` 要 element）。
   final Map<int, GlobalKey> _rowKeys = <int, GlobalKey>{};
 
+  /// 清单本体自己滚（懒加载要 CustomScrollView），滚到指定行也靠它。
+  final ScrollController _controller = ScrollController();
+
+  List<_ManifestRow>? _rowsCache;
+
+  List<_ManifestRow> get _rows => _rowsFor(widget.manifest);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   GlobalKey _rowKey(int page) => _rowKeys.putIfAbsent(page, () => GlobalKey());
 
   @override
@@ -71,13 +84,36 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollTo(focus));
   }
 
-  void _scrollTo(int page) {
+  /// 滚动到指定的一集。
+  ///
+  /// ⚠️ 懒加载之后屏幕外的行**没有 element**，`ensureVisible` 会落空。
+  /// 所以分两步：先按行序号在总滚动范围里估个位置粗跳过去，
+  /// 那一行被建出来之后，再用 `ensureVisible` 精修到目标位置。
+  Future<void> _scrollTo(int page) async {
+    final index = _rows.indexWhere(
+      (row) => row is _EpisodeRowData && row.episode.page == page,
+    );
+    if (index < 0) return;
+    if (_controller.hasClients) {
+      final position = _controller.position;
+      final ratio = _rows.length <= 1 ? 0.0 : index / (_rows.length - 1);
+      final estimate = (position.maxScrollExtent * ratio).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      // 时长与曲线跟项目默认动画一致（300ms + easeOutSine）。
+      await _controller.animateTo(
+        estimate,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutSine,
+      );
+    }
+    if (!mounted) return;
     final target = _rowKeys[page]?.currentContext;
-    if (target == null) return;
-    // 时长与曲线跟项目默认动画一致（300ms + easeOutSine）。
-    Scrollable.ensureVisible(
+    if (target == null || !target.mounted) return;
+    await Scrollable.ensureVisible(
       target,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutSine,
       // 别顶到最上沿，留一点上下文，用户知道自己在清单的哪一段。
       alignment: 0.3,
@@ -104,43 +140,85 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
   @override
   Widget build(BuildContext context) {
     final manifest = widget.manifest;
+    final rows = _rowsFor(manifest);
+    final allSelected = _selection.allOfManifest(manifest);
+
+    return CustomScrollView(
+      controller: _controller,
+      slivers: <Widget>[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: _Header(
+              manifest: manifest,
+              checked: allSelected,
+              onToggle: _toggleAll,
+            ),
+          ),
+        ),
+        // ⚠️ 逐行构建。229 集的合集若一次全建，预检每查完一集通知一次界面
+        // 就要重建两千多个组件 —— 手机上直接卡死（这就是之前的卡顿）。
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverList.builder(
+            itemCount: rows.length,
+            itemBuilder: (context, index) => _buildRow(rows[index]),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Text(
+              _countHint(context, manifest),
+              style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRow(_ManifestRow row) {
+    switch (row) {
+      case _SectionHeaderRow(:final section):
+        final all = _selection.allOf(section);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: _SectionRow(
+            section: section,
+            checked: all,
+            partial: !all && _selection.anyOf(section),
+            onToggle: () => _toggleSection(section),
+          ),
+        );
+      case _EpisodeRowData(:final episode, :final depth):
+        return _episodeRow(episode, depth: depth);
+    }
+  }
+
+  /// 行列表只跟 manifest 有关，缓存一份 —— 别每次 build 都重摊一遍。
+  List<_ManifestRow> _rowsFor(SeasonManifest manifest) =>
+      _rowsCache ??= _buildRows(manifest);
+
+  List<_ManifestRow> _buildRows(SeasonManifest manifest) {
+    final rows = <_ManifestRow>[];
     // 只有一个段且没有标题时，段这一层不显示 —— 那是「合集没分段」的兜底形状，
     // 硬加一层「无标题段」只会让清单看起来莫名其妙地多缩进一次。
     final singleUnnamedSection =
         manifest.sections.length == 1 && manifest.sections.first.title.isEmpty;
-    final allSelected = _selection.allOfManifest(manifest);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _Header(
-          manifest: manifest,
-          checked: allSelected,
-          onToggle: _toggleAll,
-        ),
-        const SizedBox(height: 8),
-        if (singleUnnamedSection)
-          for (final episode in manifest.sections.first.episodes)
-            _episodeRow(episode, depth: 0)
-        else
-          for (final section in manifest.sections) ...<Widget>[
-            _SectionRow(
-              section: section,
-              checked: _selection.allOf(section),
-              partial: !_selection.allOf(section) && _selection.anyOf(section),
-              onToggle: () => _toggleSection(section),
-            ),
-            for (final episode in section.episodes)
-              _episodeRow(episode, depth: 1),
-            const SizedBox(height: 6),
-          ],
-        const SizedBox(height: 4),
-        Text(
-          _countHint(context, manifest),
-          style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
-        ),
-      ],
-    );
+    if (singleUnnamedSection) {
+      for (final episode in manifest.sections.first.episodes) {
+        rows.add(_EpisodeRowData(episode, depth: 0));
+      }
+      return rows;
+    }
+    for (final section in manifest.sections) {
+      rows.add(_SectionHeaderRow(section));
+      for (final episode in section.episodes) {
+        rows.add(_EpisodeRowData(episode, depth: 1));
+      }
+    }
+    return rows;
   }
 
   Widget _episodeRow(SeasonEpisode episode, {required int depth}) {
@@ -171,6 +249,27 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
       'checked': '${_selection.count}',
     });
   }
+}
+
+/// 清单里的一行。摊平成一维之后交给 `SliverList.builder` 逐行构建。
+///
+/// ⚠️ 必须摊平：以前是一整棵 Column 一次全建，229 集的合集每次状态变化都要
+/// 重建两千多个组件（预检每查完一集就通知一次界面），手机上直接卡死。
+sealed class _ManifestRow {
+  const _ManifestRow();
+}
+
+class _SectionHeaderRow extends _ManifestRow {
+  const _SectionHeaderRow(this.section);
+
+  final SeasonSection section;
+}
+
+class _EpisodeRowData extends _ManifestRow {
+  const _EpisodeRowData(this.episode, {required this.depth});
+
+  final SeasonEpisode episode;
+  final int depth;
 }
 
 /// 合集标题行：勾选框 + 标题 + 「共 N 集 · M 段」。

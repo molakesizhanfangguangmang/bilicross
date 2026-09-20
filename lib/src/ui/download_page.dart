@@ -116,50 +116,51 @@ class _DownloadPageState extends State<DownloadPage> {
     final l10n = AppLocalizations.of(context);
     final picked = await showDialog<int>(
       context: context,
-      builder: (dialogContext) => SimpleDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(l10n.tr('download.pickPageTitle')),
-        children: <Widget>[
-          for (final page in media.info.pages)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(dialogContext).pop(page.page),
-              child: Row(
-                children: <Widget>[
-                  SizedBox(
-                    width: 40,
-                    child: Text(
-                      'P${page.page}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xff9aa3a0),
-                      ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        // ⚠️ 用 ListView.builder 逐行建：几百 P 的视频若一次全建，
+        // 手机上开这个弹窗会明显卡。
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 360,
+          child: ListView.builder(
+            itemCount: media.info.pages.length,
+            itemBuilder: (context, index) {
+              final page = media.info.pages[index];
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: SizedBox(
+                  width: 34,
+                  child: Text(
+                    'P${page.page}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xff9aa3a0),
                     ),
                   ),
-                  Expanded(
-                    child: Text(
-                      page.part.isEmpty ? '—' : page.part,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  if (page.durationSec > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(
+                ),
+                title: Text(
+                  page.part.isEmpty ? '—' : page.part,
+                  style: const TextStyle(fontSize: 13),
+                ),
+                trailing: page.durationSec > 0
+                    ? Text(
                         formatDuration(page.durationSec),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xff9aa3a0),
                         ),
-                      ),
-                    ),
-                  if (page.page == media.page.page)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 6),
-                      child: Icon(Icons.check, size: 16),
-                    ),
-                ],
-              ),
-            ),
-        ],
+                      )
+                    : null,
+                selected: page.page == media.page.page,
+                selectedTileColor: const Color(0x14b06a3b),
+                onTap: () => Navigator.of(dialogContext).pop(page.page),
+              );
+            },
+          ),
+        ),
       ),
     );
     if (picked == null || !mounted) return;
