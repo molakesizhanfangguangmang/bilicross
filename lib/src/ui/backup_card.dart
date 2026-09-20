@@ -71,84 +71,12 @@ class _BackupCardState extends State<BackupCard> {
     required String title,
     required String hint,
     required bool confirm,
-  }) async {
-    final l10n = AppLocalizations.of(context);
-    final first = TextEditingController();
-    final second = TextEditingController();
-    final error = ValueNotifier<String?>(null);
-
-    final result = await showDialog<String>(
+  }) {
+    return showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(hint, style: const TextStyle(fontSize: 12, color: kTextMuted)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: first,
-              obscureText: true,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: l10n.tr('backup.passphrase'),
-              ),
-            ),
-            if (confirm) ...<Widget>[
-              const SizedBox(height: 10),
-              TextField(
-                controller: second,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: l10n.tr('backup.passphraseAgain'),
-                ),
-              ),
-            ],
-            ValueListenableBuilder<String?>(
-              valueListenable: error,
-              builder: (context, message, _) => message == null
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        message,
-                        style: const TextStyle(fontSize: 12, color: kDanger),
-                      ),
-                    ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.tr('common.cancel')),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = first.text.trim();
-              if (value.length < kBackupMinPassphraseLength) {
-                error.value = l10n.tr('backup.passphraseTooShort', {
-                  'count': '$kBackupMinPassphraseLength',
-                });
-                return;
-              }
-              if (confirm && value != second.text.trim()) {
-                error.value = l10n.tr('backup.passphraseMismatch');
-                return;
-              }
-              Navigator.of(dialogContext).pop(value);
-            },
-            child: Text(l10n.tr('common.ok')),
-          ),
-        ],
-      ),
+      builder: (dialogContext) =>
+          _PassphraseDialog(title: title, hint: hint, confirm: confirm),
     );
-
-    first.dispose();
-    second.dispose();
-    error.dispose();
-    return result;
   }
 
   /// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
@@ -355,6 +283,117 @@ class _BackupCardState extends State<BackupCard> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// 口令输入对话框。
+///
+/// ⚠️ 控制器必须**由对话框自己持有、在自身 dispose 里释放**，不能在
+/// `showDialog` 的 await 返回后立刻 dispose —— await 只等到 route 被 pop，
+/// 退出动画期间 TextField 还挂在树上并持有监听，这时释放会抛
+/// 「A TextEditingController was used after being disposed」，
+/// 还会连带把重建过程搅成一串框架断言。
+class _PassphraseDialog extends StatefulWidget {
+  const _PassphraseDialog({
+    required this.title,
+    required this.hint,
+    required this.confirm,
+  });
+
+  final String title;
+  final String hint;
+  final bool confirm;
+
+  @override
+  State<_PassphraseDialog> createState() => _PassphraseDialogState();
+}
+
+class _PassphraseDialogState extends State<_PassphraseDialog> {
+  final TextEditingController _first = TextEditingController();
+  final TextEditingController _second = TextEditingController();
+  final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
+
+  @override
+  void dispose() {
+    _first.dispose();
+    _second.dispose();
+    _error.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final l10n = AppLocalizations.of(context);
+    final value = _first.text.trim();
+    if (value.length < kBackupMinPassphraseLength) {
+      _error.value = l10n.tr('backup.passphraseTooShort', {
+        'count': '$kBackupMinPassphraseLength',
+      });
+      return;
+    }
+    if (widget.confirm && value != _second.text.trim()) {
+      _error.value = l10n.tr('backup.passphraseMismatch');
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(widget.title),
+      // 键盘弹起时对话框会被压矮，内容必须可滚动，否则直接报 overflow。
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              widget.hint,
+              style: const TextStyle(fontSize: 12, color: kTextMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _first,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: l10n.tr('backup.passphrase'),
+              ),
+            ),
+            if (widget.confirm) ...<Widget>[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _second,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: l10n.tr('backup.passphraseAgain'),
+                ),
+              ),
+            ],
+            ValueListenableBuilder<String?>(
+              valueListenable: _error,
+              builder: (context, message, _) => message == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        message,
+                        style: const TextStyle(fontSize: 12, color: kDanger),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.tr('common.cancel')),
+        ),
+        FilledButton(onPressed: _submit, child: Text(l10n.tr('common.ok'))),
+      ],
     );
   }
 }
