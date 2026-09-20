@@ -317,17 +317,42 @@ class _TasksPageState extends State<TasksPage> {
 }
 
 /// 一组任务：有清单信息的显示合集行（标题 + 进度），没信息的直接平铺卡片。
+///
+/// 合集块内再按**段**分组：段行带进度与暂停 / 终止 / 重试。一集一个任务，
+/// 段只是显示与控制粒度，不是队列单位（设计定案第 5 节）。
 class _GroupSection extends StatelessWidget {
   const _GroupSection({required this.state, required this.tasks});
 
   final AppState state;
   final List<DownloadTask> tasks;
 
+  static bool _running(TaskStage stage) =>
+      stage == TaskStage.resolving ||
+      stage == TaskStage.downloading ||
+      stage == TaskStage.muxing;
+
+  /// 按段分组，保持原顺序。没有段信息的（旧任务 / 未分段合集）收进空标题组，
+  /// 那种组不显示段行，免得平白多一层缩进。
+  List<List<DownloadTask>> _bySection() {
+    final order = <int>[];
+    final groups = <int, List<DownloadTask>>{};
+    for (final task in tasks) {
+      final key = task.sectionId;
+      if (!groups.containsKey(key)) {
+        groups[key] = <DownloadTask>[];
+        order.add(key);
+      }
+      groups[key]!.add(task);
+    }
+    return <List<DownloadTask>>[for (final key in order) groups[key]!];
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final first = tasks.first;
     final hasBatch = first.batchId.isNotEmpty;
+    final sections = hasBatch ? _bySection() : <List<DownloadTask>>[tasks];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -376,12 +401,124 @@ class _GroupSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          for (final task in tasks)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: TaskCard(state: state, task: task),
-            ),
+          for (final section in sections) ...<Widget>[
+            if (hasBatch && section.first.sectionTitle.isNotEmpty)
+              _SectionHeader(state: state, tasks: section),
+            for (final task in section)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: 10,
+                  left: hasBatch && section.first.sectionTitle.isNotEmpty ? 14 : 0,
+                ),
+                child: TaskCard(state: state, task: task),
+              ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// 段行：段名 + 进度 + 暂停 / 终止 / 重试。
+///
+/// 三个按钮都只作用于这一段 —— 这就是「单独下某段」真正需要的东西，
+/// 不必为此再做一个「只下这段」的按钮。
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.state, required this.tasks});
+
+  final AppState state;
+  final List<DownloadTask> tasks;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final ids = <String>[for (final task in tasks) task.id];
+    final done = tasks.where((t) => t.stage == TaskStage.done).length;
+    final running = tasks.where((t) => _GroupSection._running(t.stage)).length;
+    final paused = tasks.where((t) => t.stage == TaskStage.paused).length;
+    final waiting = tasks
+        .where((t) =>
+            t.stage == TaskStage.pending ||
+            t.stage == TaskStage.failed ||
+            t.stage == TaskStage.stopped)
+        .length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.folder_outlined,
+            size: 15,
+            color: Color(0xff6d716f),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              tasks.first.sectionTitle.isEmpty
+                  ? l10n.tr('manifest.untitledSection')
+                  : tasks.first.sectionTitle,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            l10n.tr('tasks.groupProgress', {
+              'done': '$done',
+              'total': '${tasks.length}',
+            }),
+            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+          ),
+          _SectionAction(
+            icon: Icons.pause,
+            tooltip: l10n.tr('tasks.sectionPause'),
+            onPressed: running + paused > 0
+                ? () => state.pauseTasks(ids)
+                : null,
+          ),
+          _SectionAction(
+            icon: Icons.stop,
+            tooltip: l10n.tr('tasks.sectionStop'),
+            onPressed: running + paused + waiting > 0
+                ? () => state.stopTasks(ids)
+                : null,
+          ),
+          _SectionAction(
+            icon: Icons.refresh,
+            tooltip: l10n.tr('tasks.sectionRetry'),
+            onPressed: waiting > 0 ? () => state.retryTasks(ids) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 段行上的小图标按钮：撑满的 IconButton 会让一行塞不下三个。
+class _SectionAction extends StatelessWidget {
+  const _SectionAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        foregroundColor: const Color(0xff6d716f),
       ),
     );
   }

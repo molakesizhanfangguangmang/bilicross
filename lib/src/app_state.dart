@@ -206,6 +206,63 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- 段级控制（任务列表的段行用） ----------
+  //
+  // 一集一个任务，段只是**显示与控制粒度**，不是队列单位 —— 执行仍按清单串行。
+  // 这三个方法只动传进来的那些任务，不碰别的段。
+
+  /// 暂停一组正在跑的任务。
+  void pauseTasks(Iterable<String> ids) {
+    for (final id in ids) {
+      pauseTask(id);
+    }
+  }
+
+  /// 终止一组任务：在跑的连分片一起清，等待中的直接放弃。
+  /// 已完成的与失败的不动 —— 前者没意义，后者留着重试。
+  void stopTasks(Iterable<String> ids) {
+    final wanted = ids.toSet();
+    var touchedPending = false;
+    for (final task in List<DownloadTask>.of(tasks)) {
+      if (!wanted.contains(task.id)) continue;
+      if (_isRunning(task.stage)) {
+        stopTask(task.id);
+      } else if (task.stage == TaskStage.pending) {
+        task.stage = TaskStage.stopped;
+        touchedPending = true;
+      }
+    }
+    if (touchedPending) {
+      unawaited(store.saveTasks(tasks));
+      notifyListeners();
+    }
+  }
+
+  /// 把一组任务放回队列并开跑（段行的「重试」）。
+  ///
+  /// 在跑的与已完成的跳过；档位与编码保留，只清掉可能过期的 CDN 地址。
+  /// 批量只走一次 [pumpQueue]，不是每个任务各起一次。
+  void retryTasks(Iterable<String> ids) {
+    final wanted = ids.toSet();
+    var changed = false;
+    for (final task in tasks) {
+      if (!wanted.contains(task.id)) continue;
+      if (_isRunning(task.stage) || task.stage == TaskStage.done) continue;
+      task.stage = TaskStage.pending;
+      task.message = l10n.tr('msg.waitRetry');
+      task.receivedBytes = 0;
+      task.totalBytes = 0;
+      task.merged = false;
+      task.videoUrl = '';
+      task.audioUrl = '';
+      changed = true;
+    }
+    if (!changed) return;
+    unawaited(store.saveTasks(tasks));
+    notifyListeners();
+    unawaited(pumpQueue());
+  }
+
   // ---------- 风控（-352） ----------
 
   /// 撞到风控时置位，界面据此弹一次提示。
