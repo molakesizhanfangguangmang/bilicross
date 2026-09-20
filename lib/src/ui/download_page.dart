@@ -137,20 +137,22 @@ class _DownloadPageState extends State<DownloadPage> {
     SeasonInfoEntry entry,
   ) async {
     final l10n = AppLocalizations.of(context);
-    if (entry.kind != SeasonInfoKind.season) {
-      // 系列清单的翻页接口与合集不是同一个，还没接。
-      state.showNotice(l10n.tr('spaceSheet.seriesUnsupported'));
-      return;
-    }
     setState(() => _seasonLoading = true);
     try {
-      final info = await state.api.fetchUgcSeasonArchives(
-        seasonId: entry.id,
-        mid: mid,
-        cookie: state.cookie.raw,
-      );
-      final manifest = info.season;
+      // 合集与系列走各自的翻页接口，返回形状一样（archives[]）。
+      final info = entry.kind == SeasonInfoKind.series
+          ? await state.api.fetchSeriesArchives(
+              seriesId: entry.id,
+              mid: mid,
+              cookie: state.cookie.raw,
+            )
+          : await state.api.fetchUgcSeasonArchives(
+              seasonId: entry.id,
+              mid: mid,
+              cookie: state.cookie.raw,
+            );
       if (!mounted) return;
+      final manifest = info.season?.withTitle(entry.title);
       if (manifest == null || manifest.totalEpisodes == 0) {
         state.showNotice(l10n.tr('spaceSheet.noEpisodes'));
         return;

@@ -313,24 +313,59 @@ class BiliApi {
     required int seasonId,
     required int mid,
     required String cookie,
+  }) =>
+      _fetchArchives(
+        path: '/x/polymer/web-space/seasons_archives_list',
+        idParam: 'season_id',
+        id: seasonId,
+        mid: mid,
+        cookie: cookie,
+        action: '取合集清单',
+      );
+
+  /// 系列清单：`x/series/archives`。
+  ///
+  /// 与合集清单同一个形状（`data.archives[]`），只是路径、参数名不同
+  /// （`series_id`），且 total 藏在 `data.page.total` 里 —— 两者都认。
+  Future<VideoInfo> fetchSeriesArchives({
+    required int seriesId,
+    required int mid,
+    required String cookie,
+  }) =>
+      _fetchArchives(
+        path: '/x/series/archives',
+        idParam: 'series_id',
+        id: seriesId,
+        mid: mid,
+        cookie: cookie,
+        action: '取系列清单',
+      );
+
+  /// 合集与系列共用的翻页拉取：30 条/页，一直取到 total 为止。
+  ///
+  /// 段信息不用这些接口另取 —— `view` 的 `ugc_season` 里就有；这里服务的是
+  /// 「只有编号、没有视频上下文」的入口（空间链接 / 空间弹窗选中的条目）。
+  Future<VideoInfo> _fetchArchives({
+    required String path,
+    required String idParam,
+    required int id,
+    required int mid,
+    required String cookie,
+    required String action,
   }) async {
     final episodes = <SeasonEpisode>[];
     var pageNumber = 1;
     while (true) {
       final json = await getJson(
-        Uri.https(
-          'api.bilibili.com',
-          '/x/polymer/web-space/seasons_archives_list',
-          {
-            'mid': '$mid',
-            'season_id': '$seasonId',
-            'page_num': '$pageNumber',
-            'page_size': '30',
-          },
-        ),
+        Uri.https('api.bilibili.com', path, {
+          'mid': '$mid',
+          idParam: '$id',
+          'page_num': '$pageNumber',
+          'page_size': '30',
+        }),
         cookie: cookie,
       );
-      _check(json, action: '取合集清单');
+      _check(json, action: action);
       final data = json['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
       final archives = (data['archives'] as List? ?? const []).whereType<Map>();
       for (final raw in archives) {
@@ -345,13 +380,17 @@ class BiliApi {
           cover: item['pic'] as String? ?? '',
         ));
       }
-      final total = (data['total'] as num?)?.toInt() ?? episodes.length;
+      // 合集把 total 放在顶层，系列放在 page.total 里，两种都认。
+      final page = data['page'] as Map<String, dynamic>?;
+      final total = (data['total'] as num?)?.toInt() ??
+          (page?['total'] as num?)?.toInt() ??
+          episodes.length;
       if (episodes.length >= total || archives.isEmpty) break;
       pageNumber += 1;
     }
 
     final manifest = SeasonManifest(
-      seasonId: seasonId,
+      seasonId: id,
       title: '',
       owner: '',
       cover: '',

@@ -524,6 +524,18 @@ class SeasonManifest {
         for (final section in sections) ...section.episodes,
       ];
 
+  /// 换一个展示标题。
+  ///
+  /// 翻页接口（合集 / 系列）不返回标题，标题由调用方从空间弹窗那条带过来；
+  /// 标题同时决定下载子目录名，空着的话产物会散在下载根目录里。
+  SeasonManifest withTitle(String value) => SeasonManifest(
+        seasonId: seasonId,
+        title: value,
+        owner: owner,
+        cover: cover,
+        sections: sections,
+      );
+
   /// 清单第一集（用于给只有 season_id 的入口占位一个 ResolvedTarget.page）。
   SeasonEpisode? get firstEpisode {
     for (final section in sections) {

@@ -68,9 +68,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.duplicate.rename': 'Auto rename',
     'spaceSheet.seasons': 'Seasons',
     'spaceSheet.series': 'Series',
-    'spaceSheet.seriesUnsupported': 'Series listings use a different paging '
-        'endpoint and are not wired up yet; open any video inside the series '
-        'instead.',
     'spaceSheet.noEpisodes': 'This collection has no downloadable episodes',
     'spaceSheet.empty': 'This uploader has no public seasons or series',
     'about.testBuildWarning':
