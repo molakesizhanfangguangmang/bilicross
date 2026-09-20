@@ -1,8 +1,13 @@
 name: Cloud build
 
 on:
-  # 手动触发时可选平台与构建类型：内测出安卓包，发版选 both；
-  # buildType=test 才会加测试标记（水印、标识、.test 包名、禁截图）。
+  # 手动触发时可选平台与构建类型：内测出安卓包，发版选 both + release。
+  #
+  # ⚠️ **默认是内测形态（test），不是正式形态** —— 用户 2026-09-20 明确要求。
+  # 判据写成 `!= 'release'` 而不是 `== 'test'`：push 事件没有 inputs，
+  # 用前者才能让「推 main 自动出包」也落在内测形态上，正式包只有显式选
+  # buildType=release 才出（避免手滑推一次就出个看着像正式版的东西）。
+  # 内测标记 = 水印 + 界面标识 + .test 包名 + 禁截图。
   workflow_dispatch:
     inputs:
       platforms:
@@ -18,7 +23,7 @@ on:
         options:
           - release
           - test
-        default: release
+        default: test
   push:
     branches: [main]
 
@@ -284,20 +289,20 @@ jobs:
       # 内部测试版：给 MainActivity 加 FLAG_SECURE，禁止截屏与录屏。
       # 逻辑放在仓库内脚本里：android/ 目录不入仓，每次 flutter create 都会重生。
       - name: Enable FLAG_SECURE (block screenshots)
-        if: inputs.buildType == 'test'
+        if: inputs.buildType != 'release'
         shell: bash
         run: node packaging/android/patch-secure-window.js
 
       # 内部测试版：换 applicationId，让它能与正式版同时安装、数据各自隔离。
       # 同包名不同签名会装不上，同包名同签名会覆盖安装，只有不同包名才能并存。
       - name: Use test applicationId (allow side-by-side install)
-        if: inputs.buildType == 'test'
+        if: inputs.buildType != 'release'
         shell: bash
         run: node packaging/android/patch-app-id.js .test
 
       # 内部测试版：应用显示名也带上标识，便于与正式版区分。
       - name: Set test app label
-        if: inputs.buildType == 'test'
+        if: inputs.buildType != 'release'
         shell: bash
         run: node packaging/android/patch-app-label.js
 
@@ -307,7 +312,7 @@ jobs:
         # 测试另有独立测试密钥，不使用这里的值。
         env:
           BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
-          TEST_BUILD_DEFINE: --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType == 'test' }}
+          TEST_BUILD_DEFINE: --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
         run: flutter build apk --release --target-platform android-arm64 $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE
 
       - name: Verify APK architecture
@@ -499,7 +504,7 @@ jobs:
         env:
           BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
         run: |
-          flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType == 'test' }}
+          flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
 
       # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
       # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，
