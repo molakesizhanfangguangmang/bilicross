@@ -350,12 +350,28 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    widget.state.refreshFfmpeg();
-    widget.state.refreshAccount();
-    // 启动不自动开跑：上次中断的任务会带着分片回到「等待」，
-    // 队列要人点了任务页的「开始任务」才动，跟新入队的任务一个规矩。
-    // （单个任务的「重试」「继续」仍是点了就跑。）
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdateOnce());
+    // ⚠️ 这两次刷新**不能**在这里直接调 —— initState 跑在 build 期间
+    // （element 正在 mount），而 `refreshAccount()` 在第一个 `await` 之前
+    // 就会同步 `notifyListeners()`（空 Cookie 那条路是纯同步的）。
+    // 它的监听者里有外层那个 `ListenableBuilder`（`_buildApp` 那层），
+    // 此刻**正在构建**、又是当前 element 的祖先 —— 于是被标脏并撞上断言：
+    //
+    //   setState() or markNeedsBuild() called during build.
+    //   ... while dispatching notifications for AppState
+    //
+    // 表现：debug 下每次启动都在控制台冒这段红字；release 里断言被编译掉，
+    // 不崩，但那一次通知等于丢在当前帧（界面要等下一次通知才更新）。
+    // 放到首帧之后再跑就没事 —— 代价是一帧延迟，用户看不出来，
+    // 何况这两件事本来就是异步的。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.state.refreshFfmpeg();
+      widget.state.refreshAccount();
+      // 启动不自动开跑：上次中断的任务会带着分片回到「等待」，
+      // 队列要人点了任务页的「开始任务」才动，跟新入队的任务一个规矩。
+      // （单个任务的「重试」「继续」仍是点了就跑。）
+      _checkUpdateOnce();
+    });
   }
 
   /// 启动后静默查一次更新：有新版弹说明弹窗，查不到提示一句，已是最新不出声。
