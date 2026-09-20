@@ -20,6 +20,10 @@ class SeasonManifestView extends StatefulWidget {
     this.onSelectionChanged,
     this.preflightOf,
     this.isPreflighting,
+    this.flaggedPages = const <int>{},
+    this.focusPage,
+    this.qualityOverrideOf,
+    this.onOverrideQuality,
   });
 
   final SeasonManifest manifest;
@@ -33,6 +37,18 @@ class SeasonManifestView extends StatefulWidget {
   /// 某一集是否正在预检中。
   final bool Function(int page)? isPreflighting;
 
+  /// 需要高亮提示的集（缺档汇总点名的那几行）。
+  final Set<int> flaggedPages;
+
+  /// 需要滚动到的集。值变化时把那一行滚进视野 —— 缺档汇总的「跳到第一处」用它。
+  final int? focusPage;
+
+  /// 取某一集被单独覆盖的档位（不传就不显示「改档位」入口）。
+  final int? Function(int page)? qualityOverrideOf;
+
+  /// 用户点了某一集的「改档位」（弹窗由宿主负责）。
+  final ValueChanged<int>? onOverrideQuality;
+
   @override
   State<SeasonManifestView> createState() => _SeasonManifestViewState();
 }
@@ -40,6 +56,33 @@ class SeasonManifestView extends StatefulWidget {
 class _SeasonManifestViewState extends State<SeasonManifestView> {
   /// 勾选状态。语义与边界都在 [SeasonSelection] 里，这里只负责重建与回调。
   final SeasonSelection _selection = SeasonSelection();
+
+  /// 每集一个 key，用来把指定行滚进视野（`Scrollable.ensureVisible` 要 element）。
+  final Map<int, GlobalKey> _rowKeys = <int, GlobalKey>{};
+
+  GlobalKey _rowKey(int page) => _rowKeys.putIfAbsent(page, () => GlobalKey());
+
+  @override
+  void didUpdateWidget(SeasonManifestView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final focus = widget.focusPage;
+    if (focus == null || focus == oldWidget.focusPage) return;
+    // 这一帧还没布局，拿不到 element，等画完再滚。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollTo(focus));
+  }
+
+  void _scrollTo(int page) {
+    final target = _rowKeys[page]?.currentContext;
+    if (target == null) return;
+    // 时长与曲线跟项目默认动画一致（300ms + easeOutSine）。
+    Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutSine,
+      // 别顶到最上沿，留一点上下文，用户知道自己在清单的哪一段。
+      alignment: 0.3,
+    );
+  }
 
   void _changed() => widget.onSelectionChanged?.call(_selection.pages);
 
@@ -78,15 +121,7 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
         const SizedBox(height: 8),
         if (singleUnnamedSection)
           for (final episode in manifest.sections.first.episodes)
-            _EpisodeRow(
-              episode: episode,
-              depth: 0,
-              checked: _selection.contains(episode.page),
-              onToggle: () => _toggleEpisode(episode.page),
-              preflight: widget.preflightOf?.call(episode.page),
-              preflighting:
-                  widget.isPreflighting?.call(episode.page) ?? false,
-            )
+            _episodeRow(episode, depth: 0)
         else
           for (final section in manifest.sections) ...<Widget>[
             _SectionRow(
@@ -96,15 +131,7 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
               onToggle: () => _toggleSection(section),
             ),
             for (final episode in section.episodes)
-              _EpisodeRow(
-                episode: episode,
-                depth: 1,
-                checked: _selection.contains(episode.page),
-                onToggle: () => _toggleEpisode(episode.page),
-                preflight: widget.preflightOf?.call(episode.page),
-                preflighting:
-                    widget.isPreflighting?.call(episode.page) ?? false,
-              ),
+              _episodeRow(episode, depth: 1),
             const SizedBox(height: 6),
           ],
         const SizedBox(height: 4),
@@ -113,6 +140,26 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
           style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
         ),
       ],
+    );
+  }
+
+  Widget _episodeRow(SeasonEpisode episode, {required int depth}) {
+    final page = episode.page;
+    final options = widget.preflightOf?.call(page).videoOptions ?? const [];
+    return _EpisodeRow(
+      key: _rowKey(page),
+      episode: episode,
+      depth: depth,
+      checked: _selection.contains(page),
+      onToggle: () => _toggleEpisode(page),
+      preflight: widget.preflightOf?.call(page),
+      preflighting: widget.isPreflighting?.call(page) ?? false,
+      flagged: widget.flaggedPages.contains(page),
+      overrideQualityId: widget.qualityOverrideOf?.call(page),
+      // 没有可选项就不显示入口 —— 点了也只能看到一个空弹窗。
+      onOverride: widget.onOverrideQuality == null || options.isEmpty
+          ? null
+          : () => widget.onOverrideQuality!(page),
     );
   }
 
@@ -229,12 +276,16 @@ class _SectionRow extends StatelessWidget {
 /// 集行：勾选框 + 序号 · 标题 · 时长。
 class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
+    super.key,
     required this.episode,
     required this.depth,
     required this.checked,
     required this.onToggle,
     this.preflight,
     this.preflighting = false,
+    this.flagged = false,
+    this.overrideQualityId,
+    this.onOverride,
   });
 
   final SeasonEpisode episode;
@@ -244,11 +295,22 @@ class _EpisodeRow extends StatelessWidget {
   final PreflightResult? preflight;
   final bool preflighting;
 
+  /// 缺档汇总点名的那几行：加一层底色，扫一眼就能找到。
+  final bool flagged;
+
+  /// 这一集被单独覆盖的档位（null = 跟着全局档位走）。
+  final int? overrideQualityId;
+
+  /// 点「改档位」（null = 这一集没有可选项，不显示入口）。
+  final VoidCallback? onOverride;
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return InkWell(
       onTap: onToggle,
-      child: Padding(
+      child: Container(
+        color: flagged ? const Color(0x14b06a3b) : null,
         padding: EdgeInsets.fromLTRB(depth == 0 ? 26 : 48, 0, 0, 0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -287,6 +349,29 @@ class _EpisodeRow extends StatelessWidget {
                         preflight!.status != PreflightStatus.ok) ...<Widget>[
                       const SizedBox(width: 6),
                       _StatusChip(result: preflight!),
+                    ],
+                    if (onOverride != null) ...<Widget>[
+                      const SizedBox(width: 4),
+                      TextButton(
+                        onPressed: onOverride,
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: const TextStyle(fontSize: 11),
+                        ),
+                        child: Text(
+                          overrideQualityId == null
+                              ? l10n.tr('manifest.overrideQuality')
+                              : l10n.tr('manifest.overrideQualitySet', {
+                                  'quality':
+                                      qualityLabel(overrideQualityId!, l10n),
+                                }),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -328,6 +413,12 @@ class _StatusChip extends StatelessWidget {
         ),
       _ => ('manifest.preflight.missingQuality', const Color(0xffb06a3b)),
     };
+    // 缺档时直接写「这集最高可用 X」—— 比一个笼统的「缺档」有用得多。
+    // 其余状态仍是短标记，细节留在工具提示里。
+    final text = result.status == PreflightStatus.missingQuality &&
+            result.message.isNotEmpty
+        ? result.message
+        : l10n.tr(key);
     return Tooltip(
       message: result.message.isEmpty ? l10n.tr(key) : result.message,
       child: Container(
@@ -337,7 +428,7 @@ class _StatusChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          l10n.tr(key),
+          text,
           style: TextStyle(fontSize: 11, color: color),
         ),
       ),

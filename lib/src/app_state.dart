@@ -568,6 +568,7 @@ class AppState extends ChangeNotifier {
     required SeasonManifest manifest,
     required Set<int> selectedPages,
     required String engine,
+    Map<int, int> qualityOverrides = const <int, int>{},
   }) {
     final batchId = 'batch-${DateTime.now().microsecondsSinceEpoch}';
     final dir = settings.downloadDir;
@@ -596,6 +597,8 @@ class AppState extends ChangeNotifier {
           skipped += 1;
           continue;
         }
+        // 单集覆盖档位：只有这一集例外，其余集仍按预检给的实际最高档走。
+        final video = preflight.videoFor(qualityOverrides[episode.page]);
         final stem = sanitizeFileName('${_pad2(episode.page)} ${episode.title}');
         var candidate = '$seasonDir$separator$stem';
         var finalPath = '$candidate.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
@@ -642,13 +645,13 @@ class AppState extends ChangeNotifier {
           channel: 'manifest',
           // 地址直接复用预检结果：预检刚取过，没过期就不用再拉一遍。
           // 真过期了下载侧的 resolving 阶段会自己按 source 重取。
-          videoUrl: preflight.video?.url ?? '',
+          videoUrl: video?.url ?? '',
           audioUrl: preflight.audio?.url ?? '',
-          videoBackups: preflight.video?.backupUrls ?? const [],
+          videoBackups: video?.backupUrls ?? const [],
           audioBackups: preflight.audio?.backupUrls ?? const [],
-          videoQualityId: preflight.video?.id ?? 0,
+          videoQualityId: video?.id ?? 0,
           audioQualityId: preflight.audio?.id ?? 0,
-          videoCodecs: preflight.video?.codecs ?? '',
+          videoCodecs: video?.codecs ?? '',
           audioCodecs: preflight.audio?.codecs ?? '',
           createdAtMs: now.millisecondsSinceEpoch,
           batchId: batchId,
@@ -730,10 +733,25 @@ class AppState extends ChangeNotifier {
           message: '这集没有可下载的流',
         );
       }
+      // 「缺档」判定与单集解析同一套（[ParsedMedia.guestLimited]）：最高可用档
+      // 低于你选的档就是缺档。标注只写「这集最高可用 X」——
+      // 接口不区分「本来就没有这一档」和「有但你账号拿不到」，标注也就不该替它区分。
+      if (media.guestLimited && video != null) {
+        return PreflightResult(
+          status: PreflightStatus.missingQuality,
+          video: video,
+          audio: audio,
+          videoOptions: media.videos,
+          message: l10n.tr('manifest.preflight.bestAvailable', {
+            'quality': video.label,
+          }),
+        );
+      }
       return PreflightResult(
         status: PreflightStatus.ok,
         video: video,
         audio: audio,
+        videoOptions: media.videos,
       );
     } on BiliException catch (error) {
       // -352 是风控，不是「没有数据」：必须分开，否则会被误读成这集不可用。

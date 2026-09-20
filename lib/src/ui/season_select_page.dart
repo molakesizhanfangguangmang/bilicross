@@ -33,11 +33,83 @@ class SeasonSelectPage extends StatefulWidget {
 class _SeasonSelectPageState extends State<SeasonSelectPage> {
   final Set<int> _selected = <int>{};
 
+  /// 单集覆盖的档位（合集内序号 -> 档位号）。**只有这里列出的集例外**，
+  /// 其余集仍按预检给出的实际最高档走。
+  final Map<int, int> _qualityOverrides = <int, int>{};
+
+  /// 缺档汇总的「跳到第一处」目标。滚完会置回 null，
+  /// 这样再点同一处仍然能触发（值从 null 变成目标页）。
+  int? _focusPage;
+
   @override
   void initState() {
     super.initState();
     // 进页面时清一次预检，避免把上一个合集的残留结果带进来。
     widget.state.resetPreflight();
+  }
+
+  /// 勾中的集里缺档的那些（有流可下，但不是你选的那一档）。
+  Set<int> _missingQualityPages() => <int>{
+        for (final page in _selected)
+          if (widget.state.preflightOf(page).qualityFellBack) page,
+      };
+
+  void _jumpToMissing(Set<int> flagged) {
+    if (flagged.isEmpty) return;
+    final first = flagged.reduce((a, b) => a < b ? a : b);
+    setState(() => _focusPage = first);
+    // 滚完（300ms）把目标清掉，让下次点同一处还能触发。
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      if (mounted) setState(() => _focusPage = null);
+    });
+  }
+
+  /// 给某一集单独换个档。可选档位来自预检缓存，不再发请求。
+  Future<void> _overrideQuality(int page) async {
+    final state = widget.state;
+    final preflight = state.preflightOf(page);
+    final options = preflight.videoOptions;
+    if (options.isEmpty) return;
+    final l10n = AppLocalizations.of(context);
+    final current = _qualityOverrides[page];
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l10n.tr('manifest.overrideQualityTitle')),
+        children: <Widget>[
+          for (final stream in options)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(stream.id),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      '${stream.label} · ${stream.detail}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  if (stream.id == current)
+                    const Icon(Icons.radio_button_checked, size: 16),
+                ],
+              ),
+            ),
+          const Divider(height: 1),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(dialogContext).pop(0),
+            child: Text(l10n.tr('manifest.overrideQualityClear')),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      // 0 是「不覆盖」的哨兵值：清掉这一集的例外，回到实际最高档。
+      if (picked <= 0) {
+        _qualityOverrides.remove(page);
+      } else {
+        _qualityOverrides[page] = picked;
+      }
+    });
   }
 
   void _onSelectionChanged(Set<int> pages) {
@@ -65,6 +137,8 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
         final total = _selected.length;
         final ready = state.preflightReadyCount(_selected);
         final allReady = total > 0 && ready == total;
+        // 缺档汇总：只算勾中的集。预检没跑完的集不在这里 —— 它们还没结论。
+        final flagged = _missingQualityPages();
 
         return Scaffold(
           appBar: AppBar(title: Text(l10n.tr('manifest.title'))),
@@ -134,6 +208,52 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                             ),
                           ],
                         ),
+                        // 缺档汇总：预检跑完后给一次，点一下滚到第一处并高亮。
+                        if (flagged.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0x14b06a3b),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                const Icon(
+                                  Icons.info_outline,
+                                  size: 15,
+                                  color: Color(0xffb06a3b),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    l10n.tr('manifest.missingQualitySummary', {
+                                      'count': '${flagged.length}',
+                                    }),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xffb06a3b),
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _jumpToMissing(flagged),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: Size.zero,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    textStyle: const TextStyle(fontSize: 12),
+                                  ),
+                                  child: Text(l10n.tr('manifest.jumpToFirst')),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -147,6 +267,10 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                         preflightOf: state.preflightOf,
                         isPreflighting: state.isPreflighting,
                         onSelectionChanged: _onSelectionChanged,
+                        flaggedPages: flagged,
+                        focusPage: _focusPage,
+                        qualityOverrideOf: (page) => _qualityOverrides[page],
+                        onOverrideQuality: _overrideQuality,
                       ),
                     ),
                   ),
@@ -164,6 +288,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
       manifest: widget.manifest,
       selectedPages: _selected,
       engine: 'dart',
+      qualityOverrides: _qualityOverrides,
     );
     final l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(context).showSnackBar(

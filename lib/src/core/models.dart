@@ -448,6 +448,7 @@ class PreflightResult {
     required this.status,
     this.video,
     this.audio,
+    this.videoOptions = const <MediaStream>[],
     this.message = '',
   });
 
@@ -461,11 +462,39 @@ class PreflightResult {
   /// 命中的音频流。
   final MediaStream? audio;
 
+  /// 这一集实际能拿到的全部视频档（由高到低）。
+  ///
+  /// 存下来是为了「单集覆盖档位」：用户要给某一集换个档时，档位清单就在这里，
+  /// 不必为一个弹窗再发一次请求。
+  final List<MediaStream> videoOptions;
+
   /// 展示用说明，例如「这集最高可用 720P」。
   final String message;
 
+  /// 能不能下。
+  ///
+  /// **缺档也能下** —— 「这集没有你选的档」不等于「这集下不了」：设计定案允许
+  /// 用户当场给这一集覆盖一个档位，或干脆按实际最高档下。真正不能下的是
+  /// 「整集取不到」（unavailable）、「被风控」（riskControl），以及一个流都没有。
   bool get downloadable =>
-      status == PreflightStatus.ok && (video != null || audio != null);
+      (status == PreflightStatus.ok ||
+          status == PreflightStatus.missingQuality) &&
+      (video != null || audio != null);
+
+  /// 缺档：有流可下，但不是用户选的那一档。
+  bool get qualityFellBack => status == PreflightStatus.missingQuality;
+
+  /// 这一集要下的视频流：给了 [wanted] 档位就用那一档，否则用实际最高档。
+  ///
+  /// 找不到 [wanted] 就回落到最高档 —— **不报错**。「这集最高可用 X」本来就是
+  /// 这一集的事实，为一个弹窗选错档把整批卡住不值得。
+  MediaStream? videoFor(int? wanted) {
+    if (wanted == null || wanted <= 0) return video;
+    for (final stream in videoOptions) {
+      if (stream.id == wanted) return stream;
+    }
+    return video;
+  }
 }
 
 /// 一份合集清单：合集 → 段 → 集。

@@ -21,9 +21,32 @@ const MediaStream _video = MediaStream(
   url: 'https://cdn.example/v80.m4s',
 );
 
+const MediaStream _video720 = MediaStream(
+  id: 64,
+  label: '720P',
+  codecs: 'avc1.64001f',
+  bandwidth: 500000,
+  url: 'https://cdn.example/v64.m4s',
+);
+
 const PreflightResult _ok = PreflightResult(
   status: PreflightStatus.ok,
   video: _video,
+);
+
+/// 缺档：有流可下，但最高只到 720P，没有用户要的 1080P。
+const PreflightResult _fellBack = PreflightResult(
+  status: PreflightStatus.missingQuality,
+  video: _video720,
+  videoOptions: <MediaStream>[_video720],
+  message: '最高 720P',
+);
+
+/// 档位齐全的一集：1080P 与 720P 都有。
+const PreflightResult _twoOptions = PreflightResult(
+  status: PreflightStatus.ok,
+  video: _video,
+  videoOptions: <MediaStream>[_video, _video720],
 );
 
 void main() {
@@ -48,6 +71,35 @@ void main() {
         isFalse,
       );
       expect(const PreflightResult.unknown().downloadable, isFalse);
+    });
+
+    test('缺档但确实有流：仍然可下（设计定案允许按实际最高档下）', () {
+      expect(_fellBack.downloadable, isTrue);
+      expect(_fellBack.qualityFellBack, isTrue);
+      // 一个流都没有的「缺档」才是真的下不了。
+      expect(
+        const PreflightResult(status: PreflightStatus.missingQuality)
+            .downloadable,
+        isFalse,
+      );
+      expect(_ok.qualityFellBack, isFalse);
+    });
+
+    test('videoFor：没指定档位就用实际最高档', () {
+      expect(_twoOptions.videoFor(null)?.id, 80);
+      expect(_twoOptions.videoFor(0)?.id, 80);
+      expect(_fellBack.videoFor(null)?.id, 64);
+    });
+
+    test('videoFor：指定了档位就用那一档', () {
+      expect(_twoOptions.videoFor(64)?.id, 64);
+      expect(_twoOptions.videoFor(80)?.id, 80);
+    });
+
+    test('videoFor：这一集没有那一档就回落到最高档，不报错', () {
+      // 缺档集只有 720P，用户却指定 1080P —— 不该抛，直接给 720P。
+      expect(_fellBack.videoFor(80)?.id, 64);
+      expect(_twoOptions.videoFor(127)?.id, 80);
     });
   });
 
