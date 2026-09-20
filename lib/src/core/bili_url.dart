@@ -72,11 +72,14 @@ class BiliUrl {
     }
 
     // 空间合集列表页（space.bilibili.com/<mid>/lists/<seasonId>）直接当合集入口。
+    // mid 就在 URL 里，必须留下来 —— 翻页接口要它，丢了就只能去反查，
+    // 而 B 站没有公开的 season→mid 端点。
     final spaceList = _spaceList.firstMatch(text);
     if (spaceList != null) {
       return BiliTarget(
         kind: TargetKind.ugcSeason,
         seasonId: int.parse(spaceList.group(2)!),
+        mid: int.parse(spaceList.group(1)!),
         source: text,
       );
     }

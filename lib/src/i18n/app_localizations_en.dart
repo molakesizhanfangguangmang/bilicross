@@ -78,10 +78,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'common.no': 'No',
     'common.save': 'Save',
     'common.remove': 'Remove',
-    'common.clear': 'Clear',
-    'common.open': 'Open',
     'common.browserNotOpened': 'Could not open the browser',
-    'common.dash': '—',
 
     // About and updates
     'about.projectUrl': 'Project',
@@ -313,7 +310,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.engineFuture': 'The BBDownNext engine (bundled, local serve mode) '
         'is not wired up yet; once it is you can switch per task.',
     'settings.engineOnlyDart': 'Only the built-in Dart engine is available on this platform.',
-    'settings.diagnostics': 'Diagnostics',
     'settings.logs': 'Run log',
     'settings.logsHint': 'Which parse channel was used, why it fell back, and '
         'download/mux details',
@@ -371,8 +367,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
     // QR sign-in
     'qr.entry': 'Scan QR to sign in',
-    'qr.entryHint': 'Shows a QR code inside the app; scan it with the Bilibili '
-        'mobile app. Only the web cookie is taken.',
     'qr.entriesHint': 'Two ways in: scan a QR code, or use web sign-in / paste a '
         'cookie / import cookie.txt.',
     'qr.title': 'QR sign-in',
@@ -402,7 +396,6 @@ class AppLocalizationsEn extends AppLocalizations {
         'the current data.',
     'backup.export': 'Export backup',
     'backup.restore': 'Restore from backup',
-    'backup.working': 'Working…',
     'backup.exported': 'Backup exported: {path}',
     'backup.confirmTitle': 'Confirm restore',
     'backup.confirmBody': 'This backup comes from {source}. Restoring overwrites '
@@ -413,8 +406,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'backup.pending': '{count} tasks point to a folder that no longer exists and '
         'need manual attention',
     'backup.failed': 'Restore failed: {error}',
-    'backup.noKey': 'This build has no backup key configured, exporting is not '
-        'possible',
 
     // Tray and close behaviour (Windows)
     'tray.show': 'Show window',

@@ -215,6 +215,7 @@ class BiliTarget {
     this.aid,
     this.epId,
     this.seasonId,
+    this.mid,
     this.page = 1,
     this.shortUrl,
     required this.source,
@@ -225,6 +226,10 @@ class BiliTarget {
   final int? aid;
   final int? epId;
   final int? seasonId;
+
+  /// UP 的 mid。只有「空间 lists 链接」这一种入口自带（mid 就在 URL 里），
+  /// 裸 season 编号没有 —— 那种要反查，而 B 站没有公开的 season→mid 端点。
+  final int? mid;
 
   /// 分 P 序号，从 1 开始。
   final int page;

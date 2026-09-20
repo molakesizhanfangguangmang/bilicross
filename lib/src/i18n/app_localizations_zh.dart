@@ -78,10 +78,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'common.no': '否',
     'common.save': '保存',
     'common.remove': '移除',
-    'common.clear': '清除',
-    'common.open': '打开',
     'common.browserNotOpened': '浏览器没有打开',
-    'common.dash': '—',
 
     // 关于与更新
     'about.projectUrl': '项目地址',
@@ -302,7 +299,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.engineFuture': 'BBDownNext 兼容引擎（随包附带、本地 serve 模式）尚未接入，'
         '接入后可按任务切换。',
     'settings.engineOnlyDart': '该平台只提供 Dart 内置引擎。',
-    'settings.diagnostics': '诊断',
     'settings.logs': '运行日志',
     'settings.logsHint': '解析走了哪条通道、为什么回退、下载与合并的细节',
     'settings.logFile': '记录文件：{path}',
@@ -355,7 +351,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
     // 扫码登录
     'qr.entry': '扫码登录',
-    'qr.entryHint': '在应用内显示二维码，用 B 站手机客户端扫码确认；只取网页 Cookie。',
     'qr.entriesHint': '登录有两个入口：扫码登录；网页登录 / 粘贴 Cookie / 导入 cookie.txt。',
     'qr.title': '扫码登录',
     'qr.scanHint': '用 B 站手机客户端扫描二维码，然后在手机上确认登录。',
@@ -380,7 +375,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'backup.hint': '导出账号信息、设置与任务，用于安装版与便携版之间迁移。恢复会覆盖当前数据。',
     'backup.export': '导出备份',
     'backup.restore': '从备份恢复',
-    'backup.working': '处理中…',
     'backup.exported': '已导出备份：{path}',
     'backup.confirmTitle': '确认恢复',
     'backup.confirmBody': '这份备份来自 {source}。恢复会覆盖当前账号、设置与任务，'
@@ -389,7 +383,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'backup.restored': '已恢复 {count} 项数据',
     'backup.pending': '有 {count} 个任务指向的目录不存在，需要手动处理',
     'backup.failed': '恢复失败：{error}',
-    'backup.noKey': '当前构建没有配置备份密钥，无法导出备份',
 
     // 托盘与关闭行为（Windows）
     'tray.show': '显示主窗口',

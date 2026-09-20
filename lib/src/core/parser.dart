@@ -45,9 +45,10 @@ class ParseService {
       if (target.seasonId == null || target.seasonId! <= 0) {
         throw BiliException('合集编号缺失');
       }
-      // 只有 season_id 没有视频上下文（空间 lists 链接 / 裸 season 编号）：
-      // 翻页接口必须带 mid，先用清单接口按 season_id 找一个成员的 mid。
-      final mid = await api.findSeasonOwner(target.seasonId!, cookie);
+      // 翻页接口必须带 mid。空间 lists 链接的 mid 就在 URL 里，直接用；
+      // 裸 season 编号没有，只能反查 —— 而 B 站没有公开的 season→mid 端点，
+      // 那条路会抛错引导用户换入口。
+      final mid = target.mid ?? await api.findSeasonOwner(target.seasonId!, cookie);
       info = await api.fetchUgcSeasonArchives(
         seasonId: target.seasonId!,
         mid: mid,
