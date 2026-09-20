@@ -206,6 +206,51 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- 风控（-352） ----------
+
+  /// 撞到风控时置位，界面据此弹一次提示。
+  ///
+  /// 预检与下载共用同一套处理：**停手 + 提示 + 手动恢复**，
+  /// 不等冷却、不自动重试、不把已下好的部分丢掉。
+  bool _riskControlHit = false;
+
+  bool get riskControlHit => _riskControlHit;
+
+  /// 因风控被暂停的任务 id。恢复时只放这些回队列，
+  /// 不碰用户自己按「暂停」停下的那些。
+  final Set<String> _riskPaused = <String>{};
+
+  /// 界面弹过提示、用户选了「先放着」：只清标记。
+  /// 队列不会因此自己跑起来 —— 要动还是得用户点任务页的开始/继续。
+  void dismissRiskControl() {
+    if (!_riskControlHit) return;
+    _riskControlHit = false;
+    notifyListeners();
+  }
+
+  /// 风控后的恢复：清标记，把因风控暂停的任务放回队列。
+  ///
+  /// 从停下的那一集接着走 —— 已完成的集不是 pending，本来就不会重跑；
+  /// 分片留在盘上，续传照旧。
+  void resumeAfterRiskControl() {
+    _riskControlHit = false;
+    final ids = List<String>.of(_riskPaused);
+    _riskPaused.clear();
+    for (final task in tasks) {
+      if (!ids.contains(task.id)) continue;
+      task.stage = TaskStage.pending;
+      task.message = l10n.tr('msg.waitRetry');
+      task.receivedBytes = 0;
+      task.totalBytes = 0;
+      task.merged = false;
+      task.videoUrl = '';
+      task.audioUrl = '';
+    }
+    unawaited(store.saveTasks(tasks));
+    notifyListeners();
+    unawaited(pumpQueue());
+  }
+
   /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
   /// 不重启应用，也不重建任务与凭据，只影响文案。
   /// 非法代码直接忽略——磁盘上的旧数据归一化交给 fromJson，这里不该把
@@ -687,6 +732,11 @@ class AppState extends ChangeNotifier {
     } on BiliException catch (error) {
       // -352 是风控，不是「没有数据」：必须分开，否则会被误读成这集不可用。
       if (error.code == kRiskControlCode) {
+        // 与下载阶段同一套处理：停手 + 提示，等用户点恢复。
+        // halt 保留已查到的结果，只作废在跑的批次。
+        _riskControlHit = true;
+        _preflight.halt();
+        notifyListeners();
         return PreflightResult(
           status: PreflightStatus.riskControl,
           message: error.message,
@@ -819,6 +869,8 @@ class AppState extends ChangeNotifier {
     final limit = settings.maxParallelTasks.clamp(1, 4);
     try {
       while (true) {
+        // 风控：立刻停手，剩下的等用户点恢复。
+        if (_riskControlHit) break;
         final batch = tasks.where((task) => task.stage == TaskStage.pending).take(limit).toList();
         if (batch.isEmpty) break;
         await Future.wait(batch.map(_runTask));
@@ -935,14 +987,25 @@ class AppState extends ChangeNotifier {
     } on TaskAborted catch (abort) {
       await _finishAborted(task, abort);
     } on Exception catch (error) {
-      task.stage = TaskStage.failed;
-      task.message = '$error';
-      // 下载途中撞到凭据失效（多半是重解析地址那一步）也提示一句，
-      // 不然只看到任务失败，不知道是登录过期还是片源没了。
-      final expired = authNotice(error);
-      if (expired != null) notice = expired;
-      LogStore.instance.add('任务', '失败：${task.title}：$error');
-      notifyListeners();
+      final code = error is BiliException ? error.code : null;
+      if (code == kRiskControlCode) {
+        // 风控不是失败：分片与档位都留着，暂停这一集等用户手动恢复。
+        task.stage = TaskStage.paused;
+        task.message = l10n.tr('msg.riskControl');
+        _riskPaused.add(task.id);
+        _riskControlHit = true;
+        LogStore.instance.add('任务', '风控暂停：${task.title}：$error');
+        notifyListeners();
+      } else {
+        task.stage = TaskStage.failed;
+        task.message = '$error';
+        // 下载途中撞到凭据失效（多半是重解析地址那一步）也提示一句，
+        // 不然只看到任务失败，不知道是登录过期还是片源没了。
+        final expired = authNotice(error);
+        if (expired != null) notice = expired;
+        LogStore.instance.add('任务', '失败：${task.title}：$error');
+        notifyListeners();
+      }
     } finally {
       _controls.remove(task.id);
       await store.saveTasks(tasks);

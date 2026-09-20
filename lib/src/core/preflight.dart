@@ -48,6 +48,16 @@ class PreflightRunner {
     onChanged();
   }
 
+  /// 中途停手：作废在跑的批次，但**保留已有结果**。
+  ///
+  /// 与 [reset] 的区别是结果不清空 —— 撞到风控后用户还能看到已经查出来的
+  /// 缺档，也能照样勾着下。要不要继续由用户点，不自动重跑。
+  void halt() {
+    _generation += 1;
+    _inFlight.clear();
+    onChanged();
+  }
+
   /// 对 [pages] 里的集做预检。
   ///
   /// [parallel] 为真时 2 路并发，否则严格串行且每集之间留间隔。

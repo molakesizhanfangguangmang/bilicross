@@ -28,6 +28,11 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.animStyle.fade': '淡入',
     'settings.animStyle.scale': '缩放',
     // 合集清单（合集 → 段 → 集）
+    'risk.title': '请求被风控拦截',
+    'risk.body': 'B 站返回 -352，本次请求被风控拦下。已经下好的部分都留着，'
+        '点「恢复」会从停下的那一集接着走，不会重下已完成的集。',
+    'risk.later': '先放着',
+    'risk.resume': '恢复',
     'manifest.title': '合集清单',
     'manifest.summary': '共 {episodes} 集 · {sections} 段',
     'manifest.countHint': '共 {episodes} 集 · {sections} 段',
@@ -209,6 +214,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'msg.pausing': '正在暂停…',
     'msg.stopping': '正在强制结束…',
     'msg.resuming': '继续下载（从断点接）',
+    'msg.riskControl': '被风控拦截（-352），已暂停',
     'msg.paused': '已暂停，分片已保留，点「继续」从断点接',
     'msg.stopped': '已强制结束，已删除 {count} 个残留文件',
     'msg.waitRetry': '等待重试',

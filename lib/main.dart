@@ -325,6 +325,9 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int index = 0;
 
+  /// 风控提示是否已经弹出（避免每帧重复弹）。
+  bool _riskDialogOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -375,10 +378,49 @@ class _AppShellState extends State<AppShell> {
         ),
       ];
 
+  /// 风控 -352：弹一次窗，恢复完全手动 —— 不等冷却、不自动重试。
+  /// 点「恢复」从停下的那一集接着走；点「先放着」只关窗，队列保持停手。
+  void _maybeShowRiskDialog(AppState state, AppLocalizations l10n) {
+    if (!state.riskControlHit || _riskDialogOpen) return;
+    _riskDialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _riskDialogOpen = false;
+        return;
+      }
+      final resume = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(l10n.tr('risk.title')),
+          content: Text(l10n.tr('risk.body')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.tr('risk.later')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.tr('risk.resume')),
+            ),
+          ],
+        ),
+      );
+      _riskDialogOpen = false;
+      if (!mounted) return;
+      if (resume ?? false) {
+        state.resumeAfterRiskControl();
+      } else {
+        state.dismissRiskControl();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final state = widget.state;
+    _maybeShowRiskDialog(state, l10n);
     final pages = <Widget>[
       DownloadPage(state: state),
       TasksPage(state: state),

@@ -26,6 +26,12 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.animStyle.expand': 'Expand',
     'settings.animStyle.fade': 'Fade',
     'settings.animStyle.scale': 'Scale',
+    'risk.title': 'Request blocked by rate limiting',
+    'risk.body': 'Bilibili returned -352 and rejected this request. '
+        'Downloaded chunks are kept; "Resume" continues from the episode '
+        'that stopped and does not re-download completed ones.',
+    'risk.later': 'Leave it',
+    'risk.resume': 'Resume',
     'manifest.title': 'Season',
     'manifest.summary': '{episodes} episodes · {sections} sections',
     'manifest.countHint': '{episodes} episodes · {sections} sections',
@@ -213,6 +219,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'msg.pausing': 'Pausing…',
     'msg.stopping': 'Stopping…',
     'msg.resuming': 'Resuming from the breakpoint',
+    'msg.riskControl': 'Rate limited (-352), paused',
     'msg.paused': 'Paused; fragments kept. Tap Resume to continue.',
     'msg.stopped': 'Force stopped; removed {count} leftover file(s)',
     'msg.waitRetry': 'Waiting to retry',

@@ -231,5 +231,72 @@ void main() {
       expect(asked..sort(), <int>[1, 2]);
       expect(runner.busy, isFalse);
     });
+
+    test('halt 停手但保留已有结果（风控后还能看到缺档）', () async {
+      final gates = <Completer<PreflightResult>>[];
+      final runner = PreflightRunner(
+        resolve: (_) {
+          final gate = Completer<PreflightResult>();
+          gates.add(gate);
+          return gate.future;
+        },
+        onChanged: () {},
+      );
+
+      final running = runner.run(
+        episodes: <SeasonEpisode>[_episode(1), _episode(2)],
+        pages: <int>{1, 2},
+        parallel: true,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      // 第 1 集先出结果，随后撞上风控 → 停手。
+      gates[0].complete(
+        const PreflightResult(
+          status: PreflightStatus.missingQuality,
+          message: '这集最高可用 1080P',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(runner.of(1).status, PreflightStatus.missingQuality);
+
+      runner.halt();
+      expect(runner.busy, isFalse);
+
+      // 在跑的那一集返回时被批次号挡掉，不落地；已有结果不受影响。
+      gates[1].complete(_ok);
+      await running;
+      expect(runner.of(1).status, PreflightStatus.missingQuality);
+      expect(runner.of(2).status, PreflightStatus.unknown);
+    });
+
+    test('halt 不重跑已有结果的集', () async {
+      final asked = <int>[];
+      final runner = PreflightRunner(
+        resolve: (episode) async {
+          asked.add(episode.page);
+          return _ok;
+        },
+        onChanged: () {},
+      );
+
+      await runner.run(
+        episodes: <SeasonEpisode>[_episode(1), _episode(2)],
+        pages: <int>{1, 2},
+        parallel: true,
+      );
+      expect(asked.length, 2);
+
+      runner.halt();
+      await runner.run(
+        episodes: <SeasonEpisode>[_episode(1), _episode(2)],
+        pages: <int>{1, 2},
+        parallel: true,
+      );
+
+      expect(asked.length, 2, reason: '恢复后不该把查过的集再查一遍');
+      expect(runner.of(1).downloadable, isTrue);
+      expect(runner.of(2).downloadable, isTrue);
+    });
   });
 }
