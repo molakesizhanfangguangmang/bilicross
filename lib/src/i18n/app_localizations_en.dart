@@ -437,6 +437,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'backup.hint': 'Export your account information, settings and tasks to move '
         'them between the installer and portable editions. Restoring overwrites '
         'the current data.',
+    'backup.noDownloadDir': 'No download folder set yet — pick one in Settings first.',
     'backup.export': 'Export backup',
     'backup.restore': 'Restore from backup',
     'backup.exported': 'Backup exported: {path}',

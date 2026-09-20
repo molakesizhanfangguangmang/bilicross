@@ -63,12 +63,44 @@ class _BackupCardState extends State<BackupCard> {
     );
   }
 
+  /// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
+  ///
+  /// 文件名只带日期（`BiliCross-Backup-YYYYMMDD.bcbak`），当天再导一次会撞上。
+  File _uniqueTarget(String dir, String fileName) {
+    final base = fileName.replaceAll(RegExp(r'\.bcbak$'), '');
+    var candidate = File('$dir${Platform.pathSeparator}$fileName');
+    var n = 1;
+    while (candidate.existsSync()) {
+      n += 1;
+      candidate = File('$dir${Platform.pathSeparator}$base-$n.bcbak');
+    }
+    return candidate;
+  }
+
   Future<void> _export() async {
     final l10n = AppLocalizations.of(context);
     setState(() => _busy = true);
     try {
       final service = await _service();
       final bytes = await service.exportBytes();
+
+      // ⚠️ 安卓：直接写进下载目录（跟视频放在一起），不走系统选择器 ——
+      // 系统选择器对自定义扩展名不友好，而且"另存为"多一步。
+      // 桌面端保留"另存为"，那里用户确实需要选位置（U 盘、网盘同步目录等）。
+      if (Platform.isAndroid) {
+        final dir = widget.state.settings.downloadDir.trim();
+        if (dir.isEmpty) {
+          await _showError(l10n.tr('backup.noDownloadDir'));
+          return;
+        }
+        final target = _uniqueTarget(dir, service.suggestFileName());
+        await target.parent.create(recursive: true);
+        await target.writeAsBytes(bytes, flush: true);
+        // 只提示保存路径，备份内容不进任何日志。
+        _toast(l10n.tr('backup.exported', {'path': target.path}));
+        return;
+      }
+
       // 插件直接把字节写到用户选的位置，返回目标 Uri；取消时为 null。
       final target = await FilePicker.saveFile(
         bytes: bytes,
@@ -96,8 +128,11 @@ class _BackupCardState extends State<BackupCard> {
       final service = await _service();
       final picked = await FilePicker.pickFiles(
         dialogTitle: l10n.tr('backup.restore'),
-        type: FileType.custom,
-        allowedExtensions: const <String>['bcbak'],
+        // ⚠️ 安卓是按 MIME 过滤的，`.bcbak` 是自定义扩展名 —— 用 custom +
+        // allowedExtensions 很可能**什么都选不了**。放宽成任意文件，
+        // 靠备份文件自己的 magic（BCBAKBK1）把选错的文件拦下来。
+        type: Platform.isAndroid ? FileType.any : FileType.custom,
+        allowedExtensions: Platform.isAndroid ? null : const <String>['bcbak'],
       );
       final file = picked.firstOrNull;
       if (file == null) return;

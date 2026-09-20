@@ -336,11 +336,14 @@ class SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-              // 备份与恢复只给 Windows 的安装版与便携版用：两边数据目录不同，
-              // 靠备份互相迁移；安卓侧不显示这个入口，界面保持原样。
+              // 备份与恢复现在两端都有：
+              // - Windows 侧原本是给「安装版 ↔ 便携版」互相迁移用的；
+              // - 安卓侧同样需要（换机、重装、清数据都会丢配置与任务列表），
+              //   导出落在下载目录里，跟视频放在一起。
+              // ⚠️ 关闭行为仍只给 Windows —— 那是托盘的概念，安卓没有。
+              BackupCard(state: state),
+              const SizedBox(height: 12),
               if (windows) ...[
-                BackupCard(state: state),
-                const SizedBox(height: 12),
                 // 关闭行为：默认最小化到托盘，任务继续跑；选「退出」才真退。
                 SectionCard(
                   title: l10n.tr('settings.closeBehavior'),

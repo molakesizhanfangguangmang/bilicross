@@ -415,6 +415,7 @@ class AppLocalizationsZh extends AppLocalizations {
     // 备份与恢复（Windows 的安装版与便携版）
     'settings.backup': '备份与恢复',
     'backup.hint': '导出账号信息、设置与任务，用于安装版与便携版之间迁移。恢复会覆盖当前数据。',
+    'backup.noDownloadDir': '下载目录还没设置，先去设置页选一个。',
     'backup.export': '导出备份',
     'backup.restore': '从备份恢复',
     'backup.exported': '已导出备份：{path}',
