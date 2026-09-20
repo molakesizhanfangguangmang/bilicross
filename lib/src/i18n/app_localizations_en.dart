@@ -154,6 +154,16 @@ class AppLocalizationsEn extends AppLocalizations {
     'download.enqueuedWait': 'Added to the queue. Start it on the Tasks page.',
 
     // Tasks page
+    'tasks.tabWaiting': 'Waiting ({count})',
+    'tasks.tabRunning': 'Downloading ({count})',
+    'tasks.tabDone': 'Downloaded ({count})',
+    'tasks.stopAll': 'Stop all',
+    'tasks.pauseAll': 'Pause all',
+    'tasks.cleanDone': 'Clear done',
+    'tasks.stopAllWaitingConfirm': 'Discard all {count} waiting tasks? Failed ones are kept for retry.',
+    'tasks.stopAllRunningConfirm': 'Terminate all running tasks? Temp chunks will be removed and re-download needed.',
+    'tasks.cleanDoneConfirm': 'Remove all {count} completed task records? Downloaded files on disk are untouched.',
+    'tasks.groupProgress': '{done}/{total}',
     'tasks.title': 'Downloads',
     'tasks.emptyTitle': 'No tasks',
     'tasks.emptyHint': 'The queue tracks pending, downloading, muxing, done and '

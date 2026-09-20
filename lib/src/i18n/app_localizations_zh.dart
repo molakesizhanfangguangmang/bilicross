@@ -151,6 +151,16 @@ class AppLocalizationsZh extends AppLocalizations {
     'download.enqueuedWait': '已加入任务队列，去「任务」页点开始任务',
 
     // 任务页
+    'tasks.tabWaiting': '等待下载 ({count})',
+    'tasks.tabRunning': '下载中 ({count})',
+    'tasks.tabDone': '已下载 ({count})',
+    'tasks.stopAll': '全部终止',
+    'tasks.pauseAll': '全部暂停',
+    'tasks.cleanDone': '全部清理',
+    'tasks.stopAllWaitingConfirm': '放弃全部 {count} 条等待中的任务？失败的不受影响，之后还能重试。',
+    'tasks.stopAllRunningConfirm': '终止全部正在下载的任务？分片会一起清掉，之后要重下。',
+    'tasks.cleanDoneConfirm': '清理全部 {count} 条已下载的任务记录？只删记录，不动磁盘上已下载的文件。',
+    'tasks.groupProgress': '{done}/{total}',
     'tasks.title': '下载任务',
     'tasks.emptyTitle': '暂无任务',
     'tasks.emptyHint': '队列会区分等待、下载、合并、完成与失败状态。'

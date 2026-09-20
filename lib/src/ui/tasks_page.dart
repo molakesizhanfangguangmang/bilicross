@@ -1,233 +1,368 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
-import '../core/downloader.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'widgets.dart';
 
-class TasksPage extends StatelessWidget {
+/// 任务列表按状态分成的三栏。
+enum TaskTab { waiting, running, done }
+
+/// 任务页：顶部固定头（状态 + 当前栏按钮）+ 三栏 Tab + 懒加载列表。
+///
+/// 之前的问题：PageFrame 是 SingleChildScrollView，216 条任务会一口气全部
+/// 构建，条数越多越卡；按钮也在底部，内容多时要点很久。
+/// 现在改成 CustomScrollView + SliverList.builder 懒加载，头和按钮用 Sliver
+/// 固定在顶部，滚动时始终可见可点。
+class TasksPage extends StatefulWidget {
   const TasksPage({required this.state, super.key});
 
   final AppState state;
 
   @override
+  State<TasksPage> createState() => _TasksPageState();
+}
+
+class _TasksPageState extends State<TasksPage> {
+  TaskTab _tab = TaskTab.waiting;
+
+  bool _isWaiting(DownloadTask task) =>
+      task.stage == TaskStage.pending ||
+      task.stage == TaskStage.failed ||
+      task.stage == TaskStage.stopped;
+
+  bool _isRunning(DownloadTask task) =>
+      task.stage == TaskStage.resolving ||
+      task.stage == TaskStage.downloading ||
+      task.stage == TaskStage.muxing ||
+      task.stage == TaskStage.paused;
+
+  /// 按合集分组：同一 batchId 的任务聚在一起，合集行显示在块顶。
+  /// 没有清单信息的旧任务（batchId 为空）保持原顺序，不打散。
+  List<List<DownloadTask>> _grouped(List<DownloadTask> tasks) {
+    final groups = <String, List<DownloadTask>>{};
+    final order = <String>[];
+    final noBatch = <DownloadTask>[];
+
+    for (final task in tasks) {
+      final batchId = task.batchId;
+      if (batchId.isEmpty) {
+        noBatch.add(task);
+        continue;
+      }
+      if (!groups.containsKey(batchId)) {
+        groups[batchId] = <DownloadTask>[];
+        order.add(batchId);
+      }
+      groups[batchId]!.add(task);
+    }
+
+    return <List<DownloadTask>>[
+      for (final batchId in order) groups[batchId]!,
+      // 没批次信息的旧任务按「单集一组」处理，保持原来的顺序。
+      for (final task in noBatch) <DownloadTask>[task],
+    ];
+  }
+
+  List<DownloadTask> _filter(List<DownloadTask> tasks) {
+    switch (_tab) {
+      case TaskTab.waiting:
+        return tasks.where(_isWaiting).toList();
+      case TaskTab.running:
+        return tasks.where(_isRunning).toList();
+      case TaskTab.done:
+        return tasks.where((t) => t.stage == TaskStage.done).toList();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
-      listenable: state,
+      listenable: widget.state,
       builder: (context, _) {
-        if (state.tasks.isEmpty) {
-          return PageFrame(
-            title: l10n.tr('tasks.title'),
-            child: EmptyState(
-              icon: Icons.inbox_outlined,
-              title: l10n.tr('tasks.emptyTitle'),
-              message: l10n.tr('tasks.emptyHint'),
-            ),
-          );
-        }
-        return PageFrame(
-          title: l10n.tr('tasks.title'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${l10n.tr('tasks.parallel', {
-                            'count': '${state.settings.maxParallelTasks}',
-                          })}'
-                      ' · ${state.queueRunning ? l10n.tr('tasks.queueRunning') : l10n.tr('tasks.queueIdle')}'
-                      ' · ${l10n.tr('tasks.pending', {'count': '${state.pendingCount}'})}',
-                      style: const TextStyle(color: Color(0xff6d716f), fontSize: 12),
+        final state = widget.state;
+        final all = state.tasks;
+        final visible = _filter(all);
+        final groups = _grouped(visible);
+
+        final waitingCount = all.where(_isWaiting).length;
+        final runningCount = all.where(_isRunning).length;
+        final doneCount = all.where((t) => t.stage == TaskStage.done).length;
+
+        final buttons = _actionsFor(context, state, visible);
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
+              child: CustomScrollView(
+                slivers: <Widget>[
+                  // 头部固定：标题 + 状态行 + Tab + 按钮都在这里，滚动不动。
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          Text(
+                            l10n.tr('tasks.title'),
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${l10n.tr('tasks.parallel', {'count': '${state.settings.maxParallelTasks}'})}'
+                            ' · ${state.queueRunning ? l10n.tr('tasks.queueRunning') : l10n.tr('tasks.queueIdle')}'
+                            ' · ${l10n.tr('tasks.pending', {'count': '${state.pendingCount}'})}',
+                            style: const TextStyle(
+                              color: Color(0xff6d716f),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SegmentedButton<TaskTab>(
+                            segments: <ButtonSegment<TaskTab>>[
+                              ButtonSegment(
+                                value: TaskTab.waiting,
+                                label: Text(l10n.tr('tasks.tabWaiting', {
+                                  'count': '$waitingCount',
+                                })),
+                                icon: const Icon(Icons.schedule, size: 16),
+                              ),
+                              ButtonSegment(
+                                value: TaskTab.running,
+                                label: Text(l10n.tr('tasks.tabRunning', {
+                                  'count': '$runningCount',
+                                })),
+                                icon: const Icon(Icons.download, size: 16),
+                              ),
+                              ButtonSegment(
+                                value: TaskTab.done,
+                                label: Text(l10n.tr('tasks.tabDone', {
+                                  'count': '$doneCount',
+                                })),
+                                icon: const Icon(Icons.done_all, size: 16),
+                              ),
+                            ],
+                            selected: {_tab},
+                            onSelectionChanged: (selection) =>
+                                setState(() => _tab = selection.first),
+                          ),
+                          const SizedBox(height: 10),
+                          if (buttons.isNotEmpty)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: buttons,
+                            ),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
                   ),
-                  // 队列跑起来之后，新入队的任务会自己跟上，不用再点一次。
-                  FilledButton.icon(
-                    onPressed: state.queueRunning || !state.hasPending
-                        ? null
-                        : () => state.pumpQueue(),
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text(
-                      state.queueRunning
-                          ? l10n.tr('tasks.queueRunning')
-                          : l10n.tr('tasks.startQueue'),
+                  // 列表本体：懒加载，只构建屏幕内的卡片。
+                  if (visible.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverToBoxAdapter(
+                        child: EmptyState(
+                          icon: Icons.inbox_outlined,
+                          title: l10n.tr('tasks.emptyTitle'),
+                          message: l10n.tr('tasks.emptyHint'),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                      sliver: SliverList.builder(
+                        itemCount: groups.length,
+                        itemBuilder: (context, groupIndex) {
+                          final group = groups[groupIndex];
+                          return _GroupSection(state: state, tasks: group);
+                        },
+                      ),
                     ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 10),
-              for (final task in state.tasks) ...[
-                _TaskCard(state: state, task: task),
-                const SizedBox(height: 10),
-              ],
-            ],
+            ),
           ),
         );
       },
     );
   }
-}
 
-class _TaskCard extends StatelessWidget {
-  const _TaskCard({required this.state, required this.task});
-
-  final AppState state;
-  final DownloadTask task;
-
-  /// 分片都还在时允许单独重跑合并。
-  bool get _canMerge =>
-      !task.singleTrack &&
-      task.audioPath.isNotEmpty &&
-      hasUsableFile(task.videoPath) &&
-      hasUsableFile(task.audioPath);
-
-  int get _tone => switch (task.stage) {
-        TaskStage.done => 1,
-        TaskStage.failed => 3,
-        TaskStage.stopped => 3,
-        TaskStage.pending => 2,
-        TaskStage.paused => 2,
-        _ => 0,
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final running = task.stage == TaskStage.downloading || task.stage == TaskStage.muxing;
-    return SectionCard(
-      title: task.title,
-      trailing: StateChip(text: task.stage.label(l10n), tone: _tone),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (running || task.progress > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: LinearProgressIndicator(
-                minHeight: 3,
-                value: task.stage == TaskStage.muxing ? null : task.progress,
-              ),
-            ),
-          InfoLine(
-            label: l10n.tr('tasks.progress'),
-            value: '${formatBytes(task.receivedBytes)}'
-                '${task.totalBytes > 0 ? ' / ${formatBytes(task.totalBytes)}' : ''}',
-          ),
-          InfoLine(
-            label: l10n.tr('tasks.channel'),
-            value: task.channel.isEmpty ? l10n.tr('tasks.notRecorded') : task.channel,
-          ),
-          InfoLine(
-            label: l10n.tr('download.part'),
-            value: task.page > 1
-                ? l10n.tr('tasks.pagePart', {'page': '${task.page}', 'cid': '${task.cid}'})
-                : l10n.tr('tasks.cidOnly', {'cid': '${task.cid}'}),
-          ),
-          InfoLine(
-            label: l10n.tr('tasks.engine'),
-            value: task.engine == 'dart' ? l10n.tr('tasks.dartEngine') : task.engine,
-          ),
-          if (task.message.isNotEmpty)
-            InfoLine(label: l10n.tr('tasks.status'), value: task.message),
-          InfoLine(label: l10n.tr('tasks.output'), value: task.outputPath),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              // 下载中可以暂停（分片留着，继续时按断点接）；合并中没有暂停点，只有强制结束。
-              if (task.stage == TaskStage.downloading)
-                OutlinedButton(
-                  onPressed: () => state.pauseTask(task.id),
-                  child: Text(l10n.tr('tasks.pause')),
-                ),
-              if (running)
-                OutlinedButton(
-                  onPressed: () => _stop(context, state, task),
-                  child: Text(l10n.tr('tasks.forceStop')),
-                ),
-              if (task.stage == TaskStage.paused)
-                OutlinedButton(
-                  onPressed: () => state.resumeTask(task.id),
-                  child: Text(l10n.tr('tasks.resume')),
-                ),
-              OutlinedButton(
-                onPressed: running ? null : () => state.retryTask(task.id),
-                child: Text(l10n.tr('tasks.retry')),
-              ),
-              if (!task.merged && _canMerge)
-                OutlinedButton(
-                  onPressed: running ? null : () => state.retryMerge(task.id),
-                  child: Text(l10n.tr('tasks.retryMux')),
-                ),
-              if (task.stage == TaskStage.failed ||
-                  task.stage == TaskStage.stopped ||
-                  task.stage == TaskStage.paused ||
-                  (task.stage == TaskStage.done && !task.merged && !task.singleTrack))
-                OutlinedButton(
-                  onPressed: running ? null : () => _cleanup(context, state, task),
-                  child: Text(l10n.tr('tasks.cleanup')),
-                ),
-              OutlinedButton(
-                onPressed: running ? null : () => state.removeTask(task.id),
-                child: Text(l10n.tr('common.remove')),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 强制结束会连分片一起删掉，删了就续不回来，所以先确认一次。
-  Future<void> _stop(
+  /// 当前栏可用的批量按钮。
+  List<Widget> _actionsFor(
     BuildContext context,
     AppState state,
-    DownloadTask task,
-  ) async {
+    List<DownloadTask> visible,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    switch (_tab) {
+      case TaskTab.waiting:
+        final canStart = visible.any((t) => t.stage == TaskStage.pending);
+        final canStop = visible.any(
+          (t) => t.stage == TaskStage.pending || t.stage == TaskStage.failed,
+        );
+        return <Widget>[
+          FilledButton.icon(
+            onPressed:
+                state.queueRunning || !canStart ? null : () => state.pumpQueue(),
+            icon: const Icon(Icons.play_arrow),
+            label: Text(l10n.tr('tasks.startQueue')),
+          ),
+          if (canStop)
+            OutlinedButton.icon(
+              onPressed: () => _confirm(
+                context,
+                title: l10n.tr('tasks.stopAll'),
+                message: l10n.tr('tasks.stopAllWaitingConfirm', {
+                  'count': '${visible.length}',
+                }),
+                onConfirm: () => state.stopWaitingTasks(),
+              ),
+              icon: const Icon(Icons.block, size: 18),
+              label: Text(l10n.tr('tasks.stopAll')),
+            ),
+        ];
+      case TaskTab.running:
+        final anyRunning = visible.any((t) => t.stage == TaskStage.downloading);
+        return <Widget>[
+          OutlinedButton.icon(
+            onPressed: anyRunning ? () => state.pauseAllTasks() : null,
+            icon: const Icon(Icons.pause, size: 18),
+            label: Text(l10n.tr('tasks.pauseAll')),
+          ),
+          OutlinedButton.icon(
+            onPressed: visible.isEmpty
+                ? null
+                : () => _confirm(
+                      context,
+                      title: l10n.tr('tasks.stopAll'),
+                      message: l10n.tr('tasks.stopAllRunningConfirm'),
+                      onConfirm: () => state.stopRunningTasks(),
+                    ),
+            icon: const Icon(Icons.block, size: 18),
+            label: Text(l10n.tr('tasks.stopAll')),
+          ),
+        ];
+      case TaskTab.done:
+        return <Widget>[
+          OutlinedButton.icon(
+            onPressed: visible.isEmpty
+                ? null
+                : () => _confirm(
+                      context,
+                      title: l10n.tr('tasks.cleanDone'),
+                      message: l10n.tr('tasks.cleanDoneConfirm', {
+                        'count': '${visible.length}',
+                      }),
+                      onConfirm: () => state.removeDoneTasks(),
+                    ),
+            icon: const Icon(Icons.cleaning_services, size: 18),
+            label: Text(l10n.tr('tasks.cleanDone')),
+          ),
+        ];
+    }
+  }
+
+  Future<void> _confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required VoidCallback onConfirm,
+  }) async {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.tr('tasks.forceStop')),
-        content: Text(
-          '${l10n.tr('tasks.forceStopConfirm', {'title': task.title})}'
-          '${l10n.tr('tasks.forceStopWarning')}',
-        ),
-        actions: [
+        title: Text(title),
+        content: Text(message),
+        actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(l10n.tr('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.tr('tasks.forceStop')),
+            child: Text(title),
           ),
         ],
       ),
     );
-    if (confirmed != true) return;
-    state.stopTask(task.id);
+    if (confirmed == true) onConfirm();
   }
+}
 
-  /// 删掉这个任务留下的成品与分片，并把任务从列表里去掉。
-  Future<void> _cleanup(
-    BuildContext context,
-    AppState state,
-    DownloadTask task,
-  ) async {
+/// 一组任务：有清单信息的显示合集行（标题 + 进度），没信息的直接平铺卡片。
+class _GroupSection extends StatelessWidget {
+  const _GroupSection({required this.state, required this.tasks});
+
+  final AppState state;
+  final List<DownloadTask> tasks;
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final removed = await state.cleanupTask(task.id);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          removed > 0
-              ? l10n.tr('tasks.cleanedFiles', {'count': '$removed'})
-              : l10n.tr('tasks.nothingToClean'),
-        ),
+    final first = tasks.first;
+    final hasBatch = first.batchId.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (hasBatch) ...<Widget>[
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: const Color(0xffeef2f0),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.video_library_outlined,
+                    size: 16,
+                    color: Color(0xff6d716f),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      first.seasonTitle.isEmpty
+                          ? l10n.tr('manifest.untitled')
+                          : first.seasonTitle,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    l10n.tr('tasks.groupProgress', {
+                      'done':
+                          '${tasks.where((t) => t.stage == TaskStage.done).length}',
+                      'total': '${tasks.length}',
+                    }),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xff6d716f),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          for (final task in tasks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TaskCard(state: state, task: task),
+            ),
+        ],
       ),
     );
   }

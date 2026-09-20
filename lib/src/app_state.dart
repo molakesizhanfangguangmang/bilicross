@@ -171,6 +171,41 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 任务页「下载中」栏的「全部暂停」。
+  void pauseAllTasks() => pauseAllActive();
+
+  /// 任务页「下载中」栏的「全部终止」：中止在跑的（含解析中），连分片一起清。
+  void stopRunningTasks() {
+    for (final task in List<DownloadTask>.of(tasks)) {
+      if (task.stage == TaskStage.resolving ||
+          task.stage == TaskStage.downloading ||
+          task.stage == TaskStage.muxing) {
+        stopTask(task.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// 任务页「等待下载」栏的「全部终止」：放弃等待中的任务。
+  /// 失败的不动 —— 留着重试；已完成的也不动 —— 那是「已下载」栏的事。
+  void stopWaitingTasks() {
+    for (final task in List<DownloadTask>.of(tasks)) {
+      if (task.stage == TaskStage.pending) {
+        task.stage = TaskStage.stopped;
+      }
+    }
+    unawaited(store.saveTasks(tasks));
+    notifyListeners();
+  }
+
+  /// 任务页「已下载」栏的「全部清理」：只移除已完成任务的记录，
+  /// 不碰磁盘上已经下好的文件。失败的任务不在这里，不受影响。
+  void removeDoneTasks() {
+    tasks.removeWhere((task) => task.stage == TaskStage.done);
+    unawaited(store.saveTasks(tasks));
+    notifyListeners();
+  }
+
   /// 切换界面语言：改设置、落盘、通知监听者重建 MaterialApp。
   /// 不重启应用，也不重建任务与凭据，只影响文案。
   /// 非法代码直接忽略——磁盘上的旧数据归一化交给 fromJson，这里不该把
