@@ -1,7 +1,7 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 2.0.2+24
+version: 2.1.0+25
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
