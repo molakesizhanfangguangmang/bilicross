@@ -449,6 +449,7 @@ class PreflightResult {
     this.video,
     this.audio,
     this.videoOptions = const <MediaStream>[],
+    this.cid = 0,
     this.message = '',
   });
 
@@ -470,6 +471,13 @@ class PreflightResult {
 
   /// 展示用说明，例如「这集最高可用 720P」。
   final String message;
+
+  /// 这一集的 cid（解析时顺带拿到）。
+  ///
+  /// ⚠️ 合集的 `seasons_archives_list` 与系列的 `x/series/archives` **都不返回 cid**，
+  /// 所以清单里的 `SeasonEpisode.cid` 是 0；真实值只有逐集解析后才知道，
+  /// 入队时用它补上，任务列表才不会显示「cid 0」。
+  final int cid;
 
   /// 能不能下。
   ///

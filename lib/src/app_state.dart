@@ -713,7 +713,9 @@ class AppState extends ChangeNotifier {
               : 'https://www.bilibili.com/video/${episode.bvid}',
           infoId: episode.bvid.isEmpty ? '${episode.aid}' : episode.bvid,
           page: 1,
-          cid: episode.cid,
+          // 清单接口不返回 cid，预检解析过这一集，用它拿到的真实值补上，
+          // 否则任务列表会显示「cid 0」。
+          cid: preflight.cid > 0 ? preflight.cid : episode.cid,
           outputPath: finalPath,
           engine: engine,
           channel: 'manifest',
@@ -813,6 +815,7 @@ class AppState extends ChangeNotifier {
           video: video,
           audio: audio,
           videoOptions: media.videos,
+          cid: media.page.cid,
           message: l10n.tr('manifest.preflight.bestAvailable', {
             'quality': video.label,
           }),
@@ -823,6 +826,7 @@ class AppState extends ChangeNotifier {
         video: video,
         audio: audio,
         videoOptions: media.videos,
+        cid: media.page.cid,
       );
     } on BiliException catch (error) {
       // -352 是风控，不是「没有数据」：必须分开，否则会被误读成这集不可用。

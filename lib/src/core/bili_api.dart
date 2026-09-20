@@ -246,15 +246,21 @@ class BiliApi {
   /// 列出一个 UP 名下的全部合集与系列（空间弹窗用）。
   ///
   /// 合集走 `seasons_archives_list` 不行（它要 season_id），这里用
-  /// `x/polymer/web-space/home/seasons_series_list?mid=&page_num=&page_size=`
-  /// 一次拿全部条目；`meta[]` 是合集、`items[]` 里 type==2 的是系列。
-  /// 返回两组标题+id，供弹窗挑选；条目为空不报错（这个 UP 确实没有）。
+  /// `x/polymer/web-space/seasons_series_list?mid=&page_num=&page_size=`
+  /// 一次拿全部条目。返回两组标题+id，供弹窗挑选；条目为空不报错（这个 UP 确实没有）。
+  ///
+  /// ⚠️ 2026-09-20 用真实请求核对过形状（此前代码写错了）：
+  /// - 路径**没有 `/home/`** —— 带 `/home/` 是 404（返回的是 HTML 错误页，
+  ///   不是 JSON，`getJson` 会解析失败）；
+  /// - 编号/标题/集数都在 `data.items_lists.seasons_list[].meta` 与
+  ///   `...series_list[].meta` 里，不是 `data.meta` / `data.items`；
+  /// - 合集用 `season_id`、系列用 `series_id`（不是 `type == 2` 区分）。
   Future<SeasonInfoList> fetchSeasonInfoList({
     required int mid,
     required String cookie,
   }) async {
     final json = await getJson(
-      Uri.https('api.bilibili.com', '/x/polymer/web-space/home/seasons_series_list', {
+      Uri.https('api.bilibili.com', '/x/polymer/web-space/seasons_series_list', {
         'mid': '$mid',
         'page_num': '1',
         'page_size': '100',
@@ -262,33 +268,56 @@ class BiliApi {
       cookie: cookie,
     );
     _check(json, action: '取合集与系列列表');
+    return parseSeasonInfoList(json, mid);
+  }
+
+  /// 解析 `seasons_series_list` 的返回。
+  ///
+  /// 抽成纯函数是为了能拿**真实形状**做单测 —— 这个接口的路径与形状都写错过一次
+  /// （见 [fetchSeasonInfoList] 的说明），光靠真机点很难发现「列表一直是空的」。
+  static SeasonInfoList parseSeasonInfoList(
+    Map<String, dynamic> json,
+    int mid,
+  ) {
     final data = json['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final lists =
+        data['items_lists'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
     final seasons = <SeasonInfoEntry>[];
-    for (final raw in (data['meta'] as List? ?? const []).whereType<Map>()) {
-      final item = raw.cast<String, dynamic>();
-      final id = (item['season_id'] as num?)?.toInt() ?? 0;
+    for (final raw in (lists['seasons_list'] as List? ?? const [])
+        .whereType<Map>()) {
+      final meta = _entryMeta(raw);
+      final id = (meta['season_id'] as num?)?.toInt() ?? 0;
       if (id <= 0) continue;
       seasons.add(SeasonInfoEntry(
         id: id,
-        title: item['name'] as String? ?? '',
-        total: (item['total'] as num?)?.toInt() ?? 0,
+        title: meta['name'] as String? ?? '',
+        total: (meta['total'] as num?)?.toInt() ?? 0,
         kind: SeasonInfoKind.season,
       ));
     }
+
     final series = <SeasonInfoEntry>[];
-    for (final raw in (data['items'] as List? ?? const []).whereType<Map>()) {
-      final item = raw.cast<String, dynamic>();
-      if ((item['type'] as num?)?.toInt() != 2) continue;
-      final id = (item['season_id'] as num?)?.toInt() ?? 0;
+    for (final raw in (lists['series_list'] as List? ?? const [])
+        .whereType<Map>()) {
+      final meta = _entryMeta(raw);
+      final id = (meta['series_id'] as num?)?.toInt() ?? 0;
       if (id <= 0) continue;
       series.add(SeasonInfoEntry(
         id: id,
-        title: item['name'] as String? ?? '',
-        total: (item['total'] as num?)?.toInt() ?? 0,
+        title: meta['name'] as String? ?? '',
+        total: (meta['total'] as num?)?.toInt() ?? 0,
         kind: SeasonInfoKind.series,
       ));
     }
     return SeasonInfoList(mid: mid, seasons: seasons, series: series);
+  }
+
+  /// 条目里的 `meta` 子对象（编号/名称/集数都在那儿）；没有就退回条目本身。
+  static Map<String, dynamic> _entryMeta(Map raw) {
+    final item = raw.cast<String, dynamic>();
+    final meta = item['meta'];
+    return meta is Map ? meta.cast<String, dynamic>() : item;
   }
 
   /// 按合集编号找到任一成员的 mid（翻页接口必须带 mid）。
@@ -325,8 +354,10 @@ class BiliApi {
 
   /// 系列清单：`x/series/archives`。
   ///
-  /// 与合集清单同一个形状（`data.archives[]`），只是路径、参数名不同
-  /// （`series_id`），且 total 藏在 `data.page.total` 里 —— 两者都认。
+  /// 与合集清单同一个形状（`data.archives[]` + `data.page.total`），只是路径与
+  /// 参数名不同（`series_id`）。2026-09-20 用真实请求核对过（series_id=1114283
+  /// 返回 5 条，`page.total` = 5）。
+  /// ⚠️ 两个清单接口都**不返回 cid**，条目里的 cid 是 0，靠预检逐集解析补。
   Future<VideoInfo> fetchSeriesArchives({
     required int seriesId,
     required int mid,
@@ -380,7 +411,10 @@ class BiliApi {
           cover: item['pic'] as String? ?? '',
         ));
       }
-      // 合集把 total 放在顶层，系列放在 page.total 里，两种都认。
+      // ⚠️ 2026-09-20 实测：**合集与系列都没有顶层 total**，总数都在
+      // `data.page.total` 里（合集 3144260 是 229）。早先只读顶层 total、
+      // 失败就回落到「本页条数」，于是第一页 30 条就当作全部收工了。
+      // 两种都认，避免哪天某个接口又冒出顶层字段。
       final page = data['page'] as Map<String, dynamic>?;
       final total = (data['total'] as num?)?.toInt() ??
           (page?['total'] as num?)?.toInt() ??
