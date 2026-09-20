@@ -29,6 +29,10 @@ dependencies:
   flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
+  # 设备上的集成测试（跑在真机/模拟器里）。备份的导出路径依赖
+  # Platform.isAndroid 分支，宿主机上的 widget test 覆盖不到。
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

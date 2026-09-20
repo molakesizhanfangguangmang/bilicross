@@ -45,6 +45,9 @@ void _writeJson(Directory root, String name, Object? value) {
 String _read(Directory root, String name) =>
     File('${root.path}${Platform.pathSeparator}$name').readAsStringSync();
 
+/// 测试口令。长度必须 ≥ kBackupMinPassphraseLength。
+const String _kPass = 'test-passphrase-1234';
+
 void main() {
   late Directory root;
 
@@ -62,8 +65,8 @@ void main() {
   group('导出', () {
     test('编出来的备份能解回同一份数据', () async {
       final service = _service(root);
-      final bytes = await service.exportBytes();
-      final plan = await service.plan(bytes);
+      final bytes = await service.exportBytes(passphrase: _kPass);
+      final plan = await service.plan(bytes, passphrase: _kPass);
 
       expect(plan.files[BackupService.credentialFileName]!['cookie'],
           contains('SESSDATA=test-sess'));
@@ -81,7 +84,7 @@ void main() {
     });
 
     test('文件里没有明文凭据', () async {
-      final bytes = await _service(root).exportBytes();
+      final bytes = await _service(root).exportBytes(passphrase: _kPass);
       final text = String.fromCharCodes(bytes);
       expect(text.contains('test-sess'), isFalse);
       expect(text.contains('SESSDATA'), isFalse);
@@ -91,7 +94,7 @@ void main() {
     test('缺失的文件不进备份', () async {
       File('${root.path}${Platform.pathSeparator}${BackupService.taskFileName}')
           .deleteSync();
-      final plan = await _service(root).plan(await _service(root).exportBytes());
+      final plan = await _service(root).plan(await _service(root).exportBytes(passphrase: _kPass), passphrase: _kPass);
       expect(plan.files.containsKey(BackupService.taskFileName), isFalse);
     });
   });
@@ -99,7 +102,7 @@ void main() {
   group('恢复（覆盖式 + 回滚快照）', () {
     test('恢复会把当前数据替换成备份里的内容', () async {
       final service = _service(root);
-      final bytes = await service.exportBytes();
+      final bytes = await service.exportBytes(passphrase: _kPass);
 
       // 备份之后用户改了设置、清了凭据
       _writeJson(root, BackupService.credentialFileName, <String, dynamic>{});
@@ -108,7 +111,7 @@ void main() {
         'download_dir': '/changed',
       });
 
-      final outcome = await service.restore(await service.plan(bytes));
+      final outcome = await service.restore(await service.plan(bytes, passphrase: _kPass));
 
       expect(outcome.restoredFiles, contains(BackupService.settingsFileName));
       expect(jsonDecode(_read(root, BackupService.settingsFileName)),
@@ -119,12 +122,12 @@ void main() {
 
     test('恢复前会留下回滚快照，里面是恢复前的数据', () async {
       final service = _service(root);
-      final bytes = await service.exportBytes();
+      final bytes = await service.exportBytes(passphrase: _kPass);
       _writeJson(root, BackupService.settingsFileName, <String, dynamic>{
         'locale_code': 'en-US',
       });
 
-      final outcome = await service.restore(await service.plan(bytes));
+      final outcome = await service.restore(await service.plan(bytes, passphrase: _kPass));
 
       final snapshot = Directory(outcome.snapshotPath);
       expect(snapshot.existsSync(), isTrue);
@@ -138,7 +141,7 @@ void main() {
 
     test('恢复中途失败会回滚到恢复前，并抛出明确错误', () async {
       final service = _service(root);
-      final bytes = await service.exportBytes();
+      final bytes = await service.exportBytes(passphrase: _kPass);
       _writeJson(root, BackupService.settingsFileName, <String, dynamic>{
         'locale_code': 'en-US',
       });
@@ -153,7 +156,7 @@ void main() {
       });
 
       await expectLater(
-        () async => failing.restore(await service.plan(bytes)),
+        () async => failing.restore(await service.plan(bytes, passphrase: _kPass)),
         throwsA(isA<BackupRestoreException>()),
       );
 
@@ -172,7 +175,7 @@ void main() {
     test('备份里没有的文件保持本地现状（不做合并也不清空）', () async {
       File('${root.path}${Platform.pathSeparator}${BackupService.taskFileName}')
           .deleteSync();
-      final bytes = await _service(root).exportBytes();
+      final bytes = await _service(root).exportBytes(passphrase: _kPass);
       _writeJson(root, BackupService.taskFileName, <String, dynamic>{
         'tasks': <dynamic>[
           <String, dynamic>{'id': 'local-only'},
@@ -180,7 +183,7 @@ void main() {
       });
 
       final service = _service(root);
-      await service.restore(await service.plan(bytes));
+      await service.restore(await service.plan(bytes, passphrase: _kPass));
 
       final tasks = jsonDecode(_read(root, BackupService.taskFileName))['tasks'] as List;
       expect(tasks.length, 1);
@@ -195,10 +198,10 @@ void main() {
         if (androidRoot.existsSync()) androidRoot.deleteSync(recursive: true);
       });
       _writeJson(androidRoot, BackupService.settingsFileName, _settings());
-      final bytes = await _service(androidRoot, platform: 'android').exportBytes();
+      final bytes = await _service(androidRoot, platform: 'android').exportBytes(passphrase: _kPass);
 
       final windowsService = _service(root);
-      final outcome = await windowsService.restore(await windowsService.plan(bytes));
+      final outcome = await windowsService.restore(await windowsService.plan(bytes, passphrase: _kPass));
 
       expect(outcome.header.platform, 'android');
       expect(jsonDecode(_read(root, BackupService.settingsFileName))['locale_code'],
@@ -207,11 +210,14 @@ void main() {
 
     test('被改过的备份无法恢复', () async {
       final service = _service(root);
-      final bytes = await service.exportBytes();
+      final bytes = await service.exportBytes(passphrase: _kPass);
       bytes[bytes.length - 1] ^= 0x01;
+      // ⚠️ 口令备份的认证失败抛的是 BackupPassphraseException ——
+      // AEAD 分不清「口令错」和「文件被改」，只能按头部判断是不是口令备份，
+      // 据此给更贴切的提示。老格式（v1）才抛 BackupAuthenticationException。
       await expectLater(
-        () => service.plan(bytes),
-        throwsA(isA<BackupAuthenticationException>()),
+        () => service.plan(bytes, passphrase: _kPass),
+        throwsA(isA<BackupPassphraseException>()),
       );
     });
 
@@ -222,7 +228,7 @@ void main() {
         ],
       });
       final service = _service(root);
-      final outcome = await service.restore(await service.plan(await service.exportBytes()));
+      final outcome = await service.restore(await service.plan(await service.exportBytes(passphrase: _kPass), passphrase: _kPass));
       expect(outcome.pendingTaskPaths, contains('/definitely/not/here/12345'));
     });
 

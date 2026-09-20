@@ -63,7 +63,94 @@ class _BackupCardState extends State<BackupCard> {
     );
   }
 
-  /// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
+  /// 口令输入框。返回 null 表示用户取消。
+///
+/// [confirm] 为 true 时要求输两遍并比对（导出用）—— 口令打错就等于把备份作废，
+/// 必须让用户确认一遍。
+Future<String?> _askPassphrase(
+  BuildContext context, {
+  required String title,
+  required String hint,
+  required bool confirm,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  final first = TextEditingController();
+  final second = TextEditingController();
+  final error = ValueNotifier<String?>(null);
+
+  final result = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(hint, style: const TextStyle(fontSize: 12, color: kTextMuted)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: first,
+            obscureText: true,
+            autofocus: true,
+            decoration: InputDecoration(labelText: l10n.tr('backup.passphrase')),
+          ),
+          if (confirm) ...<Widget>[
+            const SizedBox(height: 10),
+            TextField(
+              controller: second,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: l10n.tr('backup.passphraseAgain'),
+              ),
+            ),
+          ],
+          ValueListenableBuilder<String?>(
+            valueListenable: error,
+            builder: (context, message, _) => message == null
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      message,
+                      style: const TextStyle(fontSize: 12, color: kDanger),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: Text(l10n.tr('common.cancel')),
+        ),
+        FilledButton(
+          onPressed: () {
+            final value = first.text.trim();
+            if (value.length < kBackupMinPassphraseLength) {
+              error.value = l10n.tr('backup.passphraseTooShort', {
+                'count': '$kBackupMinPassphraseLength',
+              });
+              return;
+            }
+            if (confirm && value != second.text.trim()) {
+              error.value = l10n.tr('backup.passphraseMismatch');
+              return;
+            }
+            Navigator.of(dialogContext).pop(value);
+          },
+          child: Text(l10n.tr('common.ok')),
+        ),
+      ],
+    ),
+  );
+
+  first.dispose();
+  second.dispose();
+  error.dispose();
+  return result;
+}
+
+/// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
   ///
   /// 文件名只带日期（`BiliCross-Backup-YYYYMMDD.bcbak`），当天再导一次会撞上。
   File _uniqueTarget(String dir, String fileName) {
@@ -82,7 +169,20 @@ class _BackupCardState extends State<BackupCard> {
     setState(() => _busy = true);
     try {
       final service = await _service();
-      final bytes = await service.exportBytes();
+      // ⚠️ await 之后 context 可能已经失效，用之前先确认还挂着。
+      if (!mounted) return;
+
+      // ⚠️ 口令是必填的，而且要输两遍 ——
+      // 口令打错 = 这份备份以后再也打不开，必须让用户确认一遍。
+      final passphrase = await _askPassphrase(
+        context,
+        title: l10n.tr('backup.passphraseSetTitle'),
+        hint: l10n.tr('backup.passphraseSetHint'),
+        confirm: true,
+      );
+      if (passphrase == null) return;
+
+      final bytes = await service.exportBytes(passphrase: passphrase);
 
       // ⚠️ 安卓：直接写进下载目录（跟视频放在一起），不走系统选择器 ——
       // 系统选择器对自定义扩展名不友好，而且"另存为"多一步。
@@ -140,8 +240,22 @@ class _BackupCardState extends State<BackupCard> {
       if (path == null) return;
       final bytes = await File(path).readAsBytes();
 
+      // 先只读头部：判断这份备份要不要口令。老格式（v1）不需要，直接往下走。
+      final header = service.inspect(bytes);
+      String? passphrase;
+      if (header.usesPassphrase) {
+        if (!mounted) return;
+        passphrase = await _askPassphrase(
+          context,
+          title: l10n.tr('backup.passphraseAskTitle'),
+          hint: l10n.tr('backup.passphraseAskHint'),
+          confirm: false,
+        );
+        if (passphrase == null) return;
+      }
+
       // 先校验再让用户确认：格式、认证标签、载荷结构都要过。
-      final plan = await service.plan(bytes);
+      final plan = await service.plan(bytes, passphrase: passphrase);
       final confirmed = await _confirm(plan);
       if (confirmed != true) return;
 

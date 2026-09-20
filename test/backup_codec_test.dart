@@ -53,12 +53,17 @@ String _hex(List<int> bytes) =>
 
 Uint8List _fixedNonce() => Uint8List.fromList(List<int>.generate(12, (i) => i));
 
+/// 测试口令。长度必须 ≥ kBackupMinPassphraseLength。
+const String _kPass = 'test-passphrase-1234';
+
 void main() {
   final codec = BackupCodec(keyRing: BackupKeyRing.testOnly());
 
   group('固定测试向量（跨实现一致）', () {
     test('用测试密钥 + 固定 nonce 编出来的字节与独立实现完全一致', () async {
-      final bytes = await codec.encode(
+      // ⚠️ 固定向量是 **v1 格式**（构建期密钥、无口令），所以这里必须走
+      // encodeLegacyWithInjectedKey —— 正式导出的 encode 现在一律是 v2 口令格式。
+      final bytes = await codec.encodeLegacyWithInjectedKey(
         payload: _testPayload(),
         appVersion: '1.0.6',
         platform: 'windows',
@@ -77,7 +82,8 @@ void main() {
 
     test('头部元数据可读，且不依赖解密', () {
       final header = codec.readHeader(_bytes(_vectorHex));
-      expect(header.formatVersion, kBackupFormatVersion);
+      // 固定向量是 v1 格式 —— 这里断言的是**老格式常量**，不是当前常量。
+      expect(header.formatVersion, kBackupFormatVersionLegacyNoPassword);
       expect(header.algorithm, kBackupAlgorithmAes256Gcm);
       expect(header.keyId, kBackupCurrentKeyId);
       expect(header.appVersion, '1.0.6');
@@ -100,10 +106,11 @@ void main() {
       };
       final bytes = await codec.encode(
         payload: payload,
+        passphrase: _kPass,
         appVersion: '1.0.6',
         platform: 'android',
       );
-      final decoded = await codec.decode(bytes);
+      final decoded = await codec.decode(bytes, passphrase: _kPass);
       expect(jsonEncode(decoded.data), jsonEncode(payload));
       expect(decoded.header.platform, 'android');
     });
@@ -111,11 +118,13 @@ void main() {
     test('每次编码的 nonce 都不同（同输入产生不同密文）', () async {
       final a = await codec.encode(
         payload: _testPayload(),
+        passphrase: _kPass,
         appVersion: '1.0.6',
         platform: 'windows',
       );
       final b = await codec.encode(
         payload: _testPayload(),
+        passphrase: _kPass,
         appVersion: '1.0.6',
         platform: 'windows',
       );
@@ -203,6 +212,126 @@ void main() {
     });
   });
 
+  group('口令（v2 格式）', () {
+    test('口令备份往返一致，头部标记为口令保护', () async {
+      final payload = _testPayload();
+      final bytes = await codec.encode(
+        payload: payload,
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      final header = codec.readHeader(bytes);
+      expect(header.formatVersion, kBackupFormatVersion);
+      expect(header.usesPassphrase, isTrue);
+      expect(header.kdfAlgorithm, kBackupKdfArgon2id);
+      expect(header.kdfSalt.length, kBackupSaltLength);
+
+      final decoded = await codec.decode(bytes, passphrase: _kPass);
+      expect(jsonEncode(decoded.data), jsonEncode(payload));
+    });
+
+    test('口令错 → 明确报口令不对，且信息里不含凭据', () async {
+      final bytes = await codec.encode(
+        payload: _testPayload(),
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      try {
+        await codec.decode(bytes, passphrase: 'wrong-passphrase-9999');
+        fail('应当认证失败');
+      } on BackupPassphraseException catch (error) {
+        expect('$error'.contains('test-sess'), isFalse);
+      }
+    });
+
+    test('不给口令就解口令备份 → 明确要求输入口令', () async {
+      final bytes = await codec.encode(
+        payload: _testPayload(),
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      expect(
+        () => codec.decode(bytes),
+        throwsA(isA<BackupPassphraseException>()),
+      );
+    });
+
+    test('口令太短 → 拒绝导出（弱口令等于没加密）', () async {
+      expect(
+        () => codec.encode(
+          payload: _testPayload(),
+          passphrase: 'short',
+          appVersion: '2.0.2',
+          platform: 'android',
+        ),
+        throwsA(isA<BackupPassphraseException>()),
+      );
+    });
+
+    test('同一个口令 + 不同 salt → 密文不同（salt 起作用）', () async {
+      final a = await codec.encode(
+        payload: _testPayload(),
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      final b = await codec.encode(
+        payload: _testPayload(),
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      expect(_hex(codec.readHeader(a).kdfSalt),
+          isNot(_hex(codec.readHeader(b).kdfSalt)));
+      expect(_hex(a), isNot(_hex(b)));
+    });
+
+    test('改 KDF 参数一位 → 认证失败（KDF 段在 AAD 里）', () async {
+      final bytes = await codec.encode(
+        payload: _testPayload(),
+        passphrase: _kPass,
+        appVersion: '2.0.2',
+        platform: 'android',
+      );
+      // ⚠️ 不能用 indexOf 找 —— 值等于 1 的字节到处都是（salt、时间戳里都有）。
+      // 按头部布局把 kdf_algorithm 的偏移算出来。
+      var o = kBackupMagic.length + 2 + 1; // magic + format_version + algorithm
+      o += 1 + bytes[o]; // key_id（uint8 长度 + 内容）
+      o += 8; // created_at_ms
+      o += 2 + ((bytes[o] << 8) | bytes[o + 1]); // app_version（uint16 大端）
+      o += 1 + bytes[o]; // platform
+      o += 1 + bytes[o]; // payload_type
+      expect(bytes[o], kBackupKdfArgon2id, reason: '这个偏移应该正好是 kdf_algorithm');
+      bytes[o] = 0x02;
+      // 改掉 kdf_algorithm 之后，应用会**把它当成 v1**（无 KDF 段）去解 ——
+      // 于是走注入密钥那条路，认证失败抛 BackupAuthenticationException。
+      // 关键不是抛哪种，而是**一定解不开**。两种都接受。
+      expect(
+        () => codec.decode(bytes, passphrase: _kPass),
+        throwsA(anyOf(
+          isA<BackupPassphraseException>(),
+          isA<BackupAuthenticationException>(),
+        )),
+      );
+    });
+
+    test('老格式（v1）仍然能解 —— 新版不能把旧备份判死', () async {
+      final payload = _testPayload();
+      final legacy = await codec.encodeLegacyWithInjectedKey(
+        payload: payload,
+        appVersion: '1.0.6',
+        platform: 'windows',
+      );
+      expect(codec.readHeader(legacy).usesPassphrase, isFalse);
+      // 传了口令也不该影响：v1 走注入密钥那条路。
+      final decoded = await codec.decode(legacy, passphrase: _kPass);
+      expect(jsonEncode(decoded.data), jsonEncode(payload));
+    });
+  });
+
   group('不泄露明文', () {
     test('文件里看不到凭据原文，也没有 base64 形态的载荷', () async {
       final payload = <String, dynamic>{
@@ -212,6 +341,7 @@ void main() {
       };
       final bytes = await codec.encode(
         payload: payload,
+        passphrase: _kPass,
         appVersion: '1.0.6',
         platform: 'windows',
       );
@@ -230,7 +360,7 @@ void main() {
       expect(ring.isConfigured, isFalse);
       final codecWithoutKey = BackupCodec(keyRing: ring);
       expect(
-        () => codecWithoutKey.encode(
+        () => codecWithoutKey.encodeLegacyWithInjectedKey(
           payload: _testPayload(),
           appVersion: '1.0.6',
           platform: 'windows',

@@ -24,8 +24,24 @@ import 'dart:typed_data';
 /// | … | C | `ciphertext` | AES-256-GCM 密文（长度 = `cipher_length`）|
 /// | … | 16 | `authentication_tag` | AES-GCM 认证标签，16 字节 |
 ///
+/// ## 容器布局（`format_version = 2`，口令派生）
+///
+/// 与 v1 完全相同，只在 `payload_type` 与 `nonce` 之间**插入一段 KDF 段**：
+///
+/// | 偏移 | 长度 | 字段 | 说明 |
+/// |---|---|---|---|
+/// | … | 1 | `kdf_algorithm` | uint8，`1` = Argon2id |
+/// | … | 4 | `kdf_memory` | uint32 大端，单位 1 KiB 块 |
+/// | … | 4 | `kdf_iterations` | uint32 大端 |
+/// | … | 1 | `kdf_parallelism` | uint8 |
+/// | … | 16 | `kdf_salt` | 随机 salt |
+/// | … | 12 | `nonce` | AES-GCM 固定 12 字节 |
+///
+/// 其余字段含义不变，密文与 tag 的布局也不变。
+/// **v1 文件没有这段** —— 解析时按 `format_version` 分支。
+///
 /// **附加认证数据（AAD）= 从 `magic` 起、到 `cipher_length` 结束（含）的全部字节**，
-/// 也就是密文之前的整个头部。这样改头部任何一位（包括改创建时间）都会认证失败。
+/// 也就是密文之前的整个头部。这样改头部任何一位（包括改创建时间、改 KDF 参数）都会认证失败。
 ///
 /// ## 演进路径（重要）
 ///
@@ -50,14 +66,40 @@ const List<int> kBackupMagic = <int>[0x42, 0x43, 0x42, 0x41, 0x4B, 0x42, 0x4B, 0
 /// magic 的 ASCII 形式，报错信息与测试里用。
 const String kBackupMagicText = 'BCBAKBK1';
 
-/// 当前备份格式版本。格式变化时递增，并按 [kBackupMagic] 一并演进。
-const int kBackupFormatVersion = 1;
+/// 备份格式版本。
+///
+/// - `1`：零密码形态，密钥由构建期注入（历史格式，**必须继续能解**）。
+/// - `2`：**用户口令**派生密钥（当前用于新建）。
+const int kBackupFormatVersionLegacyNoPassword = 1;
+
+/// 当前用于**新建**备份的格式版本。
+const int kBackupFormatVersion = 2;
 
 /// 加密算法编号。
 const int kBackupAlgorithmAes256Gcm = 1;
 
 /// 当前使用的算法编号。
 const int kBackupAlgorithm = kBackupAlgorithmAes256Gcm;
+
+/// 密钥派生算法编号。
+const int kBackupKdfNone = 0;
+
+/// Argon2id（RFC 9106）。
+const int kBackupKdfArgon2id = 1;
+
+/// Argon2id 参数（写死并**记进头部**，避免实现之间产生偏差）。
+///
+/// 取值按 OWASP 的「Argon2id 最低配置」：19 MiB 内存、2 次迭代、1 路并行。
+/// 这里用 64 MiB / 3 次 —— 手机上也只多花几十毫秒，但暴力破解成本高得多。
+const int kBackupArgon2MemoryKib = 64 * 1024;
+const int kBackupArgon2Iterations = 3;
+const int kBackupArgon2Parallelism = 1;
+
+/// salt 长度。不需要保密，但要每条备份不同。
+const int kBackupSaltLength = 16;
+
+/// 口令长度下限。弱口令等于没加密，这里拦一道。
+const int kBackupMinPassphraseLength = 8;
 
 /// AES-256-GCM 参数（写死，避免实现之间产生偏差）。
 const int kBackupKeyLength = 32;
@@ -88,6 +130,11 @@ class BackupHeader {
     required this.payloadType,
     required this.nonce,
     required this.cipherLength,
+    this.kdfAlgorithm = kBackupKdfNone,
+    this.kdfMemoryKib = 0,
+    this.kdfIterations = 0,
+    this.kdfParallelism = 0,
+    this.kdfSalt = const <int>[],
   });
 
   final int formatVersion;
@@ -99,6 +146,22 @@ class BackupHeader {
   final String payloadType;
   final Uint8List nonce;
   final int cipherLength;
+
+  /// KDF 段（`format_version >= 2` 才有；v1 是 [kBackupKdfNone]）。
+  ///
+  /// 参数**记进头部**而不是写死在代码里 —— 以后调参（加大内存/迭代）时，
+  /// 老备份照样能按它自己记的参数解出来。
+  final int kdfAlgorithm;
+  final int kdfMemoryKib;
+  final int kdfIterations;
+  final int kdfParallelism;
+  /// ⚠️ 类型是 `List<int>` 而不是 `Uint8List`：默认值得是**编译期常量**，
+  /// 而 `Uint8List(0)` 不是。解析出来的是 `Uint8List`，赋值给 `List<int>` 没问题。
+  final List<int> kdfSalt;
+
+  /// 这条备份是不是用口令派生的（而不是构建期注入的密钥）。
+  bool get usesPassphrase =>
+      kdfAlgorithm == kBackupKdfArgon2id && kdfSalt.isNotEmpty;
 
   /// AAD：头部序列化后的字节（密文之前的所有内容）。
   Uint8List toAadBytes() => _writeHeader(this);
@@ -119,6 +182,14 @@ Uint8List _writeHeader(BackupHeader header) {
   builder.add(_string16(header.appVersion));
   builder.add(_string8(header.platform));
   builder.add(_string8(header.payloadType));
+  // v2 起多一段 KDF；v1 没有。解析端按 format_version 分支，两端必须一致。
+  if (header.formatVersion > kBackupFormatVersionLegacyNoPassword) {
+    builder.add(<int>[header.kdfAlgorithm]);
+    builder.add(_uint32(header.kdfMemoryKib));
+    builder.add(_uint32(header.kdfIterations));
+    builder.add(<int>[header.kdfParallelism]);
+    builder.add(header.kdfSalt);
+  }
   builder.add(header.nonce);
   builder.add(_uint32(header.cipherLength));
   return builder.toBytes();
@@ -163,8 +234,14 @@ ParsedBackup parseBackup(Uint8List bytes) {
     throw BackupFormatException('不是 $kBackupMagicText 备份文件，或文件已损坏');
   }
   final formatVersion = reader.uint16();
-  if (formatVersion != kBackupFormatVersion) {
-    throw BackupFormatException('备份格式版本不支持：$formatVersion（当前支持 $kBackupFormatVersion）');
+  // ⚠️ 必须同时接受 v1（历史、构建期密钥）与 v2（口令派生）——
+  // 新版不能把用户升级前导出的备份判死。
+  if (formatVersion != kBackupFormatVersionLegacyNoPassword &&
+      formatVersion != kBackupFormatVersion) {
+    throw BackupFormatException(
+      '备份格式版本不支持：$formatVersion'
+      '（当前支持 $kBackupFormatVersionLegacyNoPassword 与 $kBackupFormatVersion）',
+    );
   }
   final algorithm = reader.uint8();
   if (algorithm != kBackupAlgorithmAes256Gcm) {
@@ -175,6 +252,19 @@ ParsedBackup parseBackup(Uint8List bytes) {
   final appVersion = reader.string16(_kStringMax);
   final platform = reader.string8(_kStringMax);
   final payloadType = reader.string8(_kStringMax);
+  // v2 起多一段 KDF；v1 没有。按 format_version 分支 —— 跟写入端必须一致。
+  var kdfAlgorithm = kBackupKdfNone;
+  var kdfMemoryKib = 0;
+  var kdfIterations = 0;
+  var kdfParallelism = 0;
+  var kdfSalt = const <int>[];
+  if (formatVersion > kBackupFormatVersionLegacyNoPassword) {
+    kdfAlgorithm = reader.uint8();
+    kdfMemoryKib = reader.uint32();
+    kdfIterations = reader.uint32();
+    kdfParallelism = reader.uint8();
+    kdfSalt = reader.take(kBackupSaltLength);
+  }
   final nonce = reader.take(kBackupNonceLength);
   final cipherLength = reader.uint32();
   if (cipherLength > reader.remaining) {
@@ -190,6 +280,11 @@ ParsedBackup parseBackup(Uint8List bytes) {
     payloadType: payloadType,
     nonce: nonce,
     cipherLength: cipherLength,
+    kdfAlgorithm: kdfAlgorithm,
+    kdfMemoryKib: kdfMemoryKib,
+    kdfIterations: kdfIterations,
+    kdfParallelism: kdfParallelism,
+    kdfSalt: kdfSalt,
   );
   final ciphertext = reader.take(cipherLength);
   final tag = reader.take(kBackupTagLength);

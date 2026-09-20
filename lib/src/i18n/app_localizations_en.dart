@@ -434,6 +434,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
     // Backup & restore (Windows installer and portable editions)
     'settings.backup': 'Backup & restore',
+    'common.ok': 'OK',
+    'backup.passphrase': 'Passphrase',
+    'backup.passphraseAgain': 'Repeat passphrase',
+    'backup.passphraseSetTitle': 'Set a backup passphrase',
+    'backup.passphraseSetHint':
+        'This backup is encrypted with the passphrase. If you lose it, the backup cannot be opened. The app does not store it.',
+    'backup.passphraseAskTitle': 'Enter backup passphrase',
+    'backup.passphraseAskHint':
+        'This backup is passphrase-protected. Enter the passphrase used when it was exported.',
+    'backup.passphraseTooShort': 'Use at least {count} characters',
+    'backup.passphraseMismatch': 'The two passphrases do not match',
     'backup.hint': 'Export your account information, settings and tasks to move '
         'them between the installer and portable editions. Restoring overwrites '
         'the current data.',

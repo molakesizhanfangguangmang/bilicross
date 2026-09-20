@@ -100,9 +100,18 @@ class BackupService {
     return 'BiliCross-Backup-$stamp$kBackupExtension';
   }
 
-  /// 导出：加密成 `.bcbak` 字节。内容只留在内存里，不写日志、不上传。
-  Future<Uint8List> exportBytes({DateTime? now}) => codec.encode(
+  /// 导出：用**用户口令**派生密钥后加密成 `.bcbak` 字节。
+  ///
+  /// ⚠️ 口令是必填的 —— 没有它就只能用构建期注入的固定密钥，
+  /// 那个所有用户共用一把，等于备份文件谁拿到谁能开。见 [BackupCodec] 的说明。
+  ///
+  /// 内容只留在内存里，不写日志、不上传。
+  Future<Uint8List> exportBytes({
+    required String passphrase,
+    DateTime? now,
+  }) => codec.encode(
         payload: collectPayload(),
+        passphrase: passphrase,
         appVersion: appVersion,
         platform: platform,
         createdAt: now ?? _clock(),
@@ -112,8 +121,12 @@ class BackupService {
   BackupHeader inspect(Uint8List bytes) => codec.readHeader(bytes);
 
   /// 校验并解析：格式、认证标签、载荷 schema 全过才返回可恢复计划。
-  Future<BackupRestorePlan> plan(Uint8List bytes) async {
-    final payload = await codec.decode(bytes);
+  ///
+  /// [passphrase] 只有口令备份（`format_version >= 2`）才需要；
+  /// 老格式（v1）走构建期注入的密钥，传了也会被忽略。
+  /// 要不要问口令，先用 [inspect] 读头部判断（[BackupHeader.usesPassphrase]）。
+  Future<BackupRestorePlan> plan(Uint8List bytes, {String? passphrase}) async {
+    final payload = await codec.decode(bytes, passphrase: passphrase);
     final files = payload.data['files'];
     if (files is! Map) {
       throw BackupFormatException('备份里没有可恢复的数据段');
