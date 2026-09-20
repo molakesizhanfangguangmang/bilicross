@@ -137,22 +137,22 @@ class _EntryTile extends StatelessWidget {
   }
 }
 
-/// 便捷入口：解析出 mid 后弹这个窗。
+/// 便捷入口：拿到 mid 后弹这个窗。
+///
+/// [onPick] 在弹窗关闭后回调（选中条目），由宿主决定怎么解析 ——
+/// 合集走清单接口进选择页，系列暂时只给一句提示。
 Future<void> showSeasonInfoSheet(
   BuildContext context,
   AppState state,
-  int mid,
-) async {
+  int mid, {
+  required void Function(SeasonInfoEntry entry) onPick,
+}) async {
   await showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SeasonInfoSheet(
       future: state.api
           .fetchSeasonInfoList(mid: mid, cookie: state.cookie.raw),
-      onPick: (entry) {
-        // 系列与合集都先把 seasonId 塞进输入框走清单路径；
-        // 系列清单的翻页接口与合集不同，属于后续增强，这里先统一入口。
-        Navigator.of(context).pop();
-      },
+      onPick: onPick,
     ),
   );
 }

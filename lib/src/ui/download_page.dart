@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/bili_url.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'expand_page_route.dart';
+import 'season_info_sheet.dart';
 import 'season_select_page.dart';
 import 'widgets.dart';
 
@@ -23,6 +25,9 @@ class _DownloadPageState extends State<DownloadPage> {
       TextEditingController(text: widget.state.addressInput);
   int? _videoIndex;
   int? _audioIndex;
+
+  /// 从空间弹窗选了合集后，正在拉整部清单。
+  bool _seasonLoading = false;
 
   @override
   void dispose() {
@@ -86,7 +91,7 @@ class _DownloadPageState extends State<DownloadPage> {
                 Text(state.notice, style: const TextStyle(color: Color(0xff8a5b4a))),
               ],
               const SizedBox(height: 16),
-              if (state.busy)
+              if (state.busy || _seasonLoading)
                 const LinearProgressIndicator(minHeight: 2)
               else if (media == null)
                 EmptyState(
@@ -106,7 +111,57 @@ class _DownloadPageState extends State<DownloadPage> {
   Future<void> _parse(AppState state, String value) async {
     _videoIndex = null;
     _audioIndex = null;
+    // 空间链接不是「一个视频」，没有单集可解析 —— 弹窗列出该 UP 的合集与系列，
+    // 选中哪条就按哪条拉清单进选择页。
+    final target = BiliUrl.parse(value);
+    if (target.kind == TargetKind.space && target.mid != null) {
+      await _openSpaceSheet(state, target.mid!);
+      return;
+    }
     await state.parseAddress(value);
+  }
+
+  /// 空间链接 → 弹窗选合集 → 拉整部清单 → 进合集选择页。
+  Future<void> _openSpaceSheet(AppState state, int mid) async {
+    await showSeasonInfoSheet(
+      context,
+      state,
+      mid,
+      onPick: (entry) => _openSeason(state, mid, entry),
+    );
+  }
+
+  Future<void> _openSeason(
+    AppState state,
+    int mid,
+    SeasonInfoEntry entry,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    if (entry.kind != SeasonInfoKind.season) {
+      // 系列清单的翻页接口与合集不是同一个，还没接。
+      state.showNotice(l10n.tr('spaceSheet.seriesUnsupported'));
+      return;
+    }
+    setState(() => _seasonLoading = true);
+    try {
+      final info = await state.api.fetchUgcSeasonArchives(
+        seasonId: entry.id,
+        mid: mid,
+        cookie: state.cookie.raw,
+      );
+      final manifest = info.season;
+      if (!mounted) return;
+      if (manifest == null || manifest.totalEpisodes == 0) {
+        state.showNotice(l10n.tr('spaceSheet.noEpisodes'));
+        return;
+      }
+      openSeasonSelectPage(context, state, manifest);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      state.showNotice('$error');
+    } finally {
+      if (mounted) setState(() => _seasonLoading = false);
+    }
   }
 
   Widget _result(BuildContext context, AppState state, ParsedMedia media) {

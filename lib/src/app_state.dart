@@ -220,6 +220,12 @@ class AppState extends ChangeNotifier {
   /// 不碰用户自己按「暂停」停下的那些。
   final Set<String> _riskPaused = <String>{};
 
+  /// 界面侧（如空间入口拉清单失败）设一句提示，走与解析同一处展示位。
+  void showNotice(String text) {
+    notice = text;
+    notifyListeners();
+  }
+
   /// 界面弹过提示、用户选了「先放着」：只清标记。
   /// 队列不会因此自己跑起来 —— 要动还是得用户点任务页的开始/继续。
   void dismissRiskControl() {

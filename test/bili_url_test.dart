@@ -25,6 +25,33 @@ void main() {
     });
   });
 
+  group('UP 空间链接', () {
+    test('空间主页当空间入口，带上 mid', () {
+      final target = BiliUrl.parse('https://space.bilibili.com/11231484');
+      expect(target.kind, TargetKind.space);
+      expect(target.mid, 11231484);
+      // 空间不是可直接解析的媒体目标，要弹窗让用户挑。
+      expect(target.isSupported, isFalse);
+    });
+
+    test('带尾斜杠与查询串也认', () {
+      final target = BiliUrl.parse(
+        'https://space.bilibili.com/11231484/?spm_id_from=333.999',
+      );
+      expect(target.kind, TargetKind.space);
+      expect(target.mid, 11231484);
+    });
+
+    test('lists 链接优先当合集，不会被空间主页那条更宽的模式抢走', () {
+      final target = BiliUrl.parse(
+        'https://space.bilibili.com/11231484/lists/3144260?type=season',
+      );
+      expect(target.kind, TargetKind.ugcSeason);
+      expect(target.seasonId, 3144260);
+      expect(target.mid, 11231484);
+    });
+  });
+
   group('裸 season 编号', () {
     test('认作合集入口，但没有 mid（要靠反查，本机没有公开端点）', () {
       final target = BiliUrl.parse('season3144260');

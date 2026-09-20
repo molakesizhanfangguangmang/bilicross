@@ -206,7 +206,16 @@ String codecShortName(String codecs) {
 }
 
 /// 地址识别结果。
-enum TargetKind { video, bangumi, cheese, shortLink, ugcSeason, unknown }
+enum TargetKind {
+  video,
+  bangumi,
+  cheese,
+  shortLink,
+  ugcSeason,
+  /// UP 空间：没有单集可解析，要弹窗让用户挑合集/系列。
+  space,
+  unknown,
+}
 
 class BiliTarget {
   const BiliTarget({

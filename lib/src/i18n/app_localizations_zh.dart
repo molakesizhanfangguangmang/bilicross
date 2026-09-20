@@ -60,6 +60,9 @@ class AppLocalizationsZh extends AppLocalizations {
     // 空间弹窗
     'spaceSheet.seasons': '合集',
     'spaceSheet.series': '系列',
+    'spaceSheet.seriesUnsupported': '系列清单的翻页接口与合集不同，暂未接入；'
+        '可以先从系列内任一视频的链接进入。',
+    'spaceSheet.noEpisodes': '这个合集没有可下载的集',
     'spaceSheet.empty': '这个 UP 没有公开的合集或系列',
     // 关于页的测试版警示语。
     'about.testBuildWarning': '该版本仅用于技术验证，请谨慎使用，禁止外泄',

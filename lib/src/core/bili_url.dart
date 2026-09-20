@@ -11,6 +11,7 @@ class BiliUrl {
   static final RegExp _page = RegExp(r'[?&]p=(\d+)');
   static final RegExp _seasonId = RegExp(r'\bseason(\d+)\b', caseSensitive: false);
   static final RegExp _spaceList = RegExp(r'space\.bilibili\.com/(\d+)/lists/(\d+)', caseSensitive: false);
+  static final RegExp _spaceHome = RegExp(r'space\.bilibili\.com/(\d+)', caseSensitive: false);
 
   static BiliTarget parse(String input) {
     final text = input.trim();
@@ -80,6 +81,18 @@ class BiliUrl {
         kind: TargetKind.ugcSeason,
         seasonId: int.parse(spaceList.group(2)!),
         mid: int.parse(spaceList.group(1)!),
+        source: text,
+      );
+    }
+
+    // UP 空间主页（space.bilibili.com/<mid>）：没有单集可解析，
+    // 交给上层弹窗列出该 UP 的合集与系列。必须放在 lists 之后 ——
+    // lists 链接同样匹配这条更宽的模式。
+    final spaceHome = _spaceHome.firstMatch(text);
+    if (spaceHome != null) {
+      return BiliTarget(
+        kind: TargetKind.space,
+        mid: int.parse(spaceHome.group(1)!),
         source: text,
       );
     }
