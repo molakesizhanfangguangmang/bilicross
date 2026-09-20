@@ -111,11 +111,30 @@ class _DownloadPageState extends State<DownloadPage> {
   Future<void> _parse(AppState state, String value) async {
     _videoIndex = null;
     _audioIndex = null;
+    final target = BiliUrl.parse(value);
     // 空间链接不是「一个视频」，没有单集可解析 —— 弹窗列出该 UP 的合集与系列，
     // 选中哪条就按哪条拉清单进选择页。
-    final target = BiliUrl.parse(value);
     if (target.kind == TargetKind.space && target.mid != null) {
       await _openSpaceSheet(state, target.mid!);
+      return;
+    }
+    // 空间 lists 链接（带 mid 的合集入口）直接拉清单进选择页。
+    // ⚠️ 不能走单集解析：占位的那一集来自清单接口，而清单接口**不返回 cid**，
+    // 拿 cid 0 去请求 playurl 必然失败 —— 这条入口以前就是这么挂的。
+    final seasonId = target.seasonId ?? 0;
+    if (target.kind == TargetKind.ugcSeason &&
+        target.mid != null &&
+        seasonId > 0) {
+      await _openSeason(
+        state,
+        target.mid!,
+        SeasonInfoEntry(
+          id: seasonId,
+          title: '',
+          total: 0,
+          kind: SeasonInfoKind.season,
+        ),
+      );
       return;
     }
     await state.parseAddress(value);
@@ -152,7 +171,10 @@ class _DownloadPageState extends State<DownloadPage> {
               cookie: state.cookie.raw,
             );
       if (!mounted) return;
-      final manifest = info.season?.withTitle(entry.title);
+      // 合集清单的 meta 里带标题，直接用；系列没有，才用弹窗那条的名称补。
+      final manifest = (info.season?.title.isEmpty ?? true)
+          ? info.season?.withTitle(entry.title)
+          : info.season;
       if (manifest == null || manifest.totalEpisodes == 0) {
         state.showNotice(l10n.tr('spaceSheet.noEpisodes'));
         return;

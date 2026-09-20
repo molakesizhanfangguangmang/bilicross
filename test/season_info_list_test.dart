@@ -45,6 +45,12 @@ Map<String, dynamic> _fixture() => <String, dynamic>{
 
 void main() {
   group('空间合集/系列列表解析', () {
+    test('每页条数不能超过 20 —— 接口硬约束，改大就直接 -400', () {
+      // 实测：page_size=20 → code 0；30 与 100 → code -400「请求错误」。
+      // 这个常量一旦被调大，空间弹窗会立刻报「取合集与系列列表失败」。
+      expect(kSpaceListPageSize, 20);
+    });
+
     test('合集与系列分别取到编号、名称、集数', () {
       final list = BiliApi.parseSeasonInfoList(_fixture(), 11231484);
 

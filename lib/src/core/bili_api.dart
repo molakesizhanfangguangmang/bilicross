@@ -16,6 +16,12 @@ import 'signing.dart';
 /// 不能 catch 之后回落成空列表，否则会把「被拦」误读成「这个 UP 确实没有合集」。
 const int kRiskControlCode = -352;
 
+/// 空间「合集 / 系列」列表接口每页能给的条数。
+///
+/// ⚠️ 实测**最大只接受 20**：给 30 或 100 一律返回 `code -400 请求错误`。
+/// 这个值不能凭手感调大。
+const int kSpaceListPageSize = 20;
+
 class BiliException implements Exception {
   BiliException(this.message, {this.code});
 
@@ -247,28 +253,56 @@ class BiliApi {
   ///
   /// 合集走 `seasons_archives_list` 不行（它要 season_id），这里用
   /// `x/polymer/web-space/seasons_series_list?mid=&page_num=&page_size=`
-  /// 一次拿全部条目。返回两组标题+id，供弹窗挑选；条目为空不报错（这个 UP 确实没有）。
+  /// 拿全部条目。返回两组标题+id，供弹窗挑选；条目为空不报错（这个 UP 确实没有）。
   ///
-  /// ⚠️ 2026-09-20 用真实请求核对过形状（此前代码写错了）：
-  /// - 路径**没有 `/home/`** —— 带 `/home/` 是 404（返回的是 HTML 错误页，
-  ///   不是 JSON，`getJson` 会解析失败）；
+  /// ⚠️ 2026-09-20 用真实请求逐项核对过，**两处与旧写法不符**：
+  /// - 路径**没有 `/home/`** —— 带 `/home/` 是 404 且返回 HTML 错误页
+  ///   （不是 JSON，`getJson` 会解析失败）；
+  /// - ⚠️ **`page_size` 最大只接受 20**：给 30 或 100 一律返回
+  ///   `code -400 请求错误`（与 Referer 无关，www 与空间域都一样）。
+  ///   旧代码写死 100，所以这个弹窗永远报「请求错误」。一次拿不完就翻页。
   /// - 编号/标题/集数都在 `data.items_lists.seasons_list[].meta` 与
-  ///   `...series_list[].meta` 里，不是 `data.meta` / `data.items`；
-  /// - 合集用 `season_id`、系列用 `series_id`（不是 `type == 2` 区分）。
+  ///   `...series_list[].meta` 里；合集用 `season_id`、系列用 `series_id`
+  ///   （不是 `type == 2` 区分）。
   Future<SeasonInfoList> fetchSeasonInfoList({
     required int mid,
     required String cookie,
   }) async {
-    final json = await getJson(
-      Uri.https('api.bilibili.com', '/x/polymer/web-space/seasons_series_list', {
-        'mid': '$mid',
-        'page_num': '1',
-        'page_size': '100',
-      }),
-      cookie: cookie,
-    );
-    _check(json, action: '取合集与系列列表');
-    return parseSeasonInfoList(json, mid);
+    final seasons = <SeasonInfoEntry>[];
+    final series = <SeasonInfoEntry>[];
+    // 上限 5 页（100 条）：真有人有几百个合集也不至于在这儿卡很久。
+    for (var pageNumber = 1; pageNumber <= 5; pageNumber++) {
+      final json = await getJson(
+        Uri.https(
+          'api.bilibili.com',
+          '/x/polymer/web-space/seasons_series_list',
+          {
+            'mid': '$mid',
+            'page_num': '$pageNumber',
+            'page_size': '$kSpaceListPageSize',
+          },
+        ),
+        cookie: cookie,
+      );
+      _check(json, action: '取合集与系列列表');
+      final page = parseSeasonInfoList(json, mid);
+      seasons.addAll(page.seasons);
+      series.addAll(page.series);
+      final total = _spaceListTotal(json);
+      if (total <= 0 || seasons.length + series.length >= total) break;
+    }
+    return SeasonInfoList(mid: mid, seasons: seasons, series: series);
+  }
+
+  /// 这一页声明的总条数（`data.items_lists.page.total`）；读不到就当 0（不翻页）。
+  static int _spaceListTotal(Map<String, dynamic> json) {
+    final data = json['data'];
+    if (data is! Map) return 0;
+    final lists = data['items_lists'];
+    if (lists is! Map) return 0;
+    final page = lists['page'];
+    if (page is! Map) return 0;
+    return (page['total'] as num?)?.toInt() ?? 0;
   }
 
   /// 解析 `seasons_series_list` 的返回。
@@ -318,6 +352,16 @@ class BiliApi {
     final item = raw.cast<String, dynamic>();
     final meta = item['meta'];
     return meta is Map ? meta.cast<String, dynamic>() : item;
+  }
+
+  /// 合集清单 `data.meta` 里的标题；优先 `title`，退回 `name`（带「合集·」前缀）。
+  static String _archiveTitle(Map<String, dynamic> data) {
+    final meta = data['meta'];
+    if (meta is! Map) return '';
+    final map = meta.cast<String, dynamic>();
+    final title = (map['title'] as String? ?? '').trim();
+    if (title.isNotEmpty) return title;
+    return (map['name'] as String? ?? '').trim();
   }
 
   /// 按合集编号找到任一成员的 mid（翻页接口必须带 mid）。
@@ -386,6 +430,7 @@ class BiliApi {
   }) async {
     final episodes = <SeasonEpisode>[];
     var pageNumber = 1;
+    var title = '';
     while (true) {
       final json = await getJson(
         Uri.https('api.bilibili.com', path, {
@@ -419,13 +464,16 @@ class BiliApi {
       final total = (data['total'] as num?)?.toInt() ??
           (page?['total'] as num?)?.toInt() ??
           episodes.length;
+      // 合集清单的 `data.meta` 里有 `title` / `name` —— 顺手拿来做标题，
+      // 省得调用方再为标题发一次请求。系列清单没有 meta，保持空串。
+      if (title.isEmpty) title = _archiveTitle(data);
       if (episodes.length >= total || archives.isEmpty) break;
       pageNumber += 1;
     }
 
     final manifest = SeasonManifest(
       seasonId: id,
-      title: '',
+      title: title,
       owner: '',
       cover: '',
       // 翻页接口不带段信息，全部收进一个无标题段；有分段结构的合集应从

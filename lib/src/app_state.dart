@@ -280,6 +280,61 @@ class AppState extends ChangeNotifier {
     unawaited(pumpQueue());
   }
 
+  // ---------- 批量清理（任务页顶部按钮用） ----------
+
+  /// 清空任务列表（不分状态）。
+  ///
+  /// [removeFiles] 为真时连残留文件一起删 —— 但**只删非完成任务**留下的分片与
+  /// 半成品，已下载完成的成品一律不动：「清空列表」不该顺手把下好的东西删掉。
+  ///
+  /// 正在跑的任务不在这里处理，调用方应先确认（界面在 `activeTaskCount > 0`
+  /// 时把按钮禁掉），否则文件还在写，删了也没意义。
+  Future<int> clearAllTasks({required bool removeFiles}) async {
+    var removed = 0;
+    if (removeFiles) {
+      for (final task in tasks) {
+        if (task.stage == TaskStage.done) continue;
+        removed += await _removeTaskFiles(task);
+      }
+    }
+    final count = tasks.length;
+    tasks.clear();
+    await store.saveTasks(tasks);
+    LogStore.instance.add(
+      '任务',
+      removeFiles
+          ? '清空任务列表（$count 条），并删除 $removed 个残留文件'
+          : '清空任务列表（$count 条）',
+    );
+    notifyListeners();
+    return removed;
+  }
+
+  /// 清理残留：删掉**非完成任务**留下的分片与半成品，任务记录保留。
+  ///
+  /// 已下载完成的成品不在清理范围内；正在跑的任务也不动（文件还在写）。
+  Future<int> cleanupResidue() async {
+    var removed = 0;
+    for (final task in tasks) {
+      if (task.stage == TaskStage.done || _isRunning(task.stage)) continue;
+      removed += await _removeTaskFiles(task);
+    }
+    await store.saveTasks(tasks);
+    LogStore.instance.add('任务', '清理残留：删除 $removed 个文件');
+    notifyListeners();
+    return removed;
+  }
+
+  /// 删一个任务留下的分片与半成品。已合并的成品不删 —— 那是用户要的东西。
+  Future<int> _removeTaskFiles(DownloadTask task) async {
+    var removed = await removeArtifacts(task.videoPath);
+    removed += await removeArtifacts(task.audioPath);
+    if (!task.merged) {
+      removed += await removeArtifacts(task.outputPath);
+    }
+    return removed;
+  }
+
   // ---------- 风控（-352） ----------
 
   /// 撞到风控时置位，界面据此弹一次提示。
@@ -874,11 +929,7 @@ class AppState extends ChangeNotifier {
     if (index < 0) return 0;
     final task = tasks[index];
     if (_isRunning(task.stage)) return 0;
-    var removed = await removeArtifacts(task.videoPath);
-    removed += await removeArtifacts(task.audioPath);
-    if (!task.merged) {
-      removed += await removeArtifacts(task.outputPath);
-    }
+    final removed = await _removeTaskFiles(task);
     tasks.removeAt(index);
     await store.saveTasks(tasks);
     LogStore.instance.add('任务', '${task.title}：已清理 $removed 个残留文件');
