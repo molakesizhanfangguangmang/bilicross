@@ -250,6 +250,10 @@ class ParsedBackup {
 /// 只解析头部与分段，不做解密。界面在提示「是否覆盖」之前用它读创建时间/来源版本。
 ///
 /// 结构不对就抛 [BackupFormatException]，错误信息里不含任何载荷内容。
+///
+/// ⚠️ **v2 的 KDF 算法与参数在这里就校验**（[validateBackupKdf]）——
+/// 不等用户输完口令、真要调 Argon2id 时才查。所以 `readHeader` / `inspect`
+/// 也一并拒掉未知 KDF 或畸形的内存参数，界面不会先弹一个注定失败的口令框。
 ParsedBackup parseBackup(Uint8List bytes) {
   if (bytes.length > kBackupMaxBytes) {
     throw BackupFormatException('备份文件过大（${bytes.length} 字节），已超出上限');
@@ -314,6 +318,11 @@ ParsedBackup parseBackup(Uint8List bytes) {
     kdfParallelism: kdfParallelism,
     kdfSalt: kdfSalt,
   );
+  // ⚠️ 校验 KDF **必须在这里**，不能等到真要派生密钥时 ——
+  // 头部是不可信输入，且界面先读头部再决定要不要问口令。
+  if (formatVersion == kBackupFormatVersion) {
+    validateBackupKdf(header);
+  }
   final ciphertext = reader.take(cipherLength);
   final tag = reader.take(kBackupTagLength);
   if (reader.remaining != 0) {
@@ -324,6 +333,57 @@ ParsedBackup parseBackup(Uint8List bytes) {
     ciphertext: ciphertext,
     authenticationTag: tag,
   );
+}
+
+/// 校验 v2 头部里的 **KDF 算法与参数**是否在受支持范围内。
+///
+/// ⚠️ 这三件事一起做，缺一不可：
+///
+/// 1. **不能静默降级**：`kdf_algorithm` 不是 Argon2id 就明确报错，
+///    绝不放行到「当成老格式 / 当成固定密钥」那条路上去。
+/// 2. **不能拖死设备**：`.bcbak` 头部是攻击者可控输入，一个把 `kdf_memory`
+///    写成 4 GiB 的畸形文件足以让解密端点被拖住。所以要在**进 Argon2id 之前**
+///    就卡住，而不是算到一半才发现。
+/// 3. **不能等口令**：校验发生在 [parseBackup] 里，也就是 `readHeader` /
+///    `BackupService.inspect` 阶段 —— 界面读完头部就能拒掉这份文件，
+///    不会先让用户把口令输进来才告诉他「格式不认识」。
+///
+/// 校验不过抛 [BackupFormatException]，错误信息只说明哪个参数不受支持，
+/// **不含凭据、口令或解密内容**。
+void validateBackupKdf(BackupHeader header) {
+  if (header.kdfAlgorithm != kBackupKdfArgon2id) {
+    throw BackupFormatException(
+      '这份备份的密钥派生算法不支持：${header.kdfAlgorithm}'
+      '（当前支持 $kBackupKdfArgon2id = Argon2id）',
+    );
+  }
+  if (header.kdfSalt.length != kBackupSaltLength) {
+    throw BackupFormatException(
+      '备份的 salt 长度不受支持：${header.kdfSalt.length}'
+      '（应为 $kBackupSaltLength）',
+    );
+  }
+  if (header.kdfMemoryKib < kBackupArgon2MemoryMinKib ||
+      header.kdfMemoryKib > kBackupArgon2MemoryMaxKib) {
+    throw BackupFormatException(
+      '备份的内存参数不受支持：${header.kdfMemoryKib} KiB'
+      '（允许 $kBackupArgon2MemoryMinKib~$kBackupArgon2MemoryMaxKib）',
+    );
+  }
+  if (header.kdfIterations < kBackupArgon2IterationsMin ||
+      header.kdfIterations > kBackupArgon2IterationsMax) {
+    throw BackupFormatException(
+      '备份的迭代次数不受支持：${header.kdfIterations}'
+      '（允许 $kBackupArgon2IterationsMin~$kBackupArgon2IterationsMax）',
+    );
+  }
+  if (header.kdfParallelism < kBackupArgon2ParallelismMin ||
+      header.kdfParallelism > kBackupArgon2ParallelismMax) {
+    throw BackupFormatException(
+      '备份的并行度不受支持：${header.kdfParallelism}'
+      '（允许 $kBackupArgon2ParallelismMin~$kBackupArgon2ParallelismMax）',
+    );
+  }
 }
 
 /// 备份文件的结构或版本问题。**错误信息不得包含任何凭据内容。**

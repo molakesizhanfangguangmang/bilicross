@@ -126,6 +126,10 @@ class BackupCodec {
     final parsed = parseBackup(bytes);
     final header = parsed.header;
 
+    // ⚠️ 走到这里，v2 的 KDF 算法与参数**已经由 parseBackup 校验过**了 ——
+    // 所以下面才能放心地「先看版本、再看口令」：未知 KDF 的文件在
+    // parseBackup 阶段就抛了 BackupFormatException，根本到不了口令检查。
+    //
     // ⚠️ 解密方式**只按 format_version 决定**，不靠字段推断。
     //
     // 之前用 `header.usesPassphrase` 判断，会出一个静默降级：
@@ -208,45 +212,17 @@ class BackupCodec {
   /// ⚠️ 参数从**头部**读，不是从常量读 —— 以后调参（加大内存/迭代）时，
   /// 老备份照样能按它自己记的参数解出来。
   ///
-  /// ⚠️ 头部是**不可信输入**，所有校验必须在进 Argon2id **之前**做完：
-  /// 一个内存参数被写成 4 GiB 的畸形文件足以把设备拖死。校验不过就抛
-  /// [BackupFormatException]，**不进入计算**。
+  /// ⚠️ 头部是**不可信输入**，进 Argon2id **之前**必须先过 [validateBackupKdf]。
+  ///
+  /// 真正的把关在 [parseBackup]（= `readHeader` / `inspect` 阶段）——
+  /// 也就是说走到这里时参数早就合法了。这里再调一次是**纵深防御**：
+  /// 万一以后有人绕开 [parseBackup] 直接调这个函数，参数校验仍然在。
   Future<Uint8List> _deriveFromPassphrase({
     required String passphrase,
     required List<int> salt,
     required BackupHeader header,
   }) async {
-    if (header.kdfAlgorithm != kBackupKdfArgon2id) {
-      throw BackupFormatException(
-        '这份备份的密钥派生算法不支持：${header.kdfAlgorithm}（当前支持 $kBackupKdfArgon2id = Argon2id）',
-      );
-    }
-    if (salt.length != kBackupSaltLength) {
-      throw BackupFormatException(
-        '备份的 salt 长度不受支持：${salt.length}（应为 $kBackupSaltLength）',
-      );
-    }
-    if (header.kdfMemoryKib < kBackupArgon2MemoryMinKib ||
-        header.kdfMemoryKib > kBackupArgon2MemoryMaxKib) {
-      throw BackupFormatException(
-        '备份的内存参数不受支持：${header.kdfMemoryKib} KiB'
-        '（允许 $kBackupArgon2MemoryMinKib~$kBackupArgon2MemoryMaxKib）',
-      );
-    }
-    if (header.kdfIterations < kBackupArgon2IterationsMin ||
-        header.kdfIterations > kBackupArgon2IterationsMax) {
-      throw BackupFormatException(
-        '备份的迭代次数不受支持：${header.kdfIterations}'
-        '（允许 $kBackupArgon2IterationsMin~$kBackupArgon2IterationsMax）',
-      );
-    }
-    if (header.kdfParallelism < kBackupArgon2ParallelismMin ||
-        header.kdfParallelism > kBackupArgon2ParallelismMax) {
-      throw BackupFormatException(
-        '备份的并行度不受支持：${header.kdfParallelism}'
-        '（允许 $kBackupArgon2ParallelismMin~$kBackupArgon2ParallelismMax）',
-      );
-    }
+    validateBackupKdf(header);
     final kdf = Argon2id(
       parallelism: header.kdfParallelism,
       memory: header.kdfMemoryKib,

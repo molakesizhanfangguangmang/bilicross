@@ -460,6 +460,43 @@ void main() {
         expect('$error'.contains('test-sess'), isFalse);
       }
     });
+
+    test('未知 KDF + **不传口令** → 仍然先抛 BackupFormatException', () async {
+      // ⚠️ 这条盯的是**顺序**：KDF 校验必须在「有没有口令」之前。
+      // 如果校验还留在派生密钥那一步，不给口令时就会先抛
+      // BackupPassphraseException（「需要输入口令」），用户输完口令才被告知
+      // 「你的备份格式不认识」—— 白输一次。
+      final bytes = await validV2();
+      bytes[_v2Offsets(bytes).kdfAlgorithm] = 0x7f;
+      await expectLater(
+        () => codec.decode(bytes),
+        throwsA(isA<BackupFormatException>()),
+      );
+    });
+
+    test('readHeader 就拒绝未知 KDF 的文件（界面读头部即拦下）', () async {
+      // 界面是**先读头部、再决定要不要弹口令框**的。
+      // 头部阶段不拦，就会先弹框、输完才失败。
+      final bytes = await validV2();
+      bytes[_v2Offsets(bytes).kdfAlgorithm] = 0x7f;
+      expect(
+        () => codec.readHeader(bytes),
+        throwsA(isA<BackupFormatException>()),
+      );
+    });
+
+    test('readHeader 也拒绝越界的 KDF 参数，不必等到解密', () async {
+      final bytes = await validV2();
+      _putUint32(
+        bytes,
+        _v2Offsets(bytes).kdfMemory,
+        kBackupArgon2MemoryMaxKib + 1,
+      );
+      expect(
+        () => codec.readHeader(bytes),
+        throwsA(isA<BackupFormatException>()),
+      );
+    });
   });
 
   group('v2 跨实现固定测试向量', () {

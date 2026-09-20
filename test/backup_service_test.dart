@@ -36,6 +36,20 @@ List<dynamic> _tasks() => <dynamic>[
   <String, dynamic>{'id': 't1', 'title': 'test', 'dir': '/tmp/downloads'},
 ];
 
+/// v2 头部里 `kdf_algorithm` 的偏移。
+///
+/// ⚠️ 必须按布局算，不能用 `indexOf` 猜 —— 值等于 1 的字节到处都是
+/// （salt、时间戳里都有）。
+int _kdfAlgorithmOffset(Uint8List b) {
+  var o = kBackupMagic.length + 2 + 1; // magic + format_version + algorithm
+  o += 1 + b[o]; // key_id（uint8 长度 + 内容）
+  o += 8; // created_at_ms
+  o += 2 + ((b[o] << 8) | b[o + 1]); // app_version（uint16 大端）
+  o += 1 + b[o]; // platform
+  o += 1 + b[o]; // payload_type
+  return o;
+}
+
 void _writeJson(Directory root, String name, Object? value) {
   File('${root.path}${Platform.pathSeparator}$name')
       .writeAsStringSync(jsonEncode(value));
@@ -301,6 +315,25 @@ void main() {
       await expectLater(
         () =>
             service.plan(Uint8List.fromList(<int>[1, 2, 3, 4, 5, 6, 7, 8, 9])),
+        throwsA(isA<BackupFormatException>()),
+      );
+    });
+  });
+
+  group('inspect：界面读头部阶段就要拒掉坏文件', () {
+    test('未知 KDF → inspect 直接抛 BackupFormatException，不用等口令', () async {
+      final service = _service(root);
+      final bytes = await service.exportBytes(passphrase: _kPass);
+      bytes[_kdfAlgorithmOffset(bytes)] = 0x7f;
+
+      // 界面流程是 inspect → 判断要不要问口令 → plan。能在 inspect 就失败，
+      // 用户就不会白输一遍口令。
+      expect(
+        () => service.inspect(bytes),
+        throwsA(isA<BackupFormatException>()),
+      );
+      await expectLater(
+        () => service.plan(bytes),
         throwsA(isA<BackupFormatException>()),
       );
     });
