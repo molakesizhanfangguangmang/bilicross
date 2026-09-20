@@ -135,7 +135,13 @@ class _TasksPageState extends State<TasksPage> {
         final runningCount = all.where(_isRunning).length;
         final doneCount = all.where((t) => t.stage == TaskStage.done).length;
 
-        final buttons = _actionsFor(context, state, visible);
+        // 手机端：标题与状态并成一行，省下一整行的高度。
+        final compact = isCompactLayout(context);
+        final buttons = _actionsFor(context, state, visible, compact);
+        final statusLine =
+            '${l10n.tr('tasks.parallel', {'count': '${state.settings.maxParallelTasks}'})}'
+            ' · ${state.queueRunning ? l10n.tr('tasks.queueRunning') : l10n.tr('tasks.queueIdle')}'
+            ' · ${l10n.tr('tasks.pending', {'count': '${state.pendingCount}'})}';
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -150,47 +156,91 @@ class _TasksPageState extends State<TasksPage> {
                   // ⚠️ 之前把它当成 CustomScrollView 里的 SliverToBoxAdapter，
                   // 那是跟着内容一起滚的 —— 注释写着「滚动不动」，实际会滚走。
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      compact ? 8 : 12,
+                      20,
+                      compact ? 6 : 10,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        Text(
-                          l10n.tr('tasks.title'),
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${l10n.tr('tasks.parallel', {'count': '${state.settings.maxParallelTasks}'})}'
-                          ' · ${state.queueRunning ? l10n.tr('tasks.queueRunning') : l10n.tr('tasks.queueIdle')}'
-                          ' · ${l10n.tr('tasks.pending', {'count': '${state.pendingCount}'})}',
-                          style: const TextStyle(
-                            color: Color(0xff6d716f),
-                            fontSize: 12,
+                        // 手机端把标题与状态并成一行：原来两行占掉太多高度。
+                        if (compact)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: <Widget>[
+                              Text(
+                                l10n.tr('tasks.title'),
+                                style: pageTitleStyle(context),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  statusLine,
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xff6d716f),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else ...<Widget>[
+                          Text(
+                            l10n.tr('tasks.title'),
+                            style: pageTitleStyle(context),
                           ),
-                        ),
-                        const SizedBox(height: 10),
+                          const SizedBox(height: 8),
+                          Text(
+                            statusLine,
+                            style: const TextStyle(
+                              color: Color(0xff6d716f),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        SizedBox(height: compact ? 8 : 10),
                         SegmentedButton<TaskTab>(
+                          style: compact
+                              ? const ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                )
+                              : null,
                           segments: <ButtonSegment<TaskTab>>[
                             ButtonSegment(
                               value: TaskTab.waiting,
                               label: Text(l10n.tr('tasks.tabWaiting', {
                                 'count': '$waitingCount',
                               })),
-                              icon: const Icon(Icons.schedule, size: 16),
+                              // 手机端去掉图标：三个图标加文字会把分段控件撑得很宽。
+                              icon: compact
+                                  ? null
+                                  : const Icon(Icons.schedule, size: 16),
                             ),
                             ButtonSegment(
                               value: TaskTab.running,
                               label: Text(l10n.tr('tasks.tabRunning', {
                                 'count': '$runningCount',
                               })),
-                              icon: const Icon(Icons.download, size: 16),
+                              icon: compact
+                                  ? null
+                                  : const Icon(Icons.download, size: 16),
                             ),
                             ButtonSegment(
                               value: TaskTab.done,
                               label: Text(l10n.tr('tasks.tabDone', {
                                 'count': '$doneCount',
                               })),
-                              icon: const Icon(Icons.done_all, size: 16),
+                              icon: compact
+                                  ? null
+                                  : const Icon(Icons.done_all, size: 16),
                             ),
                           ],
                           selected: {_tab},
@@ -198,12 +248,27 @@ class _TasksPageState extends State<TasksPage> {
                               setState(() => _tab = selection.first),
                         ),
                         if (buttons.isNotEmpty) ...<Widget>[
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: buttons,
-                          ),
+                          SizedBox(height: compact ? 8 : 10),
+                          if (compact)
+                            // 手机端：按钮排成一行横向滚动，别折成两行占高度。
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: <Widget>[
+                                  for (final button in buttons)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: button,
+                                    ),
+                                ],
+                              ),
+                            )
+                          else
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: buttons,
+                            ),
                         ],
                       ],
                     ),
@@ -282,8 +347,11 @@ class _TasksPageState extends State<TasksPage> {
     BuildContext context,
     AppState state,
     List<DownloadTask> visible,
+    bool compact,
   ) {
     final l10n = AppLocalizations.of(context);
+    // 手机端按钮矮一点、字小一点，一行能多放几个。
+    final style = compact ? compactActionStyle() : null;
     final actions = <Widget>[];
     switch (_tab) {
       case TaskTab.waiting:
@@ -293,6 +361,7 @@ class _TasksPageState extends State<TasksPage> {
         );
         actions.add(
           FilledButton.icon(
+            style: style,
             onPressed:
                 state.queueRunning || !canStart ? null : () => state.pumpQueue(),
             icon: const Icon(Icons.play_arrow),
@@ -302,6 +371,7 @@ class _TasksPageState extends State<TasksPage> {
         if (canStop) {
           actions.add(
             OutlinedButton.icon(
+              style: style,
               onPressed: () => _confirm(
                 context,
                 title: l10n.tr('tasks.stopAll'),
@@ -319,6 +389,7 @@ class _TasksPageState extends State<TasksPage> {
         final anyRunning = visible.any((t) => t.stage == TaskStage.downloading);
         actions.add(
           OutlinedButton.icon(
+            style: style,
             onPressed: anyRunning ? () => state.pauseAllTasks() : null,
             icon: const Icon(Icons.pause, size: 18),
             label: Text(l10n.tr('tasks.pauseAll')),
@@ -326,6 +397,7 @@ class _TasksPageState extends State<TasksPage> {
         );
         actions.add(
           OutlinedButton.icon(
+            style: style,
             onPressed: visible.isEmpty
                 ? null
                 : () => _confirm(
@@ -341,6 +413,7 @@ class _TasksPageState extends State<TasksPage> {
       case TaskTab.done:
         actions.add(
           OutlinedButton.icon(
+            style: style,
             onPressed: visible.isEmpty
                 ? null
                 : () => _confirm(
@@ -360,6 +433,7 @@ class _TasksPageState extends State<TasksPage> {
     // 下面两个与当前栏无关，三栏都放一份 —— 否则为了清东西还得先切栏。
     actions.add(
       OutlinedButton.icon(
+        style: style,
         onPressed: state.tasks.isEmpty
             ? null
             : () => _cleanupResidue(context, state),
@@ -369,6 +443,7 @@ class _TasksPageState extends State<TasksPage> {
     );
     actions.add(
       OutlinedButton.icon(
+        style: style,
         // 有任务在跑就先别清：文件还在写，删了也是白删。
         onPressed: state.tasks.isEmpty || state.activeTaskCount > 0
             ? null

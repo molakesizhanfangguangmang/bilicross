@@ -4,6 +4,31 @@ import '../core/downloader.dart';
 import '../core/models.dart';
 import '../app_state.dart';
 
+/// 手机端的宽度断点：窄于这个宽度按手机布局处理。
+///
+/// ⚠️ 有些改动**只在手机端生效**（用户 2026-09-20 明确要求）—— 桌面窗口宽，
+/// 标题大一号、按钮铺开都不占地方，没必要跟着一起缩。
+const double kCompactWidth = 600;
+
+bool isCompactLayout(BuildContext context) =>
+    MediaQuery.sizeOf(context).width < kCompactWidth;
+
+/// 页面标题样式。手机端降一号：默认的 24px 在手机上太占地方。
+TextStyle pageTitleStyle(BuildContext context) {
+  final base =
+      Theme.of(context).textTheme.headlineSmall ?? const TextStyle(fontSize: 24);
+  if (!isCompactLayout(context)) return base;
+  return base.copyWith(fontSize: 20);
+}
+
+/// 手机端的紧凑按钮样式：矮一点、字小一点，一行能多放几个。
+ButtonStyle compactActionStyle() => OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: const TextStyle(fontSize: 12),
+    );
+
 class PageFrame extends StatelessWidget {
   const PageFrame({required this.title, required this.child, super.key});
 
@@ -21,7 +46,7 @@ class PageFrame extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              Text(title, style: pageTitleStyle(context)),
               const SizedBox(height: 16),
               child,
             ],

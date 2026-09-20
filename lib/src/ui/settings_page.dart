@@ -46,23 +46,11 @@ class _SettingsPageState extends State<SettingsPage> {
       TextEditingController(text: widget.state.settings.downloadDir);
   late final TextEditingController _ffmpeg =
       TextEditingController(text: widget.state.settings.ffmpegPath);
-  late final TextEditingController _proxy =
-      TextEditingController(text: widget.state.settings.proxy);
-  late final TextEditingController _userAgent =
-      TextEditingController(text: widget.state.settings.userAgent);
-  late final TextEditingController _appKey =
-      TextEditingController(text: widget.state.settings.appKey);
-  late final TextEditingController _appSec =
-      TextEditingController(text: widget.state.settings.appSec);
 
   @override
   void dispose() {
     _dir.dispose();
     _ffmpeg.dispose();
-    _proxy.dispose();
-    _userAgent.dispose();
-    _appKey.dispose();
-    _appSec.dispose();
     super.dispose();
   }
 
@@ -271,48 +259,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               SectionCard(
-                title: l10n.tr('settings.network'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: _proxy,
-                      decoration: InputDecoration(
-                        labelText: l10n.tr('settings.proxy'),
-                        hintText: 'http://host:port',
-                        prefixIcon: const Icon(Icons.lan_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _userAgent,
-                      maxLines: 2,
-                      decoration: InputDecoration(
-                        labelText: 'User-Agent',
-                        hintText: l10n.tr('settings.uaHint'),
-                        helperText: l10n.tr('settings.uaHelper'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _appKey,
-                      decoration: const InputDecoration(labelText: 'AppKey'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _appSec,
-                      decoration: const InputDecoration(labelText: 'AppSec'),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      l10n.tr('settings.appKeyHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              SectionCard(
                 title: l10n.tr('settings.engine'),
                 trailing: StateChip(text: l10n.tr('settings.engineDart')),
                 child: Column(
@@ -511,10 +457,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final settings = widget.state.settings;
     settings.downloadDir = _dir.text.trim();
     settings.ffmpegPath = _ffmpeg.text.trim();
-    settings.proxy = _proxy.text.trim();
-    settings.userAgent = _userAgent.text.trim();
-    settings.appKey = _appKey.text.trim();
-    settings.appSec = _appSec.text.trim();
     await widget.state.saveSettings();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

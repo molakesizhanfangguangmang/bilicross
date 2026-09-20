@@ -45,6 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 版本号只有一个来源：packaging/version.json（说明见 packaging/version.js）。
+      # 四段 versionName（1.1.0.1）不能写进 pubspec —— pub 只认三段 semver，
+      # 所以在这里读出来，构建时用 --build-name / --build-number 注入。
+      - name: Read version
+        shell: bash
+        run: |
+          echo "APP_VERSION_NAME=$(node packaging/version.js)" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$(node packaging/version.js --code)" >> "$GITHUB_ENV"
+          echo "版本：$(node packaging/version.js)（versionCode $(node packaging/version.js --code)）"
+
       - name: Install Flutter stable
         shell: bash
         run: |
@@ -313,7 +323,7 @@ jobs:
         env:
           BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
           TEST_BUILD_DEFINE: --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
-        run: flutter build apk --release --target-platform android-arm64 $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE
+        run: flutter build apk --release --target-platform android-arm64 --build-name=$APP_VERSION_NAME --build-number=$APP_VERSION_CODE $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE
 
       - name: Verify APK architecture
         shell: bash
@@ -359,8 +369,8 @@ jobs:
           fi
           badging=$("$tools/aapt" dump badging "$apk")
           echo "$badging" | grep -E "^package:" | sed -n '1p'
-          echo "$badging" | grep -F "versionCode='18'"
-          echo "$badging" | grep -F "versionName='1.1.0'"
+          echo "$badging" | grep -F "versionCode='$APP_VERSION_CODE'"
+          echo "$badging" | grep -F "versionName='$APP_VERSION_NAME'"
 
       - name: Verify APK signing
         shell: bash
@@ -416,6 +426,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # 与安卓 job 同一个来源：packaging/version.json。
+      - name: Read version
+        shell: pwsh
+        run: |
+          $name = node packaging/version.js
+          $code = node packaging/version.js --code
+          "APP_VERSION_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION_CODE=$code" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "版本：$name（versionCode $code）"
 
       - name: Install Flutter stable
         shell: pwsh
@@ -504,7 +524,7 @@ jobs:
         env:
           BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
         run: |
-          flutter build windows --release --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
+          flutter build windows --release --build-name=$env:APP_VERSION_NAME --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
 
       # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
       # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，
