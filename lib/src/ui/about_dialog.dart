@@ -118,6 +118,27 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
 
   Future<void> _check() async {
     if (_checking) return;
+
+    // ⚠️ 内部测试版**不做更新检查**：它的版本号比正式版还新
+    // （2.0.1.2 这种四段号 > 2.0.1），查了要么提示「已是最新」、
+    // 要么给出一个不该装的正式版，两种都是误导。直接说明情况。
+    if (kTestBuild) {
+      final l10n = AppLocalizations.of(context);
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          content: Text(l10n.tr('about.testBuildNoUpdate')),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l10n.tr('common.close')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     setState(() => _checking = true);
     final result = await checkForUpdate(currentVersion: _version);
     if (!mounted) return;

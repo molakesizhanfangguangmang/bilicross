@@ -98,6 +98,7 @@ class AppLocalizationsEn extends AppLocalizations {
     // About and updates
     'about.projectUrl': 'Project',
     'about.checkUpdate': 'Check for updates',
+    'about.testBuildNoUpdate': 'This is an internal test build; update checking is unavailable.',
     'about.versionUnknown': 'Current version unknown',
     'about.version': 'Current version {version}',
     'about.upToDate': 'Already up to date',

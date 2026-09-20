@@ -97,6 +97,7 @@ class AppLocalizationsZh extends AppLocalizations {
     // 关于与更新
     'about.projectUrl': '项目地址',
     'about.checkUpdate': '检测更新',
+    'about.testBuildNoUpdate': '该版本为内部测试版，更新暂不可用。',
     'about.versionUnknown': '当前版本 未知',
     'about.version': '当前版本 {version}',
     'about.upToDate': '已是最新',
