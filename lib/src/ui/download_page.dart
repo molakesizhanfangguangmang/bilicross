@@ -108,66 +108,39 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 选分 P：列全部 P，选中后**重新解析那一 P**。
+  /// 选分 P：**多选**，跟合集那套一致。
   ///
-  /// 解析一次只处理一个 cid，所以换 P 必须重跑解析，不能本地切换 ——
-  /// 流地址是按 cid 取的。
+  /// 200 P 的视频一个个点会累死，所以给全选 / 清空，选完直接批量加入任务
+  /// （只登记，开跑时逐 P 解析）。只勾一个时另给「只看这一 P」，
+  /// 切过去重新解析 —— 解析一次只处理一个 cid，流地址按 cid 取，没法本地换。
   Future<void> _pickPage(AppState state, ParsedMedia media) async {
     final l10n = AppLocalizations.of(context);
-    final picked = await showDialog<int>(
+    final picked = await showDialog<_PagePick>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.tr('download.pickPageTitle')),
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        // ⚠️ 用 ListView.builder 逐行建：几百 P 的视频若一次全建，
-        // 手机上开这个弹窗会明显卡。
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 360,
-          child: ListView.builder(
-            itemCount: media.info.pages.length,
-            itemBuilder: (context, index) {
-              final page = media.info.pages[index];
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                leading: SizedBox(
-                  width: 34,
-                  child: Text(
-                    'P${page.page}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xff9aa3a0),
-                    ),
-                  ),
-                ),
-                title: Text(
-                  page.part.isEmpty ? '—' : page.part,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                trailing: page.durationSec > 0
-                    ? Text(
-                        formatDuration(page.durationSec),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xff9aa3a0),
-                        ),
-                      )
-                    : null,
-                selected: page.page == media.page.page,
-                selectedTileColor: const Color(0x14b06a3b),
-                onTap: () => Navigator.of(dialogContext).pop(page.page),
-              );
-            },
-          ),
-        ),
-      ),
+      builder: (dialogContext) => _PagePickerDialog(media: media),
     );
     if (picked == null || !mounted) return;
-    if (picked == media.page.page) return;
+
+    if (picked.pages.isNotEmpty) {
+      final outcome = state.enqueuePages(
+        media: media,
+        pages: picked.pages,
+        engine: 'dart',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.tr('manifest.batchResult', {
+            'enqueued': '${outcome.enqueued}',
+            'skipped': '${outcome.skipped}',
+            'renamed': '${outcome.renamed}',
+          })),
+        ),
+      );
+      return;
+    }
     _videoIndex = null;
     _audioIndex = null;
-    await state.parseAddress(state.addressInput, pageOverride: picked);
+    await state.parseAddress(state.addressInput, pageOverride: picked.page);
   }
 
   Future<void> _parse(AppState state, String value) async {    _videoIndex = null;
@@ -478,6 +451,112 @@ class _SeasonEntryCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 选集弹窗的结果：要么批量加入，要么只看某一 P。
+class _PagePick {
+  const _PagePick.enqueue(this.pages) : page = 0;
+  const _PagePick.preview(this.page) : pages = const <int>{};
+
+  /// 批量加入的分 P 集合（空 = 走 preview）。
+  final Set<int> pages;
+
+  /// 只看这一 P。
+  final int page;
+}
+
+/// 多 P 视频的分 P 选择：多选 + 全选 / 清空，选完批量加入任务。
+class _PagePickerDialog extends StatefulWidget {
+  const _PagePickerDialog({required this.media});
+
+  final ParsedMedia media;
+
+  @override
+  State<_PagePickerDialog> createState() => _PagePickerDialogState();
+}
+
+class _PagePickerDialogState extends State<_PagePickerDialog> {
+  final Set<int> _picked = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final pages = widget.media.info.pages;
+    final all = _picked.length == pages.length;
+    return AlertDialog(
+      title: Row(
+        children: <Widget>[
+          Expanded(child: Text(l10n.tr('download.pickPageTitle'))),
+          TextButton(
+            onPressed: () => setState(() {
+              if (all) {
+                _picked.clear();
+              } else {
+                _picked
+                  ..clear()
+                  ..addAll(pages.map((page) => page.page));
+              }
+            }),
+            child: Text(
+              l10n.tr(all ? 'download.pageClear' : 'download.pageAll'),
+            ),
+          ),
+        ],
+      ),
+      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+      // ⚠️ 用 ListView.builder 逐行建：几百 P 的视频若一次全建，手机上会卡。
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 380,
+        child: ListView.builder(
+          itemCount: pages.length,
+          itemBuilder: (context, index) {
+            final page = pages[index];
+            return CheckboxListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _picked.contains(page.page),
+              onChanged: (_) => setState(() {
+                if (!_picked.remove(page.page)) _picked.add(page.page);
+              }),
+              title: Text(
+                page.part.isEmpty ? 'P${page.page}' : page.part,
+                style: const TextStyle(fontSize: 13),
+              ),
+              subtitle: Text(
+                page.durationSec > 0
+                    ? 'P${page.page} · ${formatDuration(page.durationSec)}'
+                    : 'P${page.page}',
+                style: const TextStyle(fontSize: 11, color: Color(0xff9aa3a0)),
+              ),
+            );
+          },
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.tr('common.cancel')),
+        ),
+        if (_picked.length == 1)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              _PagePick.preview(_picked.first),
+            ),
+            child: Text(l10n.tr('download.pagePreview')),
+          ),
+        FilledButton(
+          onPressed: _picked.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(_PagePick.enqueue(_picked)),
+          child: Text(
+            l10n.tr('download.pageEnqueue', {'count': '${_picked.length}'}),
+          ),
+        ),
+      ],
     );
   }
 }

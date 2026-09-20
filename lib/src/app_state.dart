@@ -821,6 +821,104 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// 批量把多 P 视频里选中的分 P 登记进队列。
+  ///
+  /// 与 [enqueueEpisodes] 走同一条路：**只登记、不解析** —— 档位写 `-1`
+  /// （要这条轨道、档位待定），开跑时由 `_runTask` 的 resolving 阶段按
+  /// `source` + `page` 逐 P 解析。cid 直接从 `view` 的 pages 里拿，不必再请求。
+  ///
+  /// 同名处理与查重规则跟 [enqueueEpisodes] 完全一致。
+  DuplicateBatchOutcome enqueuePages({
+    required ParsedMedia media,
+    required Set<int> pages,
+    required String engine,
+  }) {
+    if (pages.isEmpty) {
+      return DuplicateBatchOutcome(enqueued: 0, skipped: 0, renamed: 0);
+    }
+    final dir = settings.downloadDir;
+    final separator = Platform.pathSeparator;
+    final source = media.info.bvid.isEmpty
+        ? 'https://www.bilibili.com/video/av${media.info.aid}'
+        : 'https://www.bilibili.com/video/${media.info.bvid}';
+    final duplicateMode = settings.duplicateMode;
+    final taken = <String>{
+      for (final task in tasks) _pathKey(task.outputPath),
+    };
+
+    var enqueued = 0;
+    var skipped = 0;
+    var renamed = 0;
+    final now = DateTime.now();
+
+    for (final page in media.info.pages) {
+      if (!pages.contains(page.page)) continue;
+      // 文件名带上 P 序号：多 P 视频一集一个文件，重名会互相覆盖。
+      final suffix = page.page > 1 ? ' P${page.page} ${page.part}' : '';
+      final stem = sanitizeFileName('${media.info.title}$suffix');
+      var candidate = '$dir$separator$stem';
+      var finalPath = '$candidate.mp4';
+
+      if (taken.contains(_pathKey(finalPath))) {
+        switch (duplicateMode) {
+          case kDuplicateSkip:
+            skipped += 1;
+            continue;
+          case kDuplicateRename:
+            var attempt = 1;
+            var renamedStem = stem;
+            while (true) {
+              renamedStem = '$stem ($attempt)';
+              finalPath = '$dir$separator$renamedStem.mp4';
+              if (!taken.contains(_pathKey(finalPath))) break;
+              attempt += 1;
+            }
+            candidate = '$dir$separator$renamedStem';
+            renamed += 1;
+            break;
+          case kDuplicateOverwrite:
+          default:
+            break;
+        }
+      }
+
+      final task = DownloadTask(
+        id: '${now.microsecondsSinceEpoch}-${page.page}',
+        title: candidate.split(separator).last,
+        source: source,
+        infoId: media.info.bvid.isEmpty ? '${media.info.aid}' : media.info.bvid,
+        page: page.page,
+        cid: page.cid,
+        outputPath: finalPath,
+        engine: engine,
+        channel: media.channel,
+        // -1 = 「要这条轨道、档位待定」：开跑时按设置里的首选档位解析。
+        // 写 0 会被当成「不要这条轨道」，写死档位又会在缺档时报错。
+        videoQualityId: -1,
+        audioQualityId: -1,
+        createdAtMs: now.millisecondsSinceEpoch,
+      );
+      taken.add(_pathKey(finalPath));
+      tasks.insert(0, task);
+      enqueued += 1;
+    }
+
+    if (enqueued > 0) {
+      unawaited(store.saveTasks(tasks));
+      LogStore.instance.add(
+        '任务',
+        '批量入队（多 P）：${media.info.title} —— 加入 $enqueued，'
+        '跳过 $skipped，重命名 $renamed',
+      );
+      notifyListeners();
+    }
+    return DuplicateBatchOutcome(
+      enqueued: enqueued,
+      skipped: skipped,
+      renamed: renamed,
+    );
+  }
+
   // ---------- 预检 ----------
 
   /// 预检调度：批次号、并发策略、结果缓存都在里面（见 core/preflight.dart）。
