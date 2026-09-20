@@ -20,6 +20,37 @@ enum BackupRestoreStage {
   tasksWritten,
 }
 
+/// 跟**具体设备/系统绑定**的设置字段，跨平台恢复时会被清空重置。
+///
+/// - `download_dir`：盘符路径（`C:\…` 与 `/storage/…` 不通用）；
+/// - `ffmpeg_path`：外部可执行文件在某个系统上的位置；
+/// - `close_to_tray`：只有 Windows 才有的「关窗最小化到托盘」行为。
+///
+/// 清空而不是改写成某个猜出来的路径：空值会被应用按**当前平台**的默认规则
+/// 补回来（见 `AppState.reloadAfterRestore`），比我们在这里瞎猜一个路径安全。
+const List<String> kPlatformScopedSettingKeys = <String>[
+  'download_dir',
+  'ffmpeg_path',
+  'close_to_tray',
+];
+
+/// 按目标平台过滤设置：同平台**原样返回**，跨平台则删掉 [kPlatformScopedSettingKeys]。
+///
+/// 纯函数：不改动入参，跨平台时返回新 map。抽出来是为了能被单测直接覆盖，
+/// 也为了让「哪些字段是平台专属」只有这一处定义。
+Map<String, dynamic> filterSettingsForPlatform(
+  Map<String, dynamic> settings, {
+  required String sourcePlatform,
+  required String targetPlatform,
+}) {
+  if (sourcePlatform == targetPlatform) return settings;
+  final filtered = Map<String, dynamic>.from(settings);
+  for (final key in kPlatformScopedSettingKeys) {
+    filtered.remove(key);
+  }
+  return filtered;
+}
+
 /// 备份与恢复。
 ///
 /// 只做三件事：把数据目录里的既有 JSON 采集出来加密成 `.bcbak`；
@@ -166,10 +197,33 @@ class BackupService {
     }
     onStage?.call(BackupRestoreStage.rollbackSaved);
 
+    // 跨平台恢复：来源平台 ≠ 目标平台时，把跟设备绑定的设置项清掉。否则
+    // Windows 备份里的 `C:\…` 下载目录会被原样写到安卓上，恢复后下载目录
+    // 直接指向一个不存在的路径。同平台恢复一个字都不动。
+    final crossPlatform = plan.header.platform != platform;
+    final resetSettingKeys = <String>[];
+    final contents = <String, Map<String, dynamic>>{};
+    for (final name in payloadFiles) {
+      final data = plan.files[name];
+      if (data == null) continue;
+      if (name == settingsFileName && crossPlatform) {
+        resetSettingKeys.addAll(
+          kPlatformScopedSettingKeys.where(data.containsKey),
+        );
+        contents[name] = filterSettingsForPlatform(
+          data,
+          sourcePlatform: plan.header.platform,
+          targetPlatform: platform,
+        );
+      } else {
+        contents[name] = data;
+      }
+    }
+
     final written = <String>[];
     try {
       for (final name in payloadFiles) {
-        final data = plan.files[name];
+        final data = contents[name];
         if (data == null) continue;
         _writeAtomic(_file(name), JsonEncoder.withIndent('  ').convert(data));
         written.add(name);
@@ -193,6 +247,7 @@ class BackupService {
       restoredFiles: written,
       snapshotPath: snapshot.path,
       pendingTaskPaths: _missingTaskPaths(plan),
+      resetSettingKeys: resetSettingKeys,
     );
   }
 
@@ -275,6 +330,7 @@ class BackupRestoreOutcome {
     required this.restoredFiles,
     required this.snapshotPath,
     required this.pendingTaskPaths,
+    this.resetSettingKeys = const <String>[],
   });
 
   final BackupHeader header;
@@ -285,6 +341,10 @@ class BackupRestoreOutcome {
 
   /// 备份里指向已不存在路径的任务目录，交给界面标记。
   final List<String> pendingTaskPaths;
+
+  /// 因跨平台恢复而被清空重置的设置字段（见 [kPlatformScopedSettingKeys]）。
+  /// 同平台恢复时为空。界面用它提示用户「下载目录等已按本机默认值重置」。
+  final List<String> resetSettingKeys;
 }
 
 /// 恢复过程出错（已回滚）。

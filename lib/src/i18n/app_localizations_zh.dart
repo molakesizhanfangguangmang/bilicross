@@ -435,6 +435,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'backup.confirmOk': '覆盖并恢复',
     'backup.restored': '已恢复 {count} 项数据',
     'backup.pending': '有 {count} 个任务指向的目录不存在，需要手动处理',
+    'backup.platformReset': '这份备份来自其它平台，已按本机默认值重置 {count} 项平台相关设置',
     'backup.failed': '恢复失败：{error}',
 
     // 托盘与关闭行为（Windows）

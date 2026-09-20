@@ -338,4 +338,81 @@ void main() {
       );
     });
   });
+
+  group('跨平台恢复：平台专属设置按目标平台重置', () {
+    test('Windows 备份恢复到安卓：清掉平台专属字段，其余设置保留', () async {
+      final winRoot = Directory.systemTemp.createTempSync('bilicross_win_');
+      addTearDown(() {
+        if (winRoot.existsSync()) winRoot.deleteSync(recursive: true);
+      });
+      _writeJson(winRoot, BackupService.settingsFileName, <String, dynamic>{
+        'locale_code': 'zh-CN',
+        'download_dir': r'C:\Users\someone\Downloads',
+        'ffmpeg_path': r'C:\tools\ffmpeg.exe',
+        'close_to_tray': true,
+        'theme_id': 'ocean',
+      });
+      final bytes = await _service(
+        winRoot,
+        platform: 'windows',
+      ).exportBytes(passphrase: _kPass);
+
+      final android = _service(root, platform: 'android');
+      final outcome = await android.restore(
+        await android.plan(bytes, passphrase: _kPass),
+      );
+
+      final restored =
+          jsonDecode(_read(root, BackupService.settingsFileName))
+              as Map<String, dynamic>;
+      expect(restored.containsKey('download_dir'), isFalse);
+      expect(restored.containsKey('ffmpeg_path'), isFalse);
+      expect(restored.containsKey('close_to_tray'), isFalse);
+      expect(restored['locale_code'], 'zh-CN', reason: '非平台字段必须保留');
+      expect(restored['theme_id'], 'ocean');
+      expect(outcome.resetSettingKeys, <String>[
+        'download_dir',
+        'ffmpeg_path',
+        'close_to_tray',
+      ]);
+    });
+
+    test('同平台恢复不动平台专属字段', () async {
+      final service = _service(root); // windows → windows
+      final outcome = await service.restore(
+        await service.plan(
+          await service.exportBytes(passphrase: _kPass),
+          passphrase: _kPass,
+        ),
+      );
+      final restored =
+          jsonDecode(_read(root, BackupService.settingsFileName))
+              as Map<String, dynamic>;
+      expect(restored['download_dir'], '/tmp/downloads');
+      expect(outcome.resetSettingKeys, isEmpty);
+    });
+
+    test('filterSettingsForPlatform：同平台原样返回，跨平台删键且不动入参', () {
+      final src = <String, dynamic>{
+        'download_dir': r'C:\x',
+        'locale_code': 'zh-CN',
+      };
+      expect(
+        filterSettingsForPlatform(
+          src,
+          sourcePlatform: 'windows',
+          targetPlatform: 'windows',
+        ),
+        same(src),
+      );
+      final out = filterSettingsForPlatform(
+        src,
+        sourcePlatform: 'windows',
+        targetPlatform: 'android',
+      );
+      expect(out.containsKey('download_dir'), isFalse);
+      expect(out['locale_code'], 'zh-CN');
+      expect(src.containsKey('download_dir'), isTrue, reason: '不得改动入参');
+    });
+  });
 }

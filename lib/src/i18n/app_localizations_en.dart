@@ -460,6 +460,8 @@ class AppLocalizationsEn extends AppLocalizations {
     'backup.restored': 'Restored {count} items',
     'backup.pending': '{count} tasks point to a folder that no longer exists and '
         'need manual attention',
+    'backup.platformReset': 'This backup came from another platform: {count} '
+        'platform-specific settings were reset to this device',
     'backup.failed': 'Restore failed: {error}',
 
     // Tray and close behaviour (Windows)

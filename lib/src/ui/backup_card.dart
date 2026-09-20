@@ -202,6 +202,13 @@ class _BackupCardState extends State<BackupCard> {
           }),
         );
       }
+      if (outcome.resetSettingKeys.isNotEmpty) {
+        _toast(
+          l10n.tr('backup.platformReset', {
+            'count': '${outcome.resetSettingKeys.length}',
+          }),
+        );
+      }
     } on BackupKeyException catch (error) {
       await _showError(error.message);
     } on BackupPassphraseException catch (error) {
