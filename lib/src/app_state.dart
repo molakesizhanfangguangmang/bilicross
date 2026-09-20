@@ -222,20 +222,37 @@ class AppState extends ChangeNotifier {
   /// 已完成的与失败的不动 —— 前者没意义，后者留着重试。
   void stopTasks(Iterable<String> ids) {
     final wanted = ids.toSet();
-    var touchedPending = false;
+    var touchedIdle = false;
     for (final task in List<DownloadTask>.of(tasks)) {
       if (!wanted.contains(task.id)) continue;
       if (_isRunning(task.stage)) {
         stopTask(task.id);
       } else if (task.stage == TaskStage.pending) {
         task.stage = TaskStage.stopped;
-        touchedPending = true;
+        touchedIdle = true;
+      } else if (task.stage == TaskStage.paused) {
+        // 暂停的任务已经没有活着的取消句柄了（_runTask 的 finally 收走了），
+        // 分片得自己删，否则「终止」看着成功、文件却留在盘上。
+        unawaited(_stopPaused(task));
       }
     }
-    if (touchedPending) {
+    if (touchedIdle) {
       unawaited(store.saveTasks(tasks));
       notifyListeners();
     }
+  }
+
+  /// 终止一个已暂停的任务：删掉分片与半成品，与 [_finishAborted] 的强制结束一致。
+  Future<void> _stopPaused(DownloadTask task) async {
+    var removed = await removeArtifacts(task.videoPath);
+    removed += await removeArtifacts(task.audioPath);
+    removed += await removeArtifacts(task.outputPath);
+    task.stage = TaskStage.stopped;
+    task.message = l10n.tr('msg.stopped', {'count': '$removed'});
+    _riskPaused.remove(task.id);
+    await store.saveTasks(tasks);
+    LogStore.instance.add('任务', '${task.title}：强制结束，已删除 $removed 个残留文件');
+    notifyListeners();
   }
 
   /// 把一组任务放回队列并开跑（段行的「重试」）。
