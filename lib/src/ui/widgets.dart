@@ -3,6 +3,7 @@ import '../i18n/app_localizations.dart';
 import '../core/downloader.dart';
 import '../core/models.dart';
 import '../app_state.dart';
+import './palette.dart';
 
 /// 手机端的宽度断点：窄于这个宽度按手机布局处理。
 ///
@@ -29,71 +30,25 @@ ButtonStyle compactActionStyle() => OutlinedButton.styleFrom(
       textStyle: const TextStyle(fontSize: 12),
     );
 
+/// 页面外壳：内容居中、宽度封顶 980，自带滚动。
+///
+/// ⚠️ **不再渲染页面标题** —— 标题统一由顶部 AppBar 显示（见 main.dart）。
+/// 以前这里是「AppBar 显示应用名 + 内容区再显示一次页名」，手机上等于
+/// 两条标题栏叠着，白占一整行的高度。
 class PageFrame extends StatelessWidget {
-  const PageFrame({
-    required this.title,
-    required this.child,
-    this.trailing,
-    super.key,
-  });
+  const PageFrame({required this.child, super.key});
 
-  final String title;
   final Widget child;
-
-  /// 标题右侧的动作（例如设置页的「保存设置」）。
-  ///
-  /// ⚠️ 给了它就**把标题行固定在顶部**、只有内容滚 —— 动作按钮必须一直可点，
-  /// 跟着内容滚走就没意义了。不给就维持原样（标题随内容滚）。
-  /// 只有设置页传它，所以别的界面不会多出按钮。
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    final titleRow = Row(
-      children: <Widget>[
-        Expanded(child: Text(title, style: pageTitleStyle(context))),
-        ?trailing,
-      ],
-    );
-
-    if (trailing == null) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 980),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                titleRow,
-                const SizedBox(height: 16),
-                child,
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return Align(
       alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 980),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: titleRow,
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                child: child,
-              ),
-            ),
-          ],
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980),
+          child: child,
         ),
       ),
     );
@@ -152,7 +107,7 @@ class InfoLine extends StatelessWidget {
         children: [
           SizedBox(
             width: 96,
-            child: Text(label, style: const TextStyle(color: Color(0xff6d716f))),
+            child: Text(label, style: const TextStyle(color: kTextMuted)),
           ),
           Expanded(child: SelectableText(value)),
         ],
@@ -178,7 +133,7 @@ class EmptyState extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 240),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xffd9dedb)),
+        border: Border.all(color: kBorder),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
@@ -187,7 +142,7 @@ class EmptyState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 42, color: const Color(0xff65716c)),
+              Icon(icon, size: 42, color: kTextSubtle),
               const SizedBox(height: 12),
               Text(title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
@@ -227,7 +182,7 @@ class ChoiceTile extends StatelessWidget {
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
               size: 18,
-              color: selected ? Theme.of(context).colorScheme.primary : const Color(0xff9aa3a0),
+              color: selected ? Theme.of(context).colorScheme.primary : kTextFaint,
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(title, style: const TextStyle(fontSize: 13))),
@@ -248,10 +203,10 @@ class StateChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (background, border) = switch (tone) {
-      1 => (const Color(0xffe6eee9), const Color(0xff8fb3a4)),
-      2 => (const Color(0xfff4efe2), const Color(0xffcbb78a)),
-      3 => (const Color(0xfff3e6e4), const Color(0xffc9a19c)),
-      _ => (const Color(0xffeeefee), const Color(0xffc9cecc)),
+      1 => (kBrandTint, kBrandSoft),
+      2 => (kWarningSurface, kWarningBorder),
+      3 => (kDangerSurface, kDangerBorder),
+      _ => (kSurfaceNeutral, kBorderStrong),
     };
     return DecoratedBox(
       decoration: BoxDecoration(

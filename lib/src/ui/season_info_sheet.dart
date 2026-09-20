@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
+import './palette.dart';
 
 /// 空间链接弹窗：分「合集」「系列」两组列出该 UP 名下的条目。
 ///
@@ -40,7 +41,7 @@ class SeasonInfoSheet extends StatelessWidget {
             if (snapshot.hasError) {
               return Text(
                 '${snapshot.error}',
-                style: const TextStyle(color: Color(0xffb06a3b)),
+                style: const TextStyle(color: kWarning),
               );
             }
             final list = snapshot.data!;
@@ -101,7 +102,7 @@ class _GroupLabel extends StatelessWidget {
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Color(0xff6d716f),
+          color: kTextMuted,
         ),
       ),
     );
@@ -130,7 +131,7 @@ class _EntryTile extends StatelessWidget {
           style: const TextStyle(fontSize: 14)),
       trailing: Text(
         l10n.tr('manifest.sectionEpisodes', {'count': '${entry.total}'}),
-        style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+        style: const TextStyle(fontSize: 12, color: kTextMuted),
       ),
       onTap: onTap,
     );

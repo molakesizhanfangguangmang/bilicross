@@ -5,6 +5,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
+import './palette.dart';
 
 /// 内置网页登录：加载 B 站登录页，登录完把 WebView 里的 Cookie 交给调用方。
 ///
@@ -166,10 +167,10 @@ class _WebLoginPageState extends State<WebLoginPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            color: const Color(0xfff0f2f0),
+            color: kSurfaceCardAlt,
             child: Text(
               _status,
-              style: const TextStyle(fontSize: 12, color: Color(0xff4d5250)),
+              style: const TextStyle(fontSize: 12, color: kTextSecondary),
             ),
           ),
         ],

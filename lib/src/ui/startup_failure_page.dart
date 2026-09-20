@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/startup_check.dart';
 import '../i18n/app_localizations.dart';
+import './palette.dart';
 
 /// WebView2 运行时官方下载页（微软 Evergreen 引导安装包）。
 const String kWebView2DownloadUrl =
@@ -42,9 +43,9 @@ class StartupFailureApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
           brightness: Brightness.light,
-          surface: const Color(0xfff6f7f5),
+          surface: kSurfacePage,
         ),
-        scaffoldBackgroundColor: const Color(0xfff6f7f5),
+        scaffoldBackgroundColor: kSurfacePage,
         useMaterial3: true,
       ),
       home: StartupFailurePage(report: report),

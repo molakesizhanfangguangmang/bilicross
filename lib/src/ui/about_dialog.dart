@@ -9,6 +9,7 @@ import '../core/release_target.dart';
 import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
 import 'update_dialog.dart';
+import './palette.dart';
 
 /// 关于弹窗顶部的图：应用图标的原图（1440×2038，直接打进包里）。
 const String kAppIconAsset = 'assets/branding/app_icon.png';
@@ -144,7 +145,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
     final side = screenWidth * 0.9 < 320 ? screenWidth * 0.9 : 320.0;
     return Dialog(
       clipBehavior: Clip.antiAlias,
-      backgroundColor: const Color(0xff101212),
+      backgroundColor: kTextPrimary,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
@@ -222,7 +223,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                     _versionLine(l10n),
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Color(0xff9aa3a0),
+                      color: kTextFaint,
                     ),
                   ),
                   // 用途与传播限制只在测试构建里显示，正式版不出现。
@@ -232,7 +233,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                       l10n.tr('about.testBuildWarning'),
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xffb06a3b),
+                        color: kWarning,
                       ),
                     ),
                   ],

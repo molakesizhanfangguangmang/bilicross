@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/anim_config.dart';
 import '../i18n/app_localizations.dart';
+import './palette.dart';
 
 /// 展开动画的可调项。
 ///
@@ -50,7 +51,7 @@ class _AnimTuningCardState extends State<AnimTuningCard> {
                         l10n.tr('settings.animHint'),
                         style: const TextStyle(
                           fontSize: 12,
-                          color: Color(0xff6d716f),
+                          color: kTextMuted,
                         ),
                       ),
                     ],

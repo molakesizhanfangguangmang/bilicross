@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import '../core/season_selection.dart';
 import '../i18n/app_localizations.dart';
+import './palette.dart';
 
 /// 合集清单：合集 → 段 → 集 三级展示 + 勾选。
 ///
@@ -170,7 +171,7 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: Text(
               _countHint(context, manifest),
-              style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+              style: const TextStyle(fontSize: 12, color: kTextMuted),
             ),
           ),
         ),
@@ -313,7 +314,7 @@ class _Header extends StatelessWidget {
                   'episodes': '${manifest.totalEpisodes}',
                   'sections': '${manifest.sections.length}',
                 }),
-                style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                style: const TextStyle(fontSize: 12, color: kTextMuted),
               ),
             ],
           ),
@@ -352,7 +353,7 @@ class _SectionRow extends StatelessWidget {
               onChanged: (_) => onToggle(),
             ),
           ),
-          const Icon(Icons.folder_outlined, size: 15, color: Color(0xff6d716f)),
+          const Icon(Icons.folder_outlined, size: 15, color: kTextMuted),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -367,7 +368,7 @@ class _SectionRow extends StatelessWidget {
               'manifest.sectionEpisodes',
               {'count': '${section.episodes.length}'},
             ),
-            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
         ],
       ),
@@ -431,14 +432,14 @@ class _EpisodeRow extends StatelessWidget {
     final duration = episode.durationSec > 0
         ? Text(
             formatDuration(episode.durationSec),
-            style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+            style: const TextStyle(fontSize: 12, color: kTextFaint),
           )
         : null;
 
     return InkWell(
       onTap: onToggle,
       child: Container(
-        color: flagged ? const Color(0x14b06a3b) : null,
+        color: flagged ? kWarningRowTint : null,
         padding: EdgeInsets.fromLTRB(depth == 0 ? 26 : 48, 0, 0, 0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -452,7 +453,7 @@ class _EpisodeRow extends StatelessWidget {
               child: Text(
                 // 序号是合集内编号，补下别的段时不会重号，所以直接展示。
                 '${episode.page}',
-                style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+                style: const TextStyle(fontSize: 12, color: kTextFaint),
               ),
             ),
             Expanded(
@@ -546,13 +547,13 @@ class _StatusChip extends StatelessWidget {
     final (String key, Color color) = switch (result.status) {
       PreflightStatus.riskControl => (
           'manifest.preflight.riskControl',
-          const Color(0xffc0392b),
+          kDanger,
         ),
       PreflightStatus.unavailable => (
           'manifest.preflight.unavailable',
-          const Color(0xff6d716f),
+          kTextMuted,
         ),
-      _ => ('manifest.preflight.missingQuality', const Color(0xffb06a3b)),
+      _ => ('manifest.preflight.missingQuality', kWarning),
     };
     // 缺档时直接写「这集最高可用 X」—— 比一个笼统的「缺档」有用得多。
     // 其余状态仍是短标记，细节留在工具提示里。

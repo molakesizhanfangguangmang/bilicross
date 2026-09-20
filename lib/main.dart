@@ -24,6 +24,7 @@ import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
 import 'src/ui/watermark.dart';
 import 'src/ui/widgets.dart';
+import './src/ui/palette.dart';
 
 /// 全局导航键：托盘菜单与退出确认要在没有页面 context 的地方弹对话框。
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -222,12 +223,14 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
 
   Widget _buildApp(AppState state) {
     final l10n = AppLocalizations.fromCode(state.settings.localeCode);
-    const seed = Color(0xff2f6f65);
+    // 品牌色跟着设置走（预设五种，见 core/models.dart 的 kThemeSeeds）。
+    // ⚠️ 语义色（缺档的琥珀、风控的红）不在这里 —— 它们固定，见 ui/palette.dart。
+    final seed = themeSeedOf(state.settings.themeId);
     // 提前取出配色：导航栏的指示器色与选中态图标色都要引用它。
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,
-      surface: const Color(0xfff6f7f5),
+      surface: kSurfacePage,
     );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -258,7 +261,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       ),
       theme: ThemeData(
         colorScheme: scheme,
-        scaffoldBackgroundColor: const Color(0xfff6f7f5),
+        scaffoldBackgroundColor: kSurfacePage,
         useMaterial3: true,
         // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
         // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
@@ -299,7 +302,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
-            side: BorderSide(color: Color(0xffd9dedb)),
+            side: BorderSide(color: kBorder),
           ),
         ),
         inputDecorationTheme: const InputDecorationTheme(
@@ -324,6 +327,22 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
+
+  /// 设置页的 state，用来触发保存（顶部那个按钮在外壳里）。
+  final GlobalKey<SettingsPageState> _settingsKey =
+      GlobalKey<SettingsPageState>();
+
+  /// 设置页有没有未保存的改动 —— 顶部保存按钮据此置灰。
+  final ValueNotifier<bool> _settingsCanSave = ValueNotifier<bool>(false);
+
+  /// 设置页在导航里的序号（保存按钮只在这一页出现）。
+  static const int _settingsIndex = 3;
+
+  @override
+  void dispose() {
+    _settingsCanSave.dispose();
+    super.dispose();
+  }
 
   /// 风控提示是否已经弹出（避免每帧重复弹）。
   bool _riskDialogOpen = false;
@@ -425,7 +444,11 @@ class _AppShellState extends State<AppShell> {
       DownloadPage(state: state),
       TasksPage(state: state),
       AccountPage(state: state),
-      SettingsPage(state: state),
+      SettingsPage(
+        state: state,
+        canSave: _settingsCanSave,
+        key: _settingsKey,
+      ),
     ];
     return ListenableBuilder(
       listenable: state,
@@ -435,13 +458,27 @@ class _AppShellState extends State<AppShell> {
             final wide = constraints.maxWidth >= 760;
             return Scaffold(
               appBar: AppBar(
-                // 首页标题在测试构建里带标识，便于与正式包区分。
-                title: Text(
-                  kTestBuild
-                      ? '${l10n.tr('app.name')} · ${l10n.tr('app.internalBuild')}'
-                      : l10n.tr('app.name'),
-                ),
+                // ⚠️ 标题显示**当前页名**，不再是应用名 ——
+                // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
+                // 手机上两条标题栏叠着，白占一整行。测试版标识交给满屏水印，
+                // 不再挤在标题里。
+                title: Text(_destinations(l10n)[index].label),
                 actions: [
+                  // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。
+                  if (index == _settingsIndex)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _settingsCanSave,
+                      builder: (context, canSave, _) => Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: TextButton.icon(
+                          onPressed: canSave
+                              ? () => _settingsKey.currentState?.save()
+                              : null,
+                          icon: const Icon(Icons.save_outlined, size: 18),
+                          label: Text(l10n.tr('settings.save')),
+                        ),
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: Center(

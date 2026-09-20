@@ -10,6 +10,7 @@ import 'expand_page_route.dart';
 import 'season_info_sheet.dart';
 import 'season_select_page.dart';
 import 'widgets.dart';
+import './palette.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({required this.state, super.key});
@@ -59,7 +60,6 @@ class _DownloadPageState extends State<DownloadPage> {
           _rememberSelection(media);
         }
         return PageFrame(
-          title: l10n.tr('download.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -88,7 +88,7 @@ class _DownloadPageState extends State<DownloadPage> {
               ),
               if (state.notice.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text(state.notice, style: const TextStyle(color: Color(0xff8a5b4a))),
+                Text(state.notice, style: const TextStyle(color: kNoticeText)),
               ],
               const SizedBox(height: 16),
               if (state.busy || _seasonLoading)
@@ -466,7 +466,7 @@ class _SeasonEntryCard extends StatelessWidget {
         children: <Widget>[
           Text(
             hint ?? l10n.tr('manifest.entryHint'),
-            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
           const SizedBox(height: 6),
           Text(
@@ -474,7 +474,7 @@ class _SeasonEntryCard extends StatelessWidget {
               'episodes': '${manifest.totalEpisodes}',
               'sections': '${manifest.sections.length}',
             }),
-            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
           const SizedBox(height: 10),
           Align(
@@ -567,7 +567,7 @@ class _PagePickerDialogState extends State<_PagePickerDialog> {
                 page.durationSec > 0
                     ? 'P${page.page} · ${formatDuration(page.durationSec)}'
                     : 'P${page.page}',
-                style: const TextStyle(fontSize: 11, color: Color(0xff9aa3a0)),
+                style: const TextStyle(fontSize: 11, color: kTextFaint),
               ),
             );
           },

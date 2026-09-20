@@ -329,6 +329,15 @@ class AppLocalizationsEn extends AppLocalizations {
         'MP4 by moof/mdat, moving sample data as-is. Only when both paths fail '
         'are fragments kept and reported on the task, and you can retry muxing '
         'from the tasks page.',
+    'settings.appearance': 'Appearance',
+    'settings.themeColor': 'Theme color',
+    'settings.themeHint': 'Changes the brand color only; text and status markers keep their colors.',
+    'settings.advancedAutoSave': 'Changes on this page are saved when you leave it.',
+    'theme.teal': 'Teal',
+    'theme.indigo': 'Indigo',
+    'theme.ochre': 'Ochre',
+    'theme.violet': 'Violet',
+    'theme.graphite': 'Graphite',
     'settings.network': 'Network & advanced',
     'settings.proxy': 'Proxy',
     'settings.uaHint': 'Leave empty to use the built-in short string Mozilla/5.0',

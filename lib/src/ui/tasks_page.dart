@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'widgets.dart';
+import './palette.dart';
 
 /// 任务列表按状态分成的三栏。
 enum TaskTab { waiting, running, done }
@@ -165,45 +166,15 @@ class _TasksPageState extends State<TasksPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        // 手机端把标题与状态并成一行：原来两行占掉太多高度。
-                        if (compact)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: <Widget>[
-                              Text(
-                                l10n.tr('tasks.title'),
-                                style: pageTitleStyle(context),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  statusLine,
-                                  textAlign: TextAlign.right,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Color(0xff6d716f),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        else ...<Widget>[
-                          Text(
-                            l10n.tr('tasks.title'),
-                            style: pageTitleStyle(context),
+                        // 标题已并进顶部 AppBar，这里只留状态行 ——
+                        // 它是动态信息，塞进 AppBar 会挤，而且得一直可见。
+                        Text(
+                          statusLine,
+                          style: const TextStyle(
+                            color: kTextMuted,
+                            fontSize: 12,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            statusLine,
-                            style: const TextStyle(
-                              color: Color(0xff6d716f),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                        ),
                         SizedBox(height: compact ? 8 : 10),
                         SegmentedButton<TaskTab>(
                           style: compact
@@ -593,7 +564,7 @@ class _GroupHeader extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         decoration: BoxDecoration(
-          color: const Color(0xffeef2f0),
+          color: kSurfaceTint,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -601,7 +572,7 @@ class _GroupHeader extends StatelessWidget {
             const Icon(
               Icons.video_library_outlined,
               size: 16,
-              color: Color(0xff6d716f),
+              color: kTextMuted,
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -621,7 +592,7 @@ class _GroupHeader extends StatelessWidget {
                     '${tasks.where((t) => t.stage == TaskStage.done).length}',
                 'total': '${tasks.length}',
               }),
-              style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+              style: const TextStyle(fontSize: 12, color: kTextMuted),
             ),
           ],
         ),
@@ -666,7 +637,7 @@ class _SectionHeader extends StatelessWidget {
           const Icon(
             Icons.folder_outlined,
             size: 15,
-            color: Color(0xff6d716f),
+            color: kTextMuted,
           ),
           const SizedBox(width: 6),
           Expanded(
@@ -685,7 +656,7 @@ class _SectionHeader extends StatelessWidget {
               'done': '$done',
               'total': '${tasks.length}',
             }),
-            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
           _SectionAction(
             icon: Icons.pause,
@@ -734,7 +705,7 @@ class _SectionAction extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
       padding: EdgeInsets.zero,
       style: IconButton.styleFrom(
-        foregroundColor: const Color(0xff6d716f),
+        foregroundColor: kTextMuted,
       ),
     );
   }

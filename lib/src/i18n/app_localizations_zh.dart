@@ -318,6 +318,15 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.muxExplain': '合并只做流复制，不转码。没有 ffmpeg 时用内置合并：'
         '按 moof/mdat 把两条流交替写成 MP4，采样数据原样搬运。'
         '两条路都失败才会保留分片并写进任务消息，之后可以在任务页单独重试合并。',
+    'settings.appearance': '外观',
+    'settings.themeColor': '主题色',
+    'settings.themeHint': '只改变品牌色；文字与状态标记（缺档、风控）的颜色不变。',
+    'settings.advancedAutoSave': '本页改动在退出时自动保存。',
+    'theme.teal': '墨绿',
+    'theme.indigo': '靛蓝',
+    'theme.ochre': '赭石',
+    'theme.violet': '黛紫',
+    'theme.graphite': '石墨',
     'settings.network': '网络与高级',
     'settings.proxy': '代理',
     'settings.uaHint': '留空使用内置短串 Mozilla/5.0',

@@ -917,6 +917,28 @@ class DownloadTask {
       );
 }
 
+/// 预设主题色（品牌 seed）。id -> ARGB 色值。
+///
+/// ⚠️ 这里存的是**色值数字**而不是 `Color`，免得 core 依赖 Flutter 的界面层。
+/// 界面侧取值见 `ui/palette.dart` 的 `themeSeedOf`。
+///
+/// ⚠️ 只放**品牌色**。缺档的琥珀、风控的红那些是**语义色**，不跟着主题走 ——
+/// 用户要是选个红色主题，警告标记就跟主题撞色了，一眼分不清哪个是警告。
+const Map<String, int> kThemeSeeds = <String, int>{
+  'teal': 0xff2f6f65, // 墨绿（默认，原品牌色）
+  'indigo': 0xff3b5ba5, // 靛蓝
+  'ochre': 0xffb06a3b, // 赭石
+  'violet': 0xff6b4e8c, // 黛紫
+  'graphite': 0xff4a5560, // 石墨
+};
+
+/// 默认主题色 id。
+const String kThemeDefault = 'teal';
+
+/// 存盘里可能是旧值或手工改过的值，认不出来就回落到默认。
+String normalizeThemeId(String? raw) =>
+    raw != null && kThemeSeeds.containsKey(raw) ? raw : kThemeDefault;
+
 class AppSettings {
   AppSettings({
     this.downloadDir = '',
@@ -944,6 +966,7 @@ class AppSettings {
     this.animStyle = kAnimDefaultStyle,
     this.duplicateMode = kDuplicateDefault,
     this.parallelPreflight = false,
+    this.themeId = kThemeDefault,
   });
 
   String downloadDir;
@@ -1006,6 +1029,9 @@ class AppSettings {
   /// 预检是否允许 2 路并行。关 = 严格串行且每集之间留间隔（默认，稳）。
   bool parallelPreflight;
 
+  /// 主题色 id，取值见 [kThemeSeeds]。只影响品牌色，语义色不变。
+  String themeId;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -1032,6 +1058,7 @@ class AppSettings {
         'anim_style': animStyle,
         'duplicate_mode': duplicateMode,
         'parallel_preflight': parallelPreflight,
+        'theme_id': themeId,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -1064,6 +1091,7 @@ class AppSettings {
         animStyle: normalizeAnimStyle(json['anim_style'] as String?),
         duplicateMode: normalizeDuplicateMode(json['duplicate_mode'] as String?),
         parallelPreflight: json['parallel_preflight'] as bool? ?? false,
+        themeId: normalizeThemeId(json['theme_id'] as String?),
       );
 }
 

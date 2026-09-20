@@ -11,6 +11,7 @@ import '../core/backup/backup_key_ring.dart';
 import '../core/backup/backup_service.dart';
 import '../i18n/app_localizations.dart';
 import 'widgets.dart';
+import './palette.dart';
 
 /// 「备份与恢复」卡片，只在 Windows 显示（安装版与便携版互相恢复）。
 ///
@@ -168,7 +169,7 @@ class _BackupCardState extends State<BackupCard> {
         children: [
           Text(
             l10n.tr('backup.hint'),
-            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
           const SizedBox(height: 10),
           if (_busy)

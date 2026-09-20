@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/log_store.dart';
+import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
 import 'log_page.dart';
 import 'splash_card.dart';
 import 'widgets.dart';
+import 'palette.dart';
 
 /// 高级设置：低频、偏配置的项收在这里，设置主页只留常用项。
 ///
@@ -32,27 +36,31 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
   late final TextEditingController _appSec =
       TextEditingController(text: widget.state.settings.appSec);
 
-  @override
-  void dispose() {
-    _proxy.dispose();
-    _userAgent.dispose();
-    _appKey.dispose();
-    _appSec.dispose();
-    super.dispose();
-  }
-
-  /// 只保存这一页的字段，不动主页那些。
-  Future<void> _save() async {
+  /// 把这一页的字段写进设置对象。
+  void _writeFields() {
     final settings = widget.state.settings;
     settings.proxy = _proxy.text.trim();
     settings.userAgent = _userAgent.text.trim();
     settings.appKey = _appKey.text.trim();
     settings.appSec = _appSec.text.trim();
-    await widget.state.saveSettings();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context).tr('settings.saved'))),
-    );
+  }
+
+  /// 离开这一页时自动保存。
+  ///
+  /// ⚠️ 为什么不给保存按钮：这几个字段全是文本框，没有"临时改一下再撤销"的用法，
+  /// 改完就走是最自然的动作；多一个按钮反而多一步。主页那边保留按钮是因为
+  /// 它有下拉框、目录选择器这类"选择型"字段，显式保存更稳。
+  /// 代价是没有"取消"出口 —— 但改错了再进来改回来就行，不会造成不可恢复的后果。
+  @override
+  void dispose() {
+    _writeFields();
+    // 不 await：dispose 里没法等，落盘失败只写日志。
+    unawaited(widget.state.saveSettings());
+    _proxy.dispose();
+    _userAgent.dispose();
+    _appKey.dispose();
+    _appSec.dispose();
+    super.dispose();
   }
 
   @override
@@ -66,6 +74,46 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           // 配置项在前，排错用的日志在后。
+          SectionCard(
+            title: l10n.tr('settings.appearance'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  l10n.tr('settings.themeColor'),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: <Widget>[
+                    for (final entry in kThemeSeeds.entries)
+                      _ThemeSwatch(
+                        id: entry.key,
+                        color: Color(entry.value),
+                        selected: state.settings.themeId == entry.key,
+                        onTap: () {
+                          setState(() => state.settings.themeId = entry.key);
+                          // 主题是"点了就想看到"的东西，顺手落盘，
+                          // 不该等到退出页面才保存。
+                          unawaited(state.saveSettings());
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  l10n.tr('settings.themeHint'),
+                  style: const TextStyle(fontSize: 12, color: kTextMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           SectionCard(
             title: l10n.tr('settings.network'),
             child: Column(
@@ -102,19 +150,15 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                 const SizedBox(height: 8),
                 Text(
                   l10n.tr('settings.appKeyHint'),
-                  style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                  style: const TextStyle(fontSize: 12, color: kTextMuted),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.save_outlined, size: 18),
-              label: Text(l10n.tr('settings.save')),
-            ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.tr('settings.advancedAutoSave'),
+            style: const TextStyle(fontSize: 12, color: kTextMuted),
           ),
           const SizedBox(height: 16),
           SplashCard(state: state),
@@ -133,7 +177,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                 logPath == null
                     ? l10n.tr('settings.logsHint')
                     : l10n.tr('settings.logFile', {'path': logPath}),
-                style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                style: const TextStyle(fontSize: 12, color: kTextMuted),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
@@ -150,13 +194,54 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
               title: Text(l10n.tr('settings.about')),
               subtitle: Text(
                 l10n.tr('settings.aboutHint'),
-                style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                style: const TextStyle(fontSize: 12, color: kTextMuted),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => showAppAboutDialog(context),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 主题色小圆点：选中时加一圈描边并打勾。
+class _ThemeSwatch extends StatelessWidget {
+  const _ThemeSwatch({
+    required this.id,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String id;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: AppLocalizations.of(context).tr('theme.$id'),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? kTextPrimary : kBorder,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: selected
+              ? const Icon(Icons.check, size: 18, color: Colors.white)
+              : null,
+        ),
       ),
     );
   }

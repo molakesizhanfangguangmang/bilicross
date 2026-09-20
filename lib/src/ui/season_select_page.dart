@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'expand_page_route.dart';
 import 'season_manifest_view.dart';
+import './palette.dart';
 
 /// 合集选择页。
 ///
@@ -181,7 +182,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                           }),
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Color(0xff6d716f),
+                            color: kTextMuted,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -210,7 +211,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                                               ),
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xff6d716f),
+                                  color: kTextMuted,
                                 ),
                               ),
                             ),
@@ -233,7 +234,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                           Container(
                             padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
                             decoration: BoxDecoration(
-                              color: const Color(0x14b06a3b),
+                              color: kWarningRowTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
@@ -241,7 +242,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                                 const Icon(
                                   Icons.info_outline,
                                   size: 15,
-                                  color: Color(0xffb06a3b),
+                                  color: kWarning,
                                 ),
                                 const SizedBox(width: 6),
                                 Expanded(
@@ -251,7 +252,7 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                                     }),
                                     style: const TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xffb06a3b),
+                                      color: kWarning,
                                     ),
                                   ),
                                 ),

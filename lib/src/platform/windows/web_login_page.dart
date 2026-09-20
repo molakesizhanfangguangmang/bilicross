@@ -3,6 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/models.dart';
 import '../../i18n/app_localizations.dart';
+import '../../ui/palette.dart';
 
 /// Windows 专用网页登录：用 flutter_inappwebview（WebView2）加载 B 站登录页，
 /// 登录完成后把 Cookie 交回调用方。行为与 Android/iOS 的 [WebLoginPage] 对齐，
@@ -150,10 +151,10 @@ class _WindowsWebLoginPageState extends State<WindowsWebLoginPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            color: const Color(0xfff0f2f0),
+            color: kSurfaceCardAlt,
             child: Text(
               _status,
-              style: const TextStyle(fontSize: 12, color: Color(0xff4d5250)),
+              style: const TextStyle(fontSize: 12, color: kTextSecondary),
             ),
           ),
         ],

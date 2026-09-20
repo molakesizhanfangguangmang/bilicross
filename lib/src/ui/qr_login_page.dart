@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../core/qr_login.dart';
 import '../i18n/app_localizations.dart';
 import 'widgets.dart';
+import './palette.dart';
 
 /// 扫码登录页。
 ///
@@ -148,7 +149,7 @@ class _QrLoginPageState extends State<QrLoginPage> {
                   Text(
                     l10n.tr('qr.scanHint'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    style: const TextStyle(fontSize: 12, color: kTextMuted),
                   ),
                   const SizedBox(height: 16),
                   Wrap(
@@ -182,7 +183,7 @@ class _QrLoginPageState extends State<QrLoginPage> {
             const SizedBox(height: 12),
             Text(
               l10n.tr('qr.fallbackHint'),
-              style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+              style: const TextStyle(fontSize: 12, color: kTextMuted),
             ),
           ],
         ),
@@ -198,12 +199,12 @@ class _QrLoginPageState extends State<QrLoginPage> {
         height: 220,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xfff2f4f2),
+          color: kSurfaceSubtle,
           borderRadius: BorderRadius.circular(12),
         ),
         child: _update.stage == QrLoginStage.loading
             ? const CircularProgressIndicator()
-            : const Icon(Icons.qr_code_2, size: 64, color: Color(0xffc9cecc)),
+            : const Icon(Icons.qr_code_2, size: 64, color: kBorderStrong),
       );
     }
     return Container(
@@ -211,7 +212,7 @@ class _QrLoginPageState extends State<QrLoginPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xffd9dedb)),
+        border: Border.all(color: kBorder),
       ),
       child: QrImageView(
         data: content,

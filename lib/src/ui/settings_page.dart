@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -8,17 +10,52 @@ import 'advanced_page.dart';
 import 'backup_card.dart';
 import 'expand_page_route.dart';
 import 'widgets.dart';
+import 'palette.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({required this.state, super.key});
+  const SettingsPage({required this.state, required this.canSave, super.key});
 
   final AppState state;
 
+  /// 「有没有未保存的改动」。由外壳（main.dart）持有并渲染顶部那个保存按钮，
+  /// 所以通知器由外壳创建、这一页负责更新。
+  final ValueNotifier<bool> canSave;
+
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  State<SettingsPage> createState() => SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+/// 公开是为了让顶部 AppBar 的保存按钮够得着它（见 main.dart）。
+class SettingsPageState extends State<SettingsPage> {
+  /// 保存按钮的可用态（外壳持有，这一页更新）。
+  ///
+  /// ⚠️ 为什么不直接在 AppBar 里算：判定要读这一页的控制器，
+  /// 而控制器是这一页私有的。
+  ValueNotifier<bool> get canSave => widget.canSave;
+
+  /// 进页面时的一份快照。
+  ///
+  /// ⚠️ 为什么需要它：下拉框、开关这类字段是**改动即写进 settings 对象**的
+  /// （不像文本框要等保存），所以光比较「控制器 vs settings」抓不到它们，
+  /// 得跟这份基线比。
+  late String _baselineSnapshot = jsonEncode(widget.state.settings.toJson());
+
+  /// 有没有未保存的改动。
+  ///
+  /// ⚠️ 文本比较用的是 `trim()` 后的值 —— 必须跟 [_save] 写入时的规范化一致，
+  /// 否则会出现「敲个空格按钮亮起、点保存却什么都没变」这种怪状。
+  bool get _dirty {
+    final settings = widget.state.settings;
+    if (_dir.text.trim() != settings.downloadDir) return true;
+    if (_ffmpeg.text.trim() != settings.ffmpegPath) return true;
+    return jsonEncode(settings.toJson()) != _baselineSnapshot;
+  }
+
+  void _syncCanSave() {
+    final value = _dirty;
+    if (canSave.value != value) canSave.value = value;
+  }
+
   /// 高级设置入口卡片的 key：展开动画要以它的屏幕位置为起点。
   final GlobalKey _advancedKey = GlobalKey();
 
@@ -49,6 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    // canSave 由外壳持有，这里不释放。
     _dir.dispose();
     _ffmpeg.dispose();
     super.dispose();
@@ -69,20 +107,17 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final l10n = AppLocalizations.of(context);
+    // 每次重建后同步一次按钮态：下拉框、开关这些字段是改动即写 settings 的，
+    // 不走控制器，只能在这里兜住。post-frame 避免在 build 里改通知器。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncCanSave();
+    });
     final windows = Theme.of(context).platform == TargetPlatform.windows;
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
         final settings = state.settings;
         return PageFrame(
-          title: l10n.tr('settings.title'),
-          // 固定在右上角、不随内容滚动：设置项很长，滚到下面想保存时
-          // 不用再滚回底部找按钮。只有设置页传它，别的界面不会有这个按钮。
-          trailing: FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: Text(l10n.tr('settings.save')),
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -191,7 +226,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     Text(
                       l10n.tr('settings.partsHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -259,7 +294,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     Text(
                       l10n.tr('settings.muxExplain'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ],
                 ),
@@ -277,21 +312,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       windows
                           ? l10n.tr('settings.engineFuture')
                           : l10n.tr('settings.engineOnlyDart'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: Text(l10n.tr('settings.save')),
-                ),
-              ),
-              const SizedBox(height: 24),
               // 备份与恢复只给 Windows 的安装版与便携版用：两边数据目录不同，
               // 靠备份互相迁移；安卓侧不显示这个入口，界面保持原样。
               if (windows) ...[
@@ -334,7 +359,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: Text(l10n.tr('settings.advanced')),
                   subtitle: Text(
                     l10n.tr('settings.advancedHint'),
-                    style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                    style: const TextStyle(fontSize: 12, color: kTextMuted),
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   // 长按解锁动画调节。解锁后不再提供关回去的入口。
@@ -369,7 +394,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       l10n.tr('settings.parallelPreflightHint'),
                       style: const TextStyle(
-                          fontSize: 12, color: Color(0xff6d716f)),
+                          fontSize: 12, color: kTextMuted),
                     ),
                     const SizedBox(height: 4),
                     SwitchListTile(
@@ -393,7 +418,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: <Widget>[
                     Text(l10n.tr('settings.duplicateHint'),
                         style: const TextStyle(
-                            fontSize: 12, color: Color(0xff6d716f))),
+                            fontSize: 12, color: kTextMuted)),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -460,11 +485,14 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
   }
 
-  Future<void> _save() async {
+  /// 保存。由顶部 AppBar 的按钮调用（见 main.dart）。
+  Future<void> save() async {
     final settings = widget.state.settings;
     settings.downloadDir = _dir.text.trim();
     settings.ffmpegPath = _ffmpeg.text.trim();
     await widget.state.saveSettings();
+    _baselineSnapshot = jsonEncode(settings.toJson());
+    _syncCanSave();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppLocalizations.of(context).tr('settings.saved'))),

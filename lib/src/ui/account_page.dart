@@ -12,6 +12,7 @@ import 'qr_login_page.dart';
 import 'web_login.dart';
 import '../platform/windows/web_login_page.dart';
 import 'widgets.dart';
+import './palette.dart';
 
 class AccountPage extends StatelessWidget {
   const AccountPage({required this.state, super.key});
@@ -28,7 +29,6 @@ class AccountPage extends StatelessWidget {
         final webLoginSupported =
             Platform.isAndroid || Platform.isIOS || Platform.isWindows;
         return PageFrame(
-          title: l10n.tr('account.title'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -119,13 +119,13 @@ class AccountPage extends StatelessWidget {
                       webLoginSupported
                           ? l10n.tr('account.webLoginHint')
                           : l10n.tr('account.noBrowserHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                     const SizedBox(height: 6),
                     // 两个入口都摆在明面上：扫码为主，网页/粘贴/导入为兜底。
                     Text(
                       l10n.tr('qr.entriesHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ],
                 ),
@@ -162,7 +162,7 @@ class AccountPage extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       l10n.tr('account.webOnlyHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ],
                 ),
@@ -213,7 +213,7 @@ class AccountPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       l10n.tr('account.authHint'),
-                      style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ],
                 ),
