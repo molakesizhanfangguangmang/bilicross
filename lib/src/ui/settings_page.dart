@@ -33,12 +33,10 @@ class SettingsPageState extends State<SettingsPage> {
   /// 而控制器是这一页私有的。
   ValueNotifier<bool> get canSave => widget.canSave;
 
-  /// 进页面时的一份快照。
+  /// 基线 = 最近一次**落盘**的内容（由 AppState 维护）。
   ///
-  /// ⚠️ 为什么需要它：下拉框、开关这类字段是**改动即写进 settings 对象**的
-  /// （不像文本框要等保存），所以光比较「控制器 vs settings」抓不到它们，
-  /// 得跟这份基线比。
-  late String _baselineSnapshot = jsonEncode(widget.state.settings.toJson());
+  /// ⚠️ 不能自己「进页面时拍个快照」：设置页在 IndexedStack 里是常驻的，
+  /// 进页面触发不了初始化，快照会拍成 app 启动时的状态，判定就不准了。
 
   /// 有没有未保存的改动。
   ///
@@ -48,7 +46,7 @@ class SettingsPageState extends State<SettingsPage> {
     final settings = widget.state.settings;
     if (_dir.text.trim() != settings.downloadDir) return true;
     if (_ffmpeg.text.trim() != settings.ffmpegPath) return true;
-    return jsonEncode(settings.toJson()) != _baselineSnapshot;
+    return jsonEncode(settings.toJson()) != widget.state.persistedSettingsJson;
   }
 
   void _syncCanSave() {
@@ -62,11 +60,6 @@ class SettingsPageState extends State<SettingsPage> {
   /// 长按「高级设置」解锁动画调节。
   ///
   /// 解锁是**单向**的：这里只置位、不提供关回去的入口。
-  Future<void> _saveSettings(VoidCallback change) async {
-    change();
-    await widget.state.saveSettings();
-  }
-
   Future<void> _unlockAnimTuning(AppSettings settings) async {
     if (settings.animTuningUnlocked) return;
     settings.animTuningUnlocked = true;
@@ -121,6 +114,32 @@ class SettingsPageState extends State<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 有未保存改动时提示一行 —— 右上角按钮置灰/变亮是个信号，
+              // 但不告诉你是「哪一项」变了，补一句更清楚。
+              ValueListenableBuilder<bool>(
+                valueListenable: canSave,
+                builder: (context, dirty, _) => dirty
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(Icons.edit_note,
+                                size: 16, color: kWarning),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                l10n.tr('settings.unsavedHint'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: kWarning,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
               SectionCard(
                 title: l10n.tr('settings.download'),
                 child: Column(
@@ -401,8 +420,10 @@ class SettingsPageState extends State<SettingsPage> {
                       contentPadding: EdgeInsets.zero,
                       value: settings.parallelPreflight,
                       title: Text(l10n.tr('settings.parallelPreflight')),
-                      onChanged: (value) => _saveSettings(
-                        () => widget.state.settings.parallelPreflight = value,
+                      // ⚠️ 只写内存，落盘交给保存按钮 —— 全页统一一种语义，
+                      // 否则这两个字段改完就落盘、别的要按保存，按钮的含义就乱了。
+                      onChanged: (value) => setState(
+                        () => settings.parallelPreflight = value,
                       ),
                     ),
                   ],
@@ -430,8 +451,8 @@ class SettingsPageState extends State<SettingsPage> {
                               l10n.tr('settings.duplicate.$mode'),
                             ),
                             selected: settings.duplicateMode == mode,
-                            onSelected: (_) => _saveSettings(
-                              () => widget.state.settings.duplicateMode = mode,
+                            onSelected: (_) => setState(
+                              () => settings.duplicateMode = mode,
                             ),
                           ),
                       ],
@@ -491,7 +512,6 @@ class SettingsPageState extends State<SettingsPage> {
     settings.downloadDir = _dir.text.trim();
     settings.ffmpegPath = _ffmpeg.text.trim();
     await widget.state.saveSettings();
-    _baselineSnapshot = jsonEncode(settings.toJson());
     _syncCanSave();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

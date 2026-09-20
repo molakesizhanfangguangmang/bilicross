@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,7 @@ import 'i18n/app_localizations_zh.dart';
 
 class AppState extends ChangeNotifier {
   AppState._(this.store, this.settings, this.cookie, this.token, this.tasks) {
+    persistedSettingsJson = jsonEncode(settings.toJson());
     api = _buildApi();
     parseService = ParseService(api: api, settings: settings);
     downloader = StreamDownloader(
@@ -68,6 +70,13 @@ class AppState extends ChangeNotifier {
   }
   final Store store;
   AppSettings settings;
+
+  /// 最近一次**落盘**的设置内容（JSON）。
+  ///
+  /// ⚠️ 设置页的「有没有未保存的改动」拿它当基线，而不是「进页面时拍个快照」——
+  /// 设置页在 IndexedStack 里是常驻的，进页面根本触发不了初始化，
+  /// 快照会拍成 app 启动时的状态，判定就不准了。
+  String persistedSettingsJson = '';
   WebCookie cookie;
   AppToken? token;
   final List<DownloadTask> tasks;
@@ -118,6 +127,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> saveSettings() async {
     await store.saveSettings(settings);
+    persistedSettingsJson = jsonEncode(settings.toJson());
     await _rebuildApi();
     await refreshFfmpeg();
     notifyListeners();
@@ -135,6 +145,7 @@ class AppState extends ChangeNotifier {
           '${store.root.path}${Platform.pathSeparator}downloads';
     }
     settings = restored;
+    persistedSettingsJson = jsonEncode(settings.toJson());
     final credentials = await store.loadCredentials();
     cookie = credentials.cookie;
     token = credentials.token;

@@ -318,6 +318,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.muxExplain': '合并只做流复制，不转码。没有 ffmpeg 时用内置合并：'
         '按 moof/mdat 把两条流交替写成 MP4，采样数据原样搬运。'
         '两条路都失败才会保留分片并写进任务消息，之后可以在任务页单独重试合并。',
+    'settings.unsavedHint': '有未保存的改动，点右上角「保存设置」。',
     'settings.appearance': '外观',
     'settings.themeColor': '主题色',
     'settings.themeHint': '只改变品牌色；文字与状态标记（缺档、风控）的颜色不变。',

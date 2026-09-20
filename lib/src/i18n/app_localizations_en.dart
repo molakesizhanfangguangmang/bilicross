@@ -329,6 +329,7 @@ class AppLocalizationsEn extends AppLocalizations {
         'MP4 by moof/mdat, moving sample data as-is. Only when both paths fail '
         'are fragments kept and reported on the task, and you can retry muxing '
         'from the tasks page.',
+    'settings.unsavedHint': 'You have unsaved changes — use Save in the top bar.',
     'settings.appearance': 'Appearance',
     'settings.themeColor': 'Theme color',
     'settings.themeHint': 'Changes the brand color only; text and status markers keep their colors.',
