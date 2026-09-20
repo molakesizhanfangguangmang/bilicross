@@ -223,21 +223,24 @@ class _SeasonManifestViewState extends State<SeasonManifestView> {
 
   Widget _episodeRow(SeasonEpisode episode, {required int depth}) {
     final page = episode.page;
-    final options = widget.preflightOf?.call(page).videoOptions ?? const [];
+    final preflight = widget.preflightOf?.call(page);
+    final overrideQualityId = widget.qualityOverrideOf?.call(page);
+    // ⚠️ 「改档位」只在**缺档**行给（设计定案第 4 节）。以前写成「有可选档位就显示」，
+    // 于是预检跑完每一行都挂一个按钮 —— 既把标题挤成竖排，又让清单变一片按钮。
+    // 已经设过覆盖档位的行也留着入口，否则改完就没法改回来了。
+    final canOverride = widget.onOverrideQuality != null &&
+        (preflight?.qualityFellBack ?? false || overrideQualityId != null);
     return _EpisodeRow(
       key: _rowKey(page),
       episode: episode,
       depth: depth,
       checked: _selection.contains(page),
       onToggle: () => _toggleEpisode(page),
-      preflight: widget.preflightOf?.call(page),
+      preflight: preflight,
       preflighting: widget.isPreflighting?.call(page) ?? false,
       flagged: widget.flaggedPages.contains(page),
-      overrideQualityId: widget.qualityOverrideOf?.call(page),
-      // 没有可选项就不显示入口 —— 点了也只能看到一个空弹窗。
-      onOverride: widget.onOverrideQuality == null || options.isEmpty
-          ? null
-          : () => widget.onOverrideQuality!(page),
+      overrideQualityId: overrideQualityId,
+      onOverride: canOverride ? () => widget.onOverrideQuality!(page) : null,
     );
   }
 
@@ -406,6 +409,32 @@ class _EpisodeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final hasStatus = preflighting ||
+        (preflight != null && preflight!.status != PreflightStatus.ok);
+    // ⚠️ 「改档位」**只在缺档行**出现（设计定案第 4 节）。
+    // 之前是「只要这一集有可选档位就显示」，预检跑完每行都挂一个按钮 ——
+    // 既把标题挤爆，也让清单变成一片按钮。
+    // 要不要显示由上层决定（缺档行、或已经设过覆盖档位的行），这里照给就渲染。
+    final showOverride = onOverride != null;
+    // 有状态或操作的行才分两行；普通行保持一行，229 集的清单不会平白变高一倍。
+    final twoLine = hasStatus || showOverride;
+
+    // 标题：两行布局时独占整行宽度（最多 2 行）；一行布局时最多 1 行。
+    // 两种情况都带省略号 —— 以后再加什么东西都不会把它挤成竖排。
+    final title = Text(
+      episode.title.isEmpty ? '—' : episode.title,
+      style: const TextStyle(fontSize: 13),
+      maxLines: twoLine ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    final duration = episode.durationSec > 0
+        ? Text(
+            formatDuration(episode.durationSec),
+            style: const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
+          )
+        : null;
+
     return InkWell(
       onTap: onToggle,
       child: Container(
@@ -429,62 +458,75 @@ class _EpisodeRow extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: <Widget>[
-                    Flexible(
-                      child: Text(
-                        episode.title.isEmpty ? '—' : episode.title,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                    if (preflighting) ...<Widget>[
-                      const SizedBox(width: 6),
-                      const SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(strokeWidth: 1.5),
-                      ),
-                    ] else if (preflight != null &&
-                        preflight!.status != PreflightStatus.ok) ...<Widget>[
-                      const SizedBox(width: 6),
-                      _StatusChip(result: preflight!),
-                    ],
-                    if (onOverride != null) ...<Widget>[
-                      const SizedBox(width: 4),
-                      TextButton(
-                        onPressed: onOverride,
-                        style: TextButton.styleFrom(
-                          minimumSize: Size.zero,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
+                child: twoLine
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          title,
+                          const SizedBox(height: 4),
+                          Row(
+                            children: <Widget>[
+                              if (preflighting) ...<Widget>[
+                                const SizedBox(
+                                  width: 10,
+                                  height: 10,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ] else if (preflight != null &&
+                                  preflight!.status != PreflightStatus.ok)
+                                _StatusChip(result: preflight!),
+                              if (showOverride) ...<Widget>[
+                                const SizedBox(width: 4),
+                                TextButton(
+                                  onPressed: onOverride,
+                                  style: TextButton.styleFrom(
+                                    minimumSize: Size.zero,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    textStyle: const TextStyle(fontSize: 11),
+                                  ),
+                                  child: Text(
+                                    overrideQualityId == null
+                                        ? l10n.tr('manifest.overrideQuality')
+                                        : l10n.tr(
+                                            'manifest.overrideQualitySet',
+                                            {
+                                              'quality': qualityLabel(
+                                                overrideQualityId!,
+                                                l10n,
+                                              ),
+                                            },
+                                          ),
+                                  ),
+                                ),
+                              ],
+                              if (duration != null) ...<Widget>[
+                                const Spacer(),
+                                duration,
+                              ],
+                            ],
                           ),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          textStyle: const TextStyle(fontSize: 11),
-                        ),
-                        child: Text(
-                          overrideQualityId == null
-                              ? l10n.tr('manifest.overrideQuality')
-                              : l10n.tr('manifest.overrideQualitySet', {
-                                  'quality':
-                                      qualityLabel(overrideQualityId!, l10n),
-                                }),
-                        ),
+                        ],
+                      )
+                    : Row(
+                        children: <Widget>[
+                          Expanded(child: title),
+                          if (duration != null) ...<Widget>[
+                            const SizedBox(width: 8),
+                            duration,
+                          ],
+                        ],
                       ),
-                    ],
-                  ],
-                ),
               ),
             ),
-            if (episode.durationSec > 0)
-              Padding(
-                padding: const EdgeInsets.only(left: 8, right: 12),
-                child: Text(
-                  formatDuration(episode.durationSec),
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xff9aa3a0)),
-                ),
-              ),
+            const SizedBox(width: 12),
           ],
         ),
       ),
