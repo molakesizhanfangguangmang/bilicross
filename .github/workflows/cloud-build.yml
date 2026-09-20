@@ -46,13 +46,17 @@ jobs:
       - uses: actions/checkout@v4
 
       # 版本号只有一个来源：packaging/version.json（说明见 packaging/version.js）。
-      # 四段 versionName（1.1.0.1）不能写进 pubspec —— pub 只认三段 semver，
-      # 所以在这里读出来，构建时用 --build-name / --build-number 注入。
+      # ⚠️ 四段 versionName 走不了 `--build-name` —— Flutter 按 semver 解析，
+      # 四段会失败并把版本退化成 1.0.0（实测）。所以：
+      #   平台版本用三段 base，第四段用 dart-define 传给应用在显示层拼。
       - name: Read version
         shell: bash
         run: |
           echo "APP_VERSION_NAME=$(node packaging/version.js)" >> "$GITHUB_ENV"
+          echo "APP_VERSION_BASE=$(node packaging/version.js --base)" >> "$GITHUB_ENV"
+          echo "APP_VERSION_TEST=$(node packaging/version.js --test)" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=$(node packaging/version.js --code)" >> "$GITHUB_ENV"
+          echo "APP_TEST_VERSION_DEFINE=--dart-define=BILICROSS_TEST_VERSION=$(node packaging/version.js --test)" >> "$GITHUB_ENV"
           echo "版本：$(node packaging/version.js)（versionCode $(node packaging/version.js --code)）"
 
       - name: Install Flutter stable
@@ -297,6 +301,13 @@ jobs:
         run: flutter test
 
       # 内部测试版：给 MainActivity 加 FLAG_SECURE，禁止截屏与录屏。
+      # 版本号：安卓的 versionName 接受任意字符串，所以四段号在这里直接写进去
+      # （`--build-name` 对四段会解析失败，不能用）。
+      # 正式版与测试版都要，所以不挂在 buildType 判断上。
+      - name: Set APK version
+        shell: bash
+        run: node packaging/android/patch-version.js "$APP_VERSION_NAME" "$APP_VERSION_CODE"
+
       # 逻辑放在仓库内脚本里：android/ 目录不入仓，每次 flutter create 都会重生。
       - name: Enable FLAG_SECURE (block screenshots)
         if: inputs.buildType != 'release'
@@ -323,7 +334,7 @@ jobs:
         env:
           BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
           TEST_BUILD_DEFINE: --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
-        run: flutter build apk --release --target-platform android-arm64 --build-name=$APP_VERSION_NAME --build-number=$APP_VERSION_CODE $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE
+        run: flutter build apk --release --target-platform android-arm64 --build-number=$APP_VERSION_CODE $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE $APP_TEST_VERSION_DEFINE
 
       - name: Verify APK architecture
         shell: bash
@@ -433,8 +444,10 @@ jobs:
         run: |
           $name = node packaging/version.js
           $code = node packaging/version.js --code
+          $test = node packaging/version.js --test
           "APP_VERSION_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "APP_VERSION_CODE=$code" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION_TEST=$test" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "版本：$name（versionCode $code）"
 
       - name: Install Flutter stable
@@ -524,7 +537,7 @@ jobs:
         env:
           BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
         run: |
-          flutter build windows --release --build-name=$env:APP_VERSION_NAME --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
+          flutter build windows --release --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_TEST_VERSION=$env:APP_VERSION_TEST --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
 
       # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
       # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，

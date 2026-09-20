@@ -1,0 +1,81 @@
+// 把安卓的 versionName / versionCode 写成指定值。
+//
+// 用法: node packaging/android/patch-version.js <versionName> <versionCode>
+//   例: node packaging/android/patch-version.js 1.1.0.1 19
+//
+// ⚠️ 为什么要打这个补丁，而不是用 `flutter build --build-name`：
+//   实测 —— Flutter 内部按 semver 解析 build-name，**四段会解析失败**
+//   （Windows 那侧的版本资源直接退化成 1.0.0，比不传还糟）。
+//   而安卓的 versionName 本身接受任意字符串，所以四段号在这里直接写死。
+//   android/ 目录不入仓（每次 flutter create 重生），所以补丁在构建期执行。
+const fs = require('fs');
+const path = require('path');
+
+const NAME = process.argv[2];
+const CODE = process.argv[3];
+
+if (!NAME || !CODE) {
+  console.error('用法: node packaging/android/patch-version.js <versionName> <versionCode>');
+  process.exit(1);
+}
+if (!/^\d+$/.test(CODE)) {
+  console.error('versionCode 必须是整数');
+  process.exit(1);
+}
+
+const APP_DIR = path.join('android', 'app');
+if (!fs.existsSync(APP_DIR)) {
+  console.error('未找到 android/app 目录');
+  process.exit(1);
+}
+
+// 新版模板可能是 build.gradle.kts，两种都认。
+const candidates = ['build.gradle', 'build.gradle.kts']
+  .map((name) => path.join(APP_DIR, name))
+  .filter((file) => fs.existsSync(file));
+
+if (candidates.length === 0) {
+  console.error('未找到 android/app/build.gradle(.kts)');
+  process.exit(1);
+}
+
+let patched = false;
+for (const file of candidates) {
+  let text = fs.readFileSync(file, 'utf8');
+  const before = text;
+
+  // Groovy: versionCode flutterVersionCode.toInteger()
+  text = text.replace(
+    /versionCode\s+flutterVersionCode\.toInteger\(\)/,
+    `versionCode ${CODE}`,
+  );
+  // Kotlin DSL: versionCode = flutterVersionCode.toInteger()
+  text = text.replace(
+    /versionCode\s*=\s*flutterVersionCode\.toInteger\(\)/,
+    `versionCode = ${CODE}`,
+  );
+
+  // Groovy: versionName flutterVersionName
+  text = text.replace(
+    /versionName\s+flutterVersionName/,
+    `versionName "${NAME}"`,
+  );
+  // Kotlin DSL: versionName = flutterVersionName
+  text = text.replace(
+    /versionName\s*=\s*flutterVersionName/,
+    `versionName = "${NAME}"`,
+  );
+
+  if (text === before) {
+    console.log(`${file}：没有可改的版本行，跳过`);
+    continue;
+  }
+  fs.writeFileSync(file, text, 'utf8');
+  patched = true;
+  console.log(`${file}：versionName -> ${NAME}，versionCode -> ${CODE}`);
+}
+
+if (!patched) {
+  console.error('没有任何文件被改写 —— 模板里的版本行可能换了写法');
+  process.exit(1);
+}
