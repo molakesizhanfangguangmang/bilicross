@@ -158,6 +158,8 @@ class AppLocalizationsEn extends AppLocalizations {
     'download.result': 'Parse result',
     'download.id': 'ID',
     'download.uploader': 'Uploader',
+    'download.pickPage': 'Pick a part ({count} total)',
+    'download.pickPageTitle': 'Choose which part to download',
     'download.part': 'Part',
     'download.duration': 'Duration',
     'download.videoStreams': 'Video streams',

@@ -108,8 +108,68 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  Future<void> _parse(AppState state, String value) async {
+  /// 选分 P：列全部 P，选中后**重新解析那一 P**。
+  ///
+  /// 解析一次只处理一个 cid，所以换 P 必须重跑解析，不能本地切换 ——
+  /// 流地址是按 cid 取的。
+  Future<void> _pickPage(AppState state, ParsedMedia media) async {
+    final l10n = AppLocalizations.of(context);
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l10n.tr('download.pickPageTitle')),
+        children: <Widget>[
+          for (final page in media.info.pages)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(page.page),
+              child: Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      'P${page.page}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xff9aa3a0),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      page.part.isEmpty ? '—' : page.part,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  if (page.durationSec > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        formatDuration(page.durationSec),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xff9aa3a0),
+                        ),
+                      ),
+                    ),
+                  if (page.page == media.page.page)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: Icon(Icons.check, size: 16),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    if (picked == media.page.page) return;
     _videoIndex = null;
+    _audioIndex = null;
+    await state.parseAddress(state.addressInput, pageOverride: picked);
+  }
+
+  Future<void> _parse(AppState state, String value) async {    _videoIndex = null;
     _audioIndex = null;
     final target = BiliUrl.parse(value);
     // 空间链接不是「一个视频」，没有单集可解析 —— 弹窗列出该 UP 的合集与系列，
@@ -214,6 +274,19 @@ class _DownloadPageState extends State<DownloadPage> {
                 label: l10n.tr('download.part'),
                 value: '${media.page.page} / ${media.info.pages.length} · ${media.page.part}',
               ),
+              // 多 P 视频：给一个选集入口。解析本身只取一个分 P（地址里的 ?p=，
+              // 没有就是第 1 P），所以这里换 P 是**重新解析那一 P**，不是本地切换。
+              if (media.info.pages.length > 1)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _pickPage(state, media),
+                    icon: const Icon(Icons.list_alt, size: 16),
+                    label: Text(l10n.tr('download.pickPage', {
+                      'count': '${media.info.pages.length}',
+                    })),
+                  ),
+                ),
               InfoLine(
                 label: l10n.tr('download.duration'),
                 value: formatDuration(media.durationSec),

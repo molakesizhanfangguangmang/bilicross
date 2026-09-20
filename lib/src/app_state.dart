@@ -531,20 +531,28 @@ class AppState extends ChangeNotifier {
 
   // ---------- 解析 ----------
 
-  Future<void> parseAddress(String input) async {
+  /// 解析一个地址。
+  ///
+  /// [pageOverride] 用来指定多 P 视频里的第几个分 P：不带就按地址里的 `?p=`
+  /// （没有 `?p=` 就是第 1 P）。下载页的「选集」走这条。
+  Future<void> parseAddress(String input, {int? pageOverride}) async {
     addressInput = input;
     busy = true;
     parsed = null;
     notice = '';
     // 换了清单：旧的预检结果不能串到新合集上。
     resetPreflight();
-    LogStore.instance.add('解析', '地址：$input');
+    LogStore.instance.add(
+      '解析',
+      pageOverride == null ? '地址：$input' : '地址：$input（指定第 $pageOverride P）',
+    );
     notifyListeners();
     try {
       parsed = await parseService.parseTarget(
         input,
         cookie: cookie,
         token: token ?? _emptyToken,
+        pageOverride: pageOverride,
       );
       // 档位够不够不再提示：片源没有这一档是常态（设置里选的是最高档），
       // 界面把实际拿到的流列出来就是事实，不需要额外说一句。

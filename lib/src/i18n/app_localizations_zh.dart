@@ -153,6 +153,8 @@ class AppLocalizationsZh extends AppLocalizations {
     'download.result': '解析结果',
     'download.id': '标识',
     'download.uploader': 'UP 主',
+    'download.pickPage': '选集（共 {count} P）',
+    'download.pickPageTitle': '选择要下载的分 P',
     'download.part': '分 P',
     'download.duration': '时长',
     'download.videoStreams': '视频流',
