@@ -369,40 +369,6 @@ class SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 24),
               ],
-              // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
-              // 放在主页会把常用设置挤下去。语言留在主页，新用户要能一眼找到。
-              Card(
-                key: _advancedKey,
-                child: ListTile(
-                  leading: const Icon(Icons.tune),
-                  title: Text(l10n.tr('settings.advanced')),
-                  subtitle: Text(
-                    l10n.tr('settings.advancedHint'),
-                    style: const TextStyle(fontSize: 12, color: kTextMuted),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  // 长按解锁动画调节。解锁后不再提供关回去的入口。
-                  onLongPress: state.settings.animTuningUnlocked
-                      ? null
-                      : () => _unlockAnimTuning(state.settings),
-                  onTap: () {
-                    // 从这个卡片的位置展开到整页：先把矩形算出来再推路由。
-                    Navigator.of(context).push(
-                      ExpandPageRoute<void>(
-                        sourceRect: globalRectOf(_advancedKey.currentContext!),
-                        duration: Duration(
-                          milliseconds: state.settings.animDurationMs,
-                        ),
-                        // 曲线与展开形式跟随设置，两端一致。
-                        curveName: state.settings.animCurve,
-                        style: state.settings.animStyle,
-                        builder: (context) =>
-                            AdvancedSettingsPage(state: state),
-                      ),
-                    );
-                  },
-                ),
-              ),
               const SizedBox(height: 12),
               // 预检的并发策略：默认严格串行加间隔，稳；要快可开并行。
               SectionCard(
@@ -480,6 +446,41 @@ class SettingsPageState extends State<SettingsPage> {
                   onChanged: (value) {
                     if (value == null) return;
                     state.setLocale(value);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
+              // 放在主页会把常用设置挤下去。语言留在主页，新用户要能一眼找到。
+              Card(
+                key: _advancedKey,
+                child: ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: Text(l10n.tr('settings.advanced')),
+                  subtitle: Text(
+                    l10n.tr('settings.advancedHint'),
+                    style: const TextStyle(fontSize: 12, color: kTextMuted),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  // 长按解锁动画调节。解锁后不再提供关回去的入口。
+                  onLongPress: state.settings.animTuningUnlocked
+                      ? null
+                      : () => _unlockAnimTuning(state.settings),
+                  onTap: () {
+                    // 从这个卡片的位置展开到整页：先把矩形算出来再推路由。
+                    Navigator.of(context).push(
+                      ExpandPageRoute<void>(
+                        sourceRect: globalRectOf(_advancedKey.currentContext!),
+                        duration: Duration(
+                          milliseconds: state.settings.animDurationMs,
+                        ),
+                        // 曲线与展开形式跟随设置，两端一致。
+                        curveName: state.settings.animCurve,
+                        style: state.settings.animStyle,
+                        builder: (context) =>
+                            AdvancedSettingsPage(state: state),
+                      ),
+                    );
                   },
                 ),
               ),
