@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
-import 'season_manifest_view.dart';
+import 'expand_page_route.dart';
+import 'season_select_page.dart';
 import 'widgets.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -22,9 +23,6 @@ class _DownloadPageState extends State<DownloadPage> {
       TextEditingController(text: widget.state.addressInput);
   int? _videoIndex;
   int? _audioIndex;
-
-  /// 清单里勾中的合集内序号（由 SeasonManifestView 回报）。
-  Set<int> _selectedEpisodes = <int>{};
 
   @override
   void dispose() {
@@ -145,60 +143,18 @@ class _DownloadPageState extends State<DownloadPage> {
             ],
           ),
         ),
-        // 这条视频属于某个合集时，把整部合集列出来 —— 数据就在 view 的响应里，
-        // 不额外发请求。第 1 步只做只读展示，勾选在第 2 步接入。
+        // 这条视频属于某个合集时，给一个**入口卡片**而不是直接铺开清单：
+        // 200+ 集的清单铺在下载页会把单集那套（选流、加入任务）挤得看不见。
+        // 想下这一集 → 用上面的单集流程；想下合集 → 点这里进选择页。
         if (media.info.season != null) ...<Widget>[
           const SizedBox(height: 12),
-          SectionCard(
-            title: l10n.tr('manifest.title'),
-            child: SeasonManifestView(
-              manifest: media.info.season!,
-              preflightOf: state.preflightOf,
-              isPreflighting: state.isPreflighting,
-              // 必须 setState：勾选状态放在父级（按钮要读它决定可用性与集数），
-              // 不回写的话按钮会一直停在「已选 0 集」的灰色状态。
-              onSelectionChanged: (pages) {
-                setState(() => _selectedEpisodes = pages);
-                // 勾选变了就补跑预检：只查选中的，取消勾选的会被清掉。
-                unawaited(
-                  state.preflightEpisodes(
-                    manifest: media.info.season!,
-                    pages: pages,
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Builder(
-              builder: (context) {
-                final total = _selectedEpisodes.length;
-                final ready = state.preflightReadyCount(_selectedEpisodes);
-                final allReady = total > 0 && ready == total;
-                return FilledButton.icon(
-                  // 未预检完的集不给下载：按钮只在选中的集全部通过预检时可点。
-                  onPressed: allReady
-                      ? () =>
-                          _enqueueManifest(context, state, media.info.season!)
-                      : null,
-                  icon: const Icon(Icons.playlist_add),
-                  label: Text(
-                    total == 0
-                        ? l10n.tr('manifest.enqueueSelected', {'count': '0'})
-                        : allReady
-                            ? l10n.tr(
-                                'manifest.enqueueSelected',
-                                {'count': '$total'},
-                              )
-                            : l10n.tr('manifest.preflighting', {
-                                'ready': '$ready',
-                                'total': '$total',
-                              }),
-                  ),
-                );
-              },
+          _SeasonEntryCard(
+            manifest: media.info.season!,
+            onOpen: (rect) => openSeasonSelectPage(
+              context,
+              state,
+              media.info.season!,
+              sourceRect: rect,
             ),
           ),
         ],
@@ -294,32 +250,6 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 清单批量入队：勾中的集交给 [AppState.enqueueEpisodes] 登记进队列。
-  /// 全程不逐集弹窗，结束后统一弹一条「加入/跳过/重命名」统计。
-  void _enqueueManifest(
-    BuildContext context,
-    AppState state,
-    SeasonManifest manifest,
-  ) {
-    final outcome = state.enqueueEpisodes(
-      manifest: manifest,
-      selectedPages: _selectedEpisodes,
-      engine: 'dart',
-    );
-    final l10n = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          l10n.tr('manifest.batchResult', {
-            'enqueued': '${outcome.enqueued}',
-            'skipped': '${outcome.skipped}',
-            'renamed': '${outcome.renamed}',
-          }),
-        ),
-      ),
-    );
-  }
-
   /// 入队与开跑分开：入队本身不动网络，只有「立即开始下载」顺带把队列跑起来。
   void _submit(
     BuildContext context,
@@ -345,6 +275,55 @@ class _DownloadPageState extends State<DownloadPage> {
               ? l10n.tr('download.enqueuedStart')
               : l10n.tr('download.enqueuedWait'),
         ),
+      ),
+    );
+  }
+}
+
+/// 「这个视频属于合集」入口卡片。
+///
+/// 只给入口、不铺清单 —— 单集下载和合集下载是两条路，互不挤占。
+class _SeasonEntryCard extends StatelessWidget {
+  const _SeasonEntryCard({required this.manifest, required this.onOpen});
+
+  final SeasonManifest manifest;
+  final void Function(Rect? sourceRect) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final key = GlobalKey();
+    return SectionCard(
+      title: manifest.title.isEmpty
+          ? l10n.tr('manifest.untitled')
+          : manifest.title,
+      trailing: const Icon(Icons.chevron_right),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            l10n.tr('manifest.entryHint'),
+            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            l10n.tr('manifest.summary', {
+              'episodes': '${manifest.totalEpisodes}',
+              'sections': '${manifest.sections.length}',
+            }),
+            style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              key: key,
+              onPressed: () => onOpen(globalRectOf(key.currentContext!)),
+              icon: const Icon(Icons.checklist),
+              label: Text(l10n.tr('manifest.entryOpen')),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -8,6 +8,14 @@ import 'widgets.dart';
 /// 任务列表按状态分成的三栏。
 enum TaskTab { waiting, running, done }
 
+/// 任务列表是否用懒加载（SliverList.builder 只构建屏幕内的卡片）。
+///
+/// 懒加载在长列表（200+ 条）下明显更省内存与构建时间，是这次卡顿的主修项；
+/// 但它同时改变了滚动容器（CustomScrollView 取代 SingleChildScrollView），
+/// 万一在某些环境出现滚动异常，把这里改成 false 即可退回旧行为 ——
+/// 三栏、固定头、按栏按钮、合集分组这些改动不受影响，仍全部保留。
+const bool kTasksLazyList = true;
+
 /// 任务页：顶部固定头（状态 + 当前栏按钮）+ 三栏 Tab + 懒加载列表。
 ///
 /// 之前的问题：PageFrame 是 SingleChildScrollView，216 条任务会一口气全部
@@ -162,7 +170,7 @@ class _TasksPageState extends State<TasksPage> {
                       ),
                     ),
                   ),
-                  // 列表本体：懒加载，只构建屏幕内的卡片。
+                  // 列表本体。
                   if (visible.isEmpty)
                     SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -174,15 +182,26 @@ class _TasksPageState extends State<TasksPage> {
                         ),
                       ),
                     )
-                  else
+                  else if (kTasksLazyList)
+                    // 懒加载：只构建屏幕内的卡片（默认）。
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                       sliver: SliverList.builder(
                         itemCount: groups.length,
-                        itemBuilder: (context, groupIndex) {
-                          final group = groups[groupIndex];
-                          return _GroupSection(state: state, tasks: group);
-                        },
+                        itemBuilder: (context, groupIndex) =>
+                            _GroupSection(state: state, tasks: groups[groupIndex]),
+                      ),
+                    )
+                  else
+                    // 回滚路径：一次性全部构建（懒加载出问题时可切回来）。
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, groupIndex) =>
+                              _GroupSection(state: state, tasks: groups[groupIndex]),
+                          childCount: groups.length,
+                        ),
                       ),
                     ),
                 ],
