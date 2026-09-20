@@ -56,6 +56,11 @@ class AppLocalizationsZh extends AppLocalizations {
     'manifest.preflight.riskControl': '风控',
     'settings.parallelPreflight': '允许并行预检',
     'settings.parallelPreflightHint': '开＝2 路并行；关＝严格串行并留间隔，更稳但慢',
+    'manifest.addableSummary': '{addable} 集可加入，{skipped} 集会被跳过',
+    'manifest.enqueuePartialTitle': '部分集不会加入',
+    'manifest.enqueuePartialConfirm': '勾中的集里有 {skipped} 集不可用、被风控或还没预检完，'
+        '只加入其余能下的那些？',
+    'manifest.enqueuePartialOk': '只加入能下的',
     'manifest.nothingSelected': '先勾选要下载的集',
     'manifest.batchResult': '已加入 {enqueued} 集，跳过 {skipped} 集，自动重命名 {renamed} 集',
     // 同名文件处理

@@ -753,9 +753,6 @@ class AppState extends ChangeNotifier {
 
   PreflightResult preflightOf(int page) => _preflight.of(page);
 
-  /// 勾中且已通过预检的集数（判断能不能加入任务）。
-  int preflightReadyCount(Set<int> pages) => _preflight.readyCount(pages);
-
   /// 换清单时清空，避免旧合集的结果串到新合集。
   void resetPreflight() => _preflight.reset();
 

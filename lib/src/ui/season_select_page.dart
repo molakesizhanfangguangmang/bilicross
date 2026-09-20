@@ -135,10 +135,20 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
       builder: (context, _) {
         final state = widget.state;
         final total = _selected.length;
-        final ready = state.preflightReadyCount(_selected);
-        final allReady = total > 0 && ready == total;
+        // 有结论的（不是 unknown）与真正能下的，分开数。
+        // 设计定案：未预检完的集不给下载 —— 但**不能因此把整批卡住**，
+        // 用户可以只下已经查完且能下的那些，剩下的跳过并弹窗说明。
+        var settled = 0;
+        var addable = 0;
+        for (final page in _selected) {
+          final result = state.preflightOf(page);
+          if (result.status != PreflightStatus.unknown) settled += 1;
+          if (result.downloadable) addable += 1;
+        }
+        final canAdd = !state.preflighting && addable > 0;
         // 缺档汇总：只算勾中的集。预检没跑完的集不在这里 —— 它们还没结论。
         final flagged = _missingQualityPages();
+        final skipped = total - addable;
 
         return Scaffold(
           appBar: AppBar(title: Text(l10n.tr('manifest.title'))),
@@ -181,14 +191,23 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                               child: Text(
                                 total == 0
                                     ? l10n.tr('manifest.nothingSelected')
-                                    : allReady
-                                        ? l10n.tr('manifest.selectedReady', {
-                                            'count': '$total',
-                                          })
-                                        : l10n.tr('manifest.preflighting', {
-                                            'ready': '$ready',
+                                    : state.preflighting
+                                        ? l10n.tr('manifest.preflighting', {
+                                            'ready': '$settled',
                                             'total': '$total',
-                                          }),
+                                          })
+                                        : skipped > 0
+                                            ? l10n.tr(
+                                                'manifest.addableSummary',
+                                                {
+                                                  'addable': '$addable',
+                                                  'skipped': '$skipped',
+                                                },
+                                              )
+                                            : l10n.tr(
+                                                'manifest.selectedReady',
+                                                {'count': '$total'},
+                                              ),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: Color(0xff6d716f),
@@ -196,13 +215,13 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
                               ),
                             ),
                             FilledButton.icon(
-                              onPressed: !allReady
+                              onPressed: !canAdd
                                   ? null
-                                  : () => _enqueue(context, state),
+                                  : () => _enqueue(context, state, skipped),
                               icon: const Icon(Icons.playlist_add),
                               label: Text(
                                 l10n.tr('manifest.enqueueSelected', {
-                                  'count': '$total',
+                                  'count': '$addable',
                                 }),
                               ),
                             ),
@@ -283,14 +302,43 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
     );
   }
 
-  void _enqueue(BuildContext context, AppState state) {
+  Future<void> _enqueue(
+    BuildContext context,
+    AppState state,
+    int skipped,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    // 设计定案：未预检完的集不给下载，但**不能把整批卡住** ——
+    // 只下已经查完且能下的那些，跳过的先弹窗说清楚。
+    if (skipped > 0) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(l10n.tr('manifest.enqueuePartialTitle')),
+          content: Text(
+            l10n.tr('manifest.enqueuePartialConfirm', {'skipped': '$skipped'}),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.tr('common.cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.tr('manifest.enqueuePartialOk')),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !context.mounted) return;
+    }
     final outcome = state.enqueueEpisodes(
       manifest: widget.manifest,
       selectedPages: _selected,
       engine: 'dart',
       qualityOverrides: _qualityOverrides,
     );
-    final l10n = AppLocalizations.of(context);
+    if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

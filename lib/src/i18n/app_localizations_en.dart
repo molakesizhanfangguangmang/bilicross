@@ -57,6 +57,11 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.parallelPreflight': 'Parallel preflight',
     'settings.parallelPreflightHint':
         'On = 2 at a time; off = strictly sequential with a delay (safer, slower)',
+    'manifest.addableSummary': '{addable} can be added, {skipped} will be skipped',
+    'manifest.enqueuePartialTitle': 'Some episodes will not be added',
+    'manifest.enqueuePartialConfirm': '{skipped} selected episodes are unavailable, '
+        'rate limited, or not checked yet. Add only the rest?',
+    'manifest.enqueuePartialOk': 'Add the rest',
     'manifest.nothingSelected': 'Select episodes to download first',
     'manifest.batchResult':
         'Added {enqueued}, skipped {skipped}, renamed {renamed}',
