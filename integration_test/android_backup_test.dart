@@ -158,6 +158,13 @@ void main() {
     );
 
     // 同一天再导一次不该覆盖前一份。
+    //
+    // ⚠️ 第一次导出会弹一条 SnackBar，它盖在内容之上；如果按钮正好落在
+    // SnackBar 覆盖的范围内，直接再点会 "would not hit test"（踩过：第二次
+    // tap 落空 → 口令框没出现 → 找不到「确定」）。先等它自己收掉（默认 4 秒），
+    // 再重新 ensureVisible 一次，然后才点。
+    await _pump(tester, 5000);
+    await _scrollTo(tester, exportButton);
     await tester.tap(exportButton.first);
     await _pump(tester, 1500);
     await _fillPassphrase(tester, 'test-passphrase-1234');
