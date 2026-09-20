@@ -17,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// - created_at：2026-09-19T00:00:00Z
 /// - appVersion `1.0.6`、platform `windows`、payloadType `full`、keyId `v1`
 /// - 载荷：`{"cookie":"SESSDATA=test-sess-vector; …","schema":1}`（假值）
-const String _vectorHex = ''
+const String _vectorHex =
+    ''
     '424342414b424b3100010102'
     '7631'
     '000001a0b6f674'
@@ -36,9 +37,9 @@ const String _vectorPayloadJson =
 
 /// 测试用的假凭据，内容全部是中性值，不得替换成真实账号数据。
 Map<String, dynamic> _testPayload() => <String, dynamic>{
-      'cookie': 'SESSDATA=test-sess-vector; bili_jct=test-jct-vector; DedeUserID=100000001',
-      'schema': 1,
-    };
+  'cookie': 'SESSDATA=test-sess-vector; bili_jct=test-jct-vector; DedeUserID=100000001',
+  'schema': 1,
+};
 
 Uint8List _bytes(String hex) {
   final out = Uint8List(hex.length ~/ 2);
@@ -55,6 +56,61 @@ Uint8List _fixedNonce() => Uint8List.fromList(List<int>.generate(12, (i) => i));
 
 /// 测试口令。长度必须 ≥ kBackupMinPassphraseLength。
 const String _kPass = 'test-passphrase-1234';
+
+/// v2 头部里各 KDF 字段的偏移。
+///
+/// ⚠️ 测试要篡改某个字段时**必须按布局算**，不能用 `indexOf` 猜 ——
+/// 值等于某个数的字节到处都是（salt、时间戳里都有）。
+({
+  int kdfAlgorithm,
+  int kdfMemory,
+  int kdfIterations,
+  int kdfParallelism,
+  int kdfSalt,
+})
+_v2Offsets(Uint8List b) {
+  var o = kBackupMagic.length + 2 + 1; // magic + format_version + algorithm
+  o += 1 + b[o]; // key_id（uint8 长度 + 内容）
+  o += 8; // created_at_ms
+  o += 2 + ((b[o] << 8) | b[o + 1]); // app_version（uint16 大端）
+  o += 1 + b[o]; // platform
+  o += 1 + b[o]; // payload_type
+  final kdf = o;
+  return (
+    kdfAlgorithm: kdf,
+    kdfMemory: kdf + 1,
+    kdfIterations: kdf + 5,
+    kdfParallelism: kdf + 9,
+    kdfSalt: kdf + 10,
+  );
+}
+
+/// 按大端写入 uint32。
+void _putUint32(Uint8List b, int offset, int value) {
+  b[offset] = (value >> 24) & 0xff;
+  b[offset + 1] = (value >> 16) & 0xff;
+  b[offset + 2] = (value >> 8) & 0xff;
+  b[offset + 3] = value & 0xff;
+}
+
+/// v2 跨实现固定测试向量的口令（公开，仅用于测试）。
+const String _kV2VectorPassphrase = 'bilicross-test-vector-passphrase';
+
+/// v2 跨实现固定测试向量。
+///
+/// **由独立的 Python 实现生成**（argon2-cffi 的 `hash_secret_raw` +
+/// `cryptography` 的 AESGCM，按 backup_format.dart 的布局手工拼容器），
+/// 不经过任何 Dart 代码 —— 所以它能验证 Dart 侧的字节布局与加密参数
+/// 是否与文档一致，而不是自证。
+///
+/// 固定值：salt = 00..0f，nonce = 00..0b，memory 64 MiB / 迭代 3 / 并行 1，
+/// app_version 2.0.2，platform android，时间戳固定。
+/// 载荷是**虚假凭据**，不含任何真实数据。
+const String _v2VectorHex =
+    '424342414b424b310002010276310000019962b430000005322e302e3207616e64726f69640466756c6c01000100000000000301000102030405060708090a0b0c0d0e0f000102030405060708090a0b000000bfea1926208b4821d1f296bde42ad5c476954e14f518674e16e612e63473565f943e2945e836fc70abd1541a7b021fae56ffd8f2aacbcea1fce270bd07364613bd8b3b169ed52f87526cc9a7383127f4b0dc14ce6d12d850fb41c4a09fdac9962acfa6a6b09154cb948556396b120c0a03493b12791301a320b6efd42b457d800621a09ddeff2b226a7577692bd6b31299a5079a7e1575ef08b543d1fab7ec31c95bd0abbe9055264410a422bfa8532d8645f0a46a9a5663fa344098a67763a28559e89635efb80b1ceccbcd0b0737db';
+
+const String _v2VectorPayloadJson =
+    '{"schema":1,"cookie":"SESSDATA=vector-sess; bili_jct=vector-jct; DedeUserID=100000001","token":{"access_token":"vector-token","expires_in":3600},"settings":{"locale_code":"zh-CN"},"tasks":[]}';
 
 void main() {
   final codec = BackupCodec(keyRing: BackupKeyRing.testOnly());
@@ -100,7 +156,10 @@ void main() {
       final payload = <String, dynamic>{
         'schema': kBackupPayloadSchema,
         'cookie': 'SESSDATA=test-sess; bili_jct=test-jct; DedeUserID=100000001',
-        'token': <String, dynamic>{'access_token': 'test-token', 'expires_in': 3600},
+        'token': <String, dynamic>{
+          'access_token': 'test-token',
+          'expires_in': 3600,
+        },
         'settings': <String, dynamic>{'locale_code': 'zh-CN'},
         'tasks': <dynamic>[],
       };
@@ -163,7 +222,9 @@ void main() {
 
     test('换一把密钥 → 认证失败，且错误信息不含凭据', () async {
       final otherKey = BackupKeyRing(<String, Uint8List>{
-        kBackupCurrentKeyId: Uint8List.fromList(List<int>.generate(32, (i) => 255 - i)),
+        kBackupCurrentKeyId: Uint8List.fromList(
+          List<int>.generate(32, (i) => 255 - i),
+        ),
       });
       final other = BackupCodec(keyRing: otherKey);
       try {
@@ -206,7 +267,8 @@ void main() {
     test('文件被截断 → 明确报不完整', () {
       final bytes = _bytes(_vectorHex);
       expect(
-        () => codec.readHeader(Uint8List.sublistView(bytes, 0, bytes.length - 4)),
+        () =>
+            codec.readHeader(Uint8List.sublistView(bytes, 0, bytes.length - 4)),
         throwsA(isA<BackupFormatException>()),
       );
     });
@@ -284,12 +346,14 @@ void main() {
         appVersion: '2.0.2',
         platform: 'android',
       );
-      expect(_hex(codec.readHeader(a).kdfSalt),
-          isNot(_hex(codec.readHeader(b).kdfSalt)));
+      expect(
+        _hex(codec.readHeader(a).kdfSalt),
+        isNot(_hex(codec.readHeader(b).kdfSalt)),
+      );
       expect(_hex(a), isNot(_hex(b)));
     });
 
-    test('改 KDF 参数一位 → 认证失败（KDF 段在 AAD 里）', () async {
+    test('v2 写了未知 KDF 编号 → 只能是 BackupFormatException（不得当成 v1）', () async {
       final bytes = await codec.encode(
         payload: _testPayload(),
         passphrase: _kPass,
@@ -305,16 +369,14 @@ void main() {
       o += 1 + bytes[o]; // platform
       o += 1 + bytes[o]; // payload_type
       expect(bytes[o], kBackupKdfArgon2id, reason: '这个偏移应该正好是 kdf_algorithm');
-      bytes[o] = 0x02;
-      // 改掉 kdf_algorithm 之后，应用会**把它当成 v1**（无 KDF 段）去解 ——
-      // 于是走注入密钥那条路，认证失败抛 BackupAuthenticationException。
-      // 关键不是抛哪种，而是**一定解不开**。两种都接受。
-      expect(
+      bytes[o] = 0x7f; // 未知 KDF 编号
+      // ⚠️ 这里**只能**是 BackupFormatException。
+      // 以前 `usesPassphrase` 为 false 会被当成 v1 走固定密钥分支，
+      // 结果抛认证异常 —— 那是把「格式不认识」静默降级成「老格式」。
+      // 现在按 format_version 分支，v2 就必须走口令派生，KDF 不认识就明确报错。
+      await expectLater(
         () => codec.decode(bytes, passphrase: _kPass),
-        throwsA(anyOf(
-          isA<BackupPassphraseException>(),
-          isA<BackupAuthenticationException>(),
-        )),
+        throwsA(isA<BackupFormatException>()),
       );
     });
 
@@ -332,11 +394,108 @@ void main() {
     });
   });
 
+  group('v2 头部是不可信输入：KDF 参数必须在使用前校验', () {
+    Future<Uint8List> validV2() => codec.encode(
+      payload: _testPayload(),
+      passphrase: _kPass,
+      appVersion: '2.0.2',
+      platform: 'android',
+    );
+
+    test('内存参数为 0 或超过上限 → 进 Argon2id 之前就被拒', () async {
+      for (final bad in <int>[0, kBackupArgon2MemoryMaxKib + 1]) {
+        final bytes = await validV2();
+        _putUint32(bytes, _v2Offsets(bytes).kdfMemory, bad);
+        await expectLater(
+          () => codec.decode(bytes, passphrase: _kPass),
+          throwsA(isA<BackupFormatException>()),
+          reason: '内存参数 $bad 应当被拒',
+        );
+      }
+    });
+
+    test('迭代次数为 0 或超过上限 → 被拒', () async {
+      for (final bad in <int>[0, kBackupArgon2IterationsMax + 1]) {
+        final bytes = await validV2();
+        _putUint32(bytes, _v2Offsets(bytes).kdfIterations, bad);
+        await expectLater(
+          () => codec.decode(bytes, passphrase: _kPass),
+          throwsA(isA<BackupFormatException>()),
+          reason: '迭代次数 $bad 应当被拒',
+        );
+      }
+    });
+
+    test('并行度为 0 或超过上限 → 被拒', () async {
+      for (final bad in <int>[0, kBackupArgon2ParallelismMax + 1]) {
+        final bytes = await validV2();
+        bytes[_v2Offsets(bytes).kdfParallelism] = bad;
+        await expectLater(
+          () => codec.decode(bytes, passphrase: _kPass),
+          throwsA(isA<BackupFormatException>()),
+          reason: '并行度 $bad 应当被拒',
+        );
+      }
+    });
+
+    test('合法范围边界值仍然放行（校验不是一刀切）', () async {
+      // 边界内的参数不该校验失败 —— 只是改了 KDF 段会让 AAD 对不上，
+      // 所以这里断言的是「抛的不是 BackupFormatException」。
+      final bytes = await validV2();
+      _putUint32(bytes, _v2Offsets(bytes).kdfMemory, kBackupArgon2MemoryMinKib);
+      await expectLater(
+        () => codec.decode(bytes, passphrase: _kPass),
+        throwsA(isNot(isA<BackupFormatException>())),
+      );
+    });
+
+    test('报错信息里不含口令与载荷内容', () async {
+      final bytes = await validV2();
+      _putUint32(bytes, _v2Offsets(bytes).kdfMemory, 0);
+      try {
+        await codec.decode(bytes, passphrase: _kPass);
+        fail('应当被拒');
+      } on BackupFormatException catch (error) {
+        expect('$error'.contains(_kPass), isFalse);
+        expect('$error'.contains('test-sess'), isFalse);
+      }
+    });
+  });
+
+  group('v2 跨实现固定测试向量', () {
+    test('能解开独立实现（Python + argon2-cffi + AESGCM）产出的备份', () async {
+      final header = codec.readHeader(_bytes(_v2VectorHex));
+      expect(header.formatVersion, kBackupFormatVersion);
+      expect(header.algorithm, kBackupAlgorithmAes256Gcm);
+      expect(header.usesPassphrase, isTrue);
+      expect(header.kdfAlgorithm, kBackupKdfArgon2id);
+      expect(header.platform, 'android');
+      expect(header.appVersion, '2.0.2');
+
+      final payload = await codec.decode(
+        _bytes(_v2VectorHex),
+        passphrase: _kV2VectorPassphrase,
+      );
+      expect(jsonEncode(payload.data), _v2VectorPayloadJson);
+    });
+
+    test('用错口令解这份向量 → 明确报口令不对', () async {
+      await expectLater(
+        () => codec.decode(
+          _bytes(_v2VectorHex),
+          passphrase: 'wrong-passphrase-9999',
+        ),
+        throwsA(isA<BackupPassphraseException>()),
+      );
+    });
+  });
+
   group('不泄露明文', () {
     test('文件里看不到凭据原文，也没有 base64 形态的载荷', () async {
       final payload = <String, dynamic>{
         'schema': kBackupPayloadSchema,
-        'cookie': 'SESSDATA=plaintext-probe-value; bili_jct=plaintext-probe-jct; '
+        'cookie':
+            'SESSDATA=plaintext-probe-value; bili_jct=plaintext-probe-jct; '
             'DedeUserID=100000001',
       };
       final bytes = await codec.encode(
@@ -349,7 +508,10 @@ void main() {
       expect(asLatin.contains('plaintext-probe-value'), isFalse);
       expect(asLatin.contains('SESSDATA='), isFalse);
       expect(asLatin.contains('cookie'), isFalse);
-      expect(asLatin.contains(base64Encode(utf8.encode(jsonEncode(payload)))), isFalse);
+      expect(
+        asLatin.contains(base64Encode(utf8.encode(jsonEncode(payload)))),
+        isFalse,
+      );
       expect(asLatin.contains(jsonEncode(payload)), isFalse);
     });
   });

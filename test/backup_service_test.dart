@@ -13,29 +13,28 @@ BackupService _service(
   Directory root, {
   String platform = 'windows',
   void Function(BackupRestoreStage stage)? onStage,
-}) =>
-    BackupService(
-      codec: BackupCodec(keyRing: BackupKeyRing.testOnly()),
-      root: root,
-      appVersion: '1.0.6',
-      platform: platform,
-      onStage: onStage,
-    );
+}) => BackupService(
+  codec: BackupCodec(keyRing: BackupKeyRing.testOnly()),
+  root: root,
+  appVersion: '1.0.6',
+  platform: platform,
+  onStage: onStage,
+);
 
 Map<String, dynamic> _credential() => <String, dynamic>{
-      'cookie': 'SESSDATA=test-sess; bili_jct=test-jct; DedeUserID=100000001',
-      'token': <String, dynamic>{'access_token': 'test-token'},
-    };
+  'cookie': 'SESSDATA=test-sess; bili_jct=test-jct; DedeUserID=100000001',
+  'token': <String, dynamic>{'access_token': 'test-token'},
+};
 
 Map<String, dynamic> _settings() => <String, dynamic>{
-      'locale_code': 'zh-CN',
-      'download_dir': '/tmp/downloads',
-      'ffmpeg_path': '',
-    };
+  'locale_code': 'zh-CN',
+  'download_dir': '/tmp/downloads',
+  'ffmpeg_path': '',
+};
 
 List<dynamic> _tasks() => <dynamic>[
-      <String, dynamic>{'id': 't1', 'title': 'test', 'dir': '/tmp/downloads'},
-    ];
+  <String, dynamic>{'id': 't1', 'title': 'test', 'dir': '/tmp/downloads'},
+];
 
 void _writeJson(Directory root, String name, Object? value) {
   File('${root.path}${Platform.pathSeparator}$name')
@@ -55,7 +54,9 @@ void main() {
     root = Directory.systemTemp.createTempSync('bilicross_backup_');
     _writeJson(root, BackupService.credentialFileName, _credential());
     _writeJson(root, BackupService.settingsFileName, _settings());
-    _writeJson(root, BackupService.taskFileName, <String, dynamic>{'tasks': _tasks()});
+    _writeJson(root, BackupService.taskFileName, <String, dynamic>{
+      'tasks': _tasks(),
+    });
   });
 
   tearDown(() {
@@ -68,10 +69,18 @@ void main() {
       final bytes = await service.exportBytes(passphrase: _kPass);
       final plan = await service.plan(bytes, passphrase: _kPass);
 
-      expect(plan.files[BackupService.credentialFileName]!['cookie'],
-          contains('SESSDATA=test-sess'));
-      expect(plan.files[BackupService.settingsFileName]!['locale_code'], 'zh-CN');
-      expect((plan.files[BackupService.taskFileName]!['tasks'] as List).length, 1);
+      expect(
+        plan.files[BackupService.credentialFileName]!['cookie'],
+        contains('SESSDATA=test-sess'),
+      );
+      expect(
+        plan.files[BackupService.settingsFileName]!['locale_code'],
+        'zh-CN',
+      );
+      expect(
+        (plan.files[BackupService.taskFileName]!['tasks'] as List).length,
+        1,
+      );
       expect(plan.header.appVersion, '1.0.6');
       expect(plan.header.platform, 'windows');
       expect(plan.header.payloadType, kBackupPayloadTypeFull);
@@ -94,7 +103,10 @@ void main() {
     test('缺失的文件不进备份', () async {
       File('${root.path}${Platform.pathSeparator}${BackupService.taskFileName}')
           .deleteSync();
-      final plan = await _service(root).plan(await _service(root).exportBytes(passphrase: _kPass), passphrase: _kPass);
+      final plan = await _service(root).plan(
+        await _service(root).exportBytes(passphrase: _kPass),
+        passphrase: _kPass,
+      );
       expect(plan.files.containsKey(BackupService.taskFileName), isFalse);
     });
   });
@@ -111,13 +123,19 @@ void main() {
         'download_dir': '/changed',
       });
 
-      final outcome = await service.restore(await service.plan(bytes, passphrase: _kPass));
+      final outcome = await service.restore(
+        await service.plan(bytes, passphrase: _kPass),
+      );
 
       expect(outcome.restoredFiles, contains(BackupService.settingsFileName));
-      expect(jsonDecode(_read(root, BackupService.settingsFileName)),
-          _settings());
-      expect(jsonDecode(_read(root, BackupService.credentialFileName)),
-          _credential());
+      expect(
+        jsonDecode(_read(root, BackupService.settingsFileName)),
+        _settings(),
+      );
+      expect(
+        jsonDecode(_read(root, BackupService.credentialFileName)),
+        _credential(),
+      );
     });
 
     test('恢复前会留下回滚快照，里面是恢复前的数据', () async {
@@ -127,14 +145,17 @@ void main() {
         'locale_code': 'en-US',
       });
 
-      final outcome = await service.restore(await service.plan(bytes, passphrase: _kPass));
+      final outcome = await service.restore(
+        await service.plan(bytes, passphrase: _kPass),
+      );
 
       final snapshot = Directory(outcome.snapshotPath);
       expect(snapshot.existsSync(), isTrue);
       final before = jsonDecode(
-        File('${snapshot.path}${Platform.pathSeparator}'
-                '${BackupService.settingsFileName}')
-            .readAsStringSync(),
+        File(
+          '${snapshot.path}${Platform.pathSeparator}'
+          '${BackupService.settingsFileName}',
+        ).readAsStringSync(),
       );
       expect(before['locale_code'], 'en-US', reason: '快照应是恢复前的状态');
     });
@@ -149,14 +170,18 @@ void main() {
         'cookie': 'SESSDATA=before-restore',
       });
 
-      final failing = _service(root, onStage: (stage) {
-        if (stage == BackupRestoreStage.credentialWritten) {
-          throw StateError('注入的写盘故障');
-        }
-      });
+      final failing = _service(
+        root,
+        onStage: (stage) {
+          if (stage == BackupRestoreStage.credentialWritten) {
+            throw StateError('注入的写盘故障');
+          }
+        },
+      );
 
       await expectLater(
-        () async => failing.restore(await service.plan(bytes, passphrase: _kPass)),
+        () async =>
+            failing.restore(await service.plan(bytes, passphrase: _kPass)),
         throwsA(isA<BackupRestoreException>()),
       );
 
@@ -185,7 +210,8 @@ void main() {
       final service = _service(root);
       await service.restore(await service.plan(bytes, passphrase: _kPass));
 
-      final tasks = jsonDecode(_read(root, BackupService.taskFileName))['tasks'] as List;
+      final tasks =
+          jsonDecode(_read(root, BackupService.taskFileName))['tasks'] as List;
       expect(tasks.length, 1);
       expect(tasks.first['id'], 'local-only');
     });
@@ -193,19 +219,52 @@ void main() {
 
   group('跨平台互恢复与异常', () {
     test('安卓做的备份能在 Windows 上恢复', () async {
-      final androidRoot = Directory.systemTemp.createTempSync('bilicross_android_');
+      final androidRoot = Directory.systemTemp.createTempSync(
+        'bilicross_android_',
+      );
       addTearDown(() {
         if (androidRoot.existsSync()) androidRoot.deleteSync(recursive: true);
       });
       _writeJson(androidRoot, BackupService.settingsFileName, _settings());
-      final bytes = await _service(androidRoot, platform: 'android').exportBytes(passphrase: _kPass);
+      final bytes = await _service(
+        androidRoot,
+        platform: 'android',
+      ).exportBytes(passphrase: _kPass);
 
       final windowsService = _service(root);
-      final outcome = await windowsService.restore(await windowsService.plan(bytes, passphrase: _kPass));
+      final outcome = await windowsService.restore(
+        await windowsService.plan(bytes, passphrase: _kPass),
+      );
 
       expect(outcome.header.platform, 'android');
-      expect(jsonDecode(_read(root, BackupService.settingsFileName))['locale_code'],
-          'zh-CN');
+      expect(
+        jsonDecode(_read(root, BackupService.settingsFileName))['locale_code'],
+        'zh-CN',
+      );
+    });
+
+    test('Windows 做的备份能在安卓上恢复', () async {
+      // 反方向也要验：备份的 platform 只是**来源标记**，不该影响能否恢复。
+      final windowsRoot = Directory.systemTemp.createTempSync('bilicross_win_');
+      addTearDown(() {
+        if (windowsRoot.existsSync()) windowsRoot.deleteSync(recursive: true);
+      });
+      _writeJson(windowsRoot, BackupService.settingsFileName, _settings());
+      final bytes = await _service(
+        windowsRoot,
+        platform: 'windows',
+      ).exportBytes(passphrase: _kPass);
+
+      final androidService = _service(root, platform: 'android');
+      final outcome = await androidService.restore(
+        await androidService.plan(bytes, passphrase: _kPass),
+      );
+
+      expect(outcome.header.platform, 'windows');
+      expect(
+        jsonDecode(_read(root, BackupService.settingsFileName))['locale_code'],
+        'zh-CN',
+      );
     });
 
     test('被改过的备份无法恢复', () async {
@@ -228,14 +287,20 @@ void main() {
         ],
       });
       final service = _service(root);
-      final outcome = await service.restore(await service.plan(await service.exportBytes(passphrase: _kPass), passphrase: _kPass));
+      final outcome = await service.restore(
+        await service.plan(
+          await service.exportBytes(passphrase: _kPass),
+          passphrase: _kPass,
+        ),
+      );
       expect(outcome.pendingTaskPaths, contains('/definitely/not/here/12345'));
     });
 
     test('不是备份文件时给出格式错误', () async {
       final service = _service(root);
       await expectLater(
-        () => service.plan(Uint8List.fromList(<int>[1, 2, 3, 4, 5, 6, 7, 8, 9])),
+        () =>
+            service.plan(Uint8List.fromList(<int>[1, 2, 3, 4, 5, 6, 7, 8, 9])),
         throwsA(isA<BackupFormatException>()),
       );
     });

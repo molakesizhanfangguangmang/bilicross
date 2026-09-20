@@ -61,7 +61,16 @@ import 'dart:typed_data';
 /// - 密钥 32 字节（AES-256），nonce 12 字节，tag 16 字节；
 ///   密钥用 base64 文本在构建期注入，见 `backup_key_ring.dart`。
 /// - 未知的 `format_version` / `algorithm` / `key_id` 一律明确报错，不做猜测。
-const List<int> kBackupMagic = <int>[0x42, 0x43, 0x42, 0x41, 0x4B, 0x42, 0x4B, 0x31];
+const List<int> kBackupMagic = <int>[
+  0x42,
+  0x43,
+  0x42,
+  0x41,
+  0x4B,
+  0x42,
+  0x4B,
+  0x31,
+];
 
 /// magic 的 ASCII 形式，报错信息与测试里用。
 const String kBackupMagicText = 'BCBAKBK1';
@@ -97,6 +106,22 @@ const int kBackupArgon2Parallelism = 1;
 
 /// salt 长度。不需要保密，但要每条备份不同。
 const int kBackupSaltLength = 16;
+
+/// **解析不可信备份时**对 KDF 参数的允许范围。
+///
+/// 文件头是攻击者可控的输入：一个把 `kdf_memory` 写成 4 GiB 的畸形文件，
+/// 就足以让设备在派生密钥时被拖死（拒绝服务）。所以进 Argon2id **之前**
+/// 必须先卡范围，超范围直接拒绝、不计算。
+///
+/// ⚠️ 这几个是**解析侧的安全上下限**，不是新建备份用的参数 ——
+/// 新建仍用 [kBackupArgon2MemoryKib] / [kBackupArgon2Iterations] /
+/// [kBackupArgon2Parallelism]，本次改动不动它们。
+const int kBackupArgon2MemoryMinKib = 8 * 1024;
+const int kBackupArgon2MemoryMaxKib = 128 * 1024;
+const int kBackupArgon2IterationsMin = 1;
+const int kBackupArgon2IterationsMax = 10;
+const int kBackupArgon2ParallelismMin = 1;
+const int kBackupArgon2ParallelismMax = 4;
 
 /// 口令长度下限。弱口令等于没加密，这里拦一道。
 const int kBackupMinPassphraseLength = 8;
@@ -155,6 +180,7 @@ class BackupHeader {
   final int kdfMemoryKib;
   final int kdfIterations;
   final int kdfParallelism;
+
   /// ⚠️ 类型是 `List<int>` 而不是 `Uint8List`：默认值得是**编译期常量**，
   /// 而 `Uint8List(0)` 不是。解析出来的是 `Uint8List`，赋值给 `List<int>` 没问题。
   final List<int> kdfSalt;
@@ -245,7 +271,9 @@ ParsedBackup parseBackup(Uint8List bytes) {
   }
   final algorithm = reader.uint8();
   if (algorithm != kBackupAlgorithmAes256Gcm) {
-    throw BackupFormatException('备份算法不支持：$algorithm（当前支持 AES-256-GCM=$kBackupAlgorithmAes256Gcm）');
+    throw BackupFormatException(
+      '备份算法不支持：$algorithm（当前支持 AES-256-GCM=$kBackupAlgorithmAes256Gcm）',
+    );
   }
   final keyId = reader.string8(_kKeyIdMax);
   final createdAtMs = reader.uint64();

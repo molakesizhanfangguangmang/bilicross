@@ -42,8 +42,7 @@ class _BackupCardState extends State<BackupCard> {
 
   void _toast(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> _showError(String text) async {
@@ -64,93 +63,95 @@ class _BackupCardState extends State<BackupCard> {
   }
 
   /// 口令输入框。返回 null 表示用户取消。
-///
-/// [confirm] 为 true 时要求输两遍并比对（导出用）—— 口令打错就等于把备份作废，
-/// 必须让用户确认一遍。
-Future<String?> _askPassphrase(
-  BuildContext context, {
-  required String title,
-  required String hint,
-  required bool confirm,
-}) async {
-  final l10n = AppLocalizations.of(context);
-  final first = TextEditingController();
-  final second = TextEditingController();
-  final error = ValueNotifier<String?>(null);
+  ///
+  /// [confirm] 为 true 时要求输两遍并比对（导出用）—— 口令打错就等于把备份作废，
+  /// 必须让用户确认一遍。
+  Future<String?> _askPassphrase(
+    BuildContext context, {
+    required String title,
+    required String hint,
+    required bool confirm,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    final first = TextEditingController();
+    final second = TextEditingController();
+    final error = ValueNotifier<String?>(null);
 
-  final result = await showDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(hint, style: const TextStyle(fontSize: 12, color: kTextMuted)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: first,
-            obscureText: true,
-            autofocus: true,
-            decoration: InputDecoration(labelText: l10n.tr('backup.passphrase')),
-          ),
-          if (confirm) ...<Widget>[
-            const SizedBox(height: 10),
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(hint, style: const TextStyle(fontSize: 12, color: kTextMuted)),
+            const SizedBox(height: 12),
             TextField(
-              controller: second,
+              controller: first,
               obscureText: true,
+              autofocus: true,
               decoration: InputDecoration(
-                labelText: l10n.tr('backup.passphraseAgain'),
+                labelText: l10n.tr('backup.passphrase'),
               ),
             ),
-          ],
-          ValueListenableBuilder<String?>(
-            valueListenable: error,
-            builder: (context, message, _) => message == null
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Text(
-                      message,
-                      style: const TextStyle(fontSize: 12, color: kDanger),
+            if (confirm) ...<Widget>[
+              const SizedBox(height: 10),
+              TextField(
+                controller: second,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: l10n.tr('backup.passphraseAgain'),
+                ),
+              ),
+            ],
+            ValueListenableBuilder<String?>(
+              valueListenable: error,
+              builder: (context, message, _) => message == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        message,
+                        style: const TextStyle(fontSize: 12, color: kDanger),
+                      ),
                     ),
-                  ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = first.text.trim();
+              if (value.length < kBackupMinPassphraseLength) {
+                error.value = l10n.tr('backup.passphraseTooShort', {
+                  'count': '$kBackupMinPassphraseLength',
+                });
+                return;
+              }
+              if (confirm && value != second.text.trim()) {
+                error.value = l10n.tr('backup.passphraseMismatch');
+                return;
+              }
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: Text(l10n.tr('common.ok')),
           ),
         ],
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: Text(l10n.tr('common.cancel')),
-        ),
-        FilledButton(
-          onPressed: () {
-            final value = first.text.trim();
-            if (value.length < kBackupMinPassphraseLength) {
-              error.value = l10n.tr('backup.passphraseTooShort', {
-                'count': '$kBackupMinPassphraseLength',
-              });
-              return;
-            }
-            if (confirm && value != second.text.trim()) {
-              error.value = l10n.tr('backup.passphraseMismatch');
-              return;
-            }
-            Navigator.of(dialogContext).pop(value);
-          },
-          child: Text(l10n.tr('common.ok')),
-        ),
-      ],
-    ),
-  );
+    );
 
-  first.dispose();
-  second.dispose();
-  error.dispose();
-  return result;
-}
+    first.dispose();
+    second.dispose();
+    error.dispose();
+    return result;
+  }
 
-/// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
+  /// 同一天导出多次时不覆盖前一份：撞名就加 -2、-3…
   ///
   /// 文件名只带日期（`BiliCross-Backup-YYYYMMDD.bcbak`），当天再导一次会撞上。
   File _uniqueTarget(String dir, String fileName) {
@@ -262,14 +263,23 @@ Future<String?> _askPassphrase(
       final outcome = await service.restore(plan);
       await widget.state.reloadAfterRestore();
       _toast(
-        l10n.tr('backup.restored', {'count': '${outcome.restoredFiles.length}'}),
+        l10n.tr('backup.restored', {
+          'count': '${outcome.restoredFiles.length}',
+        }),
       );
       if (outcome.pendingTaskPaths.isNotEmpty) {
         _toast(
-          l10n.tr('backup.pending', {'count': '${outcome.pendingTaskPaths.length}'}),
+          l10n.tr('backup.pending', {
+            'count': '${outcome.pendingTaskPaths.length}',
+          }),
         );
       }
     } on BackupKeyException catch (error) {
+      await _showError(error.message);
+    } on BackupPassphraseException catch (error) {
+      // ⚠️ 必须单独接住：口令错 / 文件被改是**用户能自己处理**的一类，
+      // 要显示异常自带的文案。落到下面的通用 catch 就只会显示类名
+      // 「BackupPassphraseException」，用户完全不知道发生了什么。
       await _showError(error.message);
     } on BackupAuthenticationException catch (error) {
       await _showError('$error');

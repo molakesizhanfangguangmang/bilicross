@@ -101,9 +101,7 @@ class BackupCodec {
     final keyId = keyRing.currentKeyId;
     final keyBytes = keyRing.keyFor(keyId);
     if (keyBytes == null) {
-      throw BackupKeyException(
-        '本次构建没有注入备份密钥（$kBackupKeyDefine），无法创建老格式备份',
-      );
+      throw BackupKeyException('本次构建没有注入备份密钥（$kBackupKeyDefine），无法创建老格式备份');
     }
     final body = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
     final header = BackupHeader(
@@ -128,25 +126,37 @@ class BackupCodec {
     final parsed = parseBackup(bytes);
     final header = parsed.header;
 
+    // ⚠️ 解密方式**只按 format_version 决定**，不靠字段推断。
+    //
+    // 之前用 `header.usesPassphrase` 判断，会出一个静默降级：
+    // v2 文件里如果写了**未知的 kdf_algorithm**，`usesPassphrase` 就成了 false，
+    // 于是被当成 v1、进固定密钥分支 —— 把「格式不认识」当成「老格式」处理。
+    // 现在版本号说是什么就是什么，不认识就在对应分支里明确报错。
     final Uint8List keyBytes;
-    if (header.usesPassphrase) {
-      final trimmed = (passphrase ?? '').trim();
-      if (trimmed.isEmpty) {
-        throw BackupPassphraseException('这份备份用口令保护，需要输入口令才能恢复');
-      }
-      keyBytes = await _deriveFromPassphrase(
-        passphrase: trimmed,
-        salt: header.kdfSalt,
-        header: header,
-      );
-    } else {
-      final injected = keyRing.keyFor(header.keyId);
-      if (injected == null) {
-        throw BackupKeyException(
-          '这份备份用的是 key_id=${header.keyId}，当前版本不支持该密钥版本',
+    switch (header.formatVersion) {
+      case kBackupFormatVersionLegacyNoPassword:
+        // v1：只走历史固定密钥，绝不尝试口令派生。
+        final injected = keyRing.keyFor(header.keyId);
+        if (injected == null) {
+          throw BackupKeyException(
+            '这份备份用的是 key_id=${header.keyId}，当前版本不支持该密钥版本',
+          );
+        }
+        keyBytes = injected;
+      case kBackupFormatVersion:
+        // v2：只走用户口令 + Argon2id，绝不回退到固定密钥。
+        final trimmed = (passphrase ?? '').trim();
+        if (trimmed.isEmpty) {
+          throw BackupPassphraseException('这份备份用口令保护，需要输入口令才能恢复');
+        }
+        keyBytes = await _deriveFromPassphrase(
+          passphrase: trimmed,
+          salt: header.kdfSalt,
+          header: header,
         );
-      }
-      keyBytes = injected;
+      default:
+        // parseBackup 已经拦过未知版本，这里只是兜底。
+        throw BackupFormatException('备份格式版本不支持：${header.formatVersion}');
     }
 
     final box = SecretBox(
@@ -181,7 +191,9 @@ class BackupCodec {
     }
     final schema = data['schema'];
     if (schema != kBackupPayloadSchema) {
-      throw BackupFormatException('载荷 schema 不支持：$schema（当前支持 $kBackupPayloadSchema）');
+      throw BackupFormatException(
+        '载荷 schema 不支持：$schema（当前支持 $kBackupPayloadSchema）',
+      );
     }
     return BackupPayload(header: header, data: data);
   }
@@ -195,6 +207,10 @@ class BackupCodec {
   ///
   /// ⚠️ 参数从**头部**读，不是从常量读 —— 以后调参（加大内存/迭代）时，
   /// 老备份照样能按它自己记的参数解出来。
+  ///
+  /// ⚠️ 头部是**不可信输入**，所有校验必须在进 Argon2id **之前**做完：
+  /// 一个内存参数被写成 4 GiB 的畸形文件足以把设备拖死。校验不过就抛
+  /// [BackupFormatException]，**不进入计算**。
   Future<Uint8List> _deriveFromPassphrase({
     required String passphrase,
     required List<int> salt,
@@ -203,6 +219,32 @@ class BackupCodec {
     if (header.kdfAlgorithm != kBackupKdfArgon2id) {
       throw BackupFormatException(
         '这份备份的密钥派生算法不支持：${header.kdfAlgorithm}（当前支持 $kBackupKdfArgon2id = Argon2id）',
+      );
+    }
+    if (salt.length != kBackupSaltLength) {
+      throw BackupFormatException(
+        '备份的 salt 长度不受支持：${salt.length}（应为 $kBackupSaltLength）',
+      );
+    }
+    if (header.kdfMemoryKib < kBackupArgon2MemoryMinKib ||
+        header.kdfMemoryKib > kBackupArgon2MemoryMaxKib) {
+      throw BackupFormatException(
+        '备份的内存参数不受支持：${header.kdfMemoryKib} KiB'
+        '（允许 $kBackupArgon2MemoryMinKib~$kBackupArgon2MemoryMaxKib）',
+      );
+    }
+    if (header.kdfIterations < kBackupArgon2IterationsMin ||
+        header.kdfIterations > kBackupArgon2IterationsMax) {
+      throw BackupFormatException(
+        '备份的迭代次数不受支持：${header.kdfIterations}'
+        '（允许 $kBackupArgon2IterationsMin~$kBackupArgon2IterationsMax）',
+      );
+    }
+    if (header.kdfParallelism < kBackupArgon2ParallelismMin ||
+        header.kdfParallelism > kBackupArgon2ParallelismMax) {
+      throw BackupFormatException(
+        '备份的并行度不受支持：${header.kdfParallelism}'
+        '（允许 $kBackupArgon2ParallelismMin~$kBackupArgon2ParallelismMax）',
       );
     }
     final kdf = Argon2id(
