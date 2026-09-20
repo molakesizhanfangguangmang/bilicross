@@ -76,6 +76,13 @@ class _SettingsPageState extends State<SettingsPage> {
         final settings = state.settings;
         return PageFrame(
           title: l10n.tr('settings.title'),
+          // 固定在右上角、不随内容滚动：设置项很长，滚到下面想保存时
+          // 不用再滚回底部找按钮。只有设置页传它，别的界面不会有这个按钮。
+          trailing: FilledButton.icon(
+            onPressed: _save,
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: Text(l10n.tr('settings.save')),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

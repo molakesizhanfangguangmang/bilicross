@@ -44,26 +44,19 @@ for (const file of candidates) {
   let text = fs.readFileSync(file, 'utf8');
   const before = text;
 
-  // Groovy: versionCode flutterVersionCode.toInteger()
+  // 版本行有好几种写法，全都认：
+  //   Groovy 老模板:  versionCode flutterVersionCode.toInteger()
+  //   Kotlin DSL:     versionCode = flutterVersionCode.toInteger()
+  //   Kotlin DSL 新:  versionCode = flutter.versionCode   ← Flutter 3.47 用的是这个
+  // 上一版只认前两种，CI 里就栽在「没有可改的版本行」上。
   text = text.replace(
-    /versionCode\s+flutterVersionCode\.toInteger\(\)/,
-    `versionCode ${CODE}`,
+    /versionCode\s*=?\s*(?:flutter\.versionCode|flutterVersionCode\.toInteger\(\))/,
+    (m) => (m.includes('=') ? `versionCode = ${CODE}` : `versionCode ${CODE}`),
   );
-  // Kotlin DSL: versionCode = flutterVersionCode.toInteger()
   text = text.replace(
-    /versionCode\s*=\s*flutterVersionCode\.toInteger\(\)/,
-    `versionCode = ${CODE}`,
-  );
-
-  // Groovy: versionName flutterVersionName
-  text = text.replace(
-    /versionName\s+flutterVersionName/,
-    `versionName "${NAME}"`,
-  );
-  // Kotlin DSL: versionName = flutterVersionName
-  text = text.replace(
-    /versionName\s*=\s*flutterVersionName/,
-    `versionName = "${NAME}"`,
+    /versionName\s*=?\s*(?:flutter\.versionName|flutterVersionName)/,
+    (m) =>
+      m.includes('=') ? `versionName = "${NAME}"` : `versionName "${NAME}"`,
   );
 
   if (text === before) {
@@ -76,6 +69,16 @@ for (const file of candidates) {
 }
 
 if (!patched) {
+  // 幂等：值已经是目标值就算成功（重复跑不该报错），
+  // 否则说明模板换了写法，必须报出来 —— 否则版本号会静默编错。
+  const already = candidates.some((file) => {
+    const text = fs.readFileSync(file, 'utf8');
+    return text.includes(CODE) && text.includes(`"${NAME}"`);
+  });
+  if (already) {
+    console.log(`版本已是 ${NAME}（${CODE}），跳过`);
+    process.exit(0);
+  }
   console.error('没有任何文件被改写 —— 模板里的版本行可能换了写法');
   process.exit(1);
 }

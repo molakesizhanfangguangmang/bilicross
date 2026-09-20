@@ -30,27 +30,70 @@ ButtonStyle compactActionStyle() => OutlinedButton.styleFrom(
     );
 
 class PageFrame extends StatelessWidget {
-  const PageFrame({required this.title, required this.child, super.key});
+  const PageFrame({
+    required this.title,
+    required this.child,
+    this.trailing,
+    super.key,
+  });
 
   final String title;
   final Widget child;
 
+  /// 标题右侧的动作（例如设置页的「保存设置」）。
+  ///
+  /// ⚠️ 给了它就**把标题行固定在顶部**、只有内容滚 —— 动作按钮必须一直可点，
+  /// 跟着内容滚走就没意义了。不给就维持原样（标题随内容滚）。
+  /// 只有设置页传它，所以别的界面不会多出按钮。
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
+    final titleRow = Row(
+      children: <Widget>[
+        Expanded(child: Text(title, style: pageTitleStyle(context))),
+        ?trailing,
+      ],
+    );
+
+    if (trailing == null) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 980),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleRow,
+                const SizedBox(height: 16),
+                child,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Align(
       alignment: Alignment.topCenter,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: pageTitleStyle(context)),
-              const SizedBox(height: 16),
-              child,
-            ],
-          ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: titleRow,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                child: child,
+              ),
+            ),
+          ],
         ),
       ),
     );
