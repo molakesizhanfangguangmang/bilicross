@@ -40,6 +40,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'manifest.untitledSection': '未命名段',
     'manifest.sectionEpisodes': '{count} 集',
     'manifest.entryHint': '这个视频属于该合集，进合集页可以挑选要下载的集',
+    'manifest.entryHintLink': '这是该合集的入口，点进去挑选要下载的集',
     'manifest.entryOpen': '选择要下载的集',
     'manifest.selectedReady': '已选 {count} 集，可以加入',
     'manifest.enqueueSelected': '加入任务（已选 {count} 集）',

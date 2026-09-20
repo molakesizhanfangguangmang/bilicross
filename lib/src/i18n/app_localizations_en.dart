@@ -39,6 +39,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'manifest.untitledSection': 'Untitled section',
     'manifest.sectionEpisodes': '{count} episodes',
     'manifest.entryHint': 'This video belongs to the season; open it to pick episodes',
+    'manifest.entryHintLink': 'Entry for this collection — open it to pick episodes',
     'manifest.entryOpen': 'Choose episodes',
     'manifest.selectedReady': '{count} selected, ready to add',
     'manifest.enqueueSelected': 'Add tasks ({count} selected)',

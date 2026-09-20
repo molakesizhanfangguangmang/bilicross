@@ -93,6 +93,8 @@ class _DownloadPageState extends State<DownloadPage> {
               const SizedBox(height: 16),
               if (state.busy || _seasonLoading)
                 const LinearProgressIndicator(minHeight: 2)
+              else if (state.pendingSeason != null)
+                _pendingSeasonResult(context, state, state.pendingSeason!)
               else if (media == null)
                 EmptyState(
                   icon: Icons.video_library_outlined,
@@ -105,6 +107,31 @@ class _DownloadPageState extends State<DownloadPage> {
           ),
         );
       },
+    );
+  }
+
+  /// 空间链接 / lists 链接拉到的合集：**先在首页给一张入口卡片**，
+  /// 点进去才铺清单 —— 与「视频链接带合集」那条路一致，不直接跳页。
+  Widget _pendingSeasonResult(
+    BuildContext context,
+    AppState state,
+    SeasonManifest manifest,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _SeasonEntryCard(
+          manifest: manifest,
+          hint: l10n.tr('manifest.entryHintLink'),
+          onOpen: (rect) => openSeasonSelectPage(
+            context,
+            state,
+            manifest,
+            sourceRect: rect,
+          ),
+        ),
+      ],
     );
   }
 
@@ -213,7 +240,9 @@ class _DownloadPageState extends State<DownloadPage> {
         state.showNotice(l10n.tr('spaceSheet.noEpisodes'));
         return;
       }
-      openSeasonSelectPage(context, state, manifest);
+      // ⚠️ 不直接跳选集页：回到首页给一张入口卡片，用户点进去才铺清单 ——
+      // 与「视频链接带合集」那条路一致（用户 2026-09-20 明确要求）。
+      state.showSeasonEntry(manifest);
     } on Exception catch (error) {
       if (!mounted) return;
       state.showNotice('$error');
@@ -410,10 +439,18 @@ class _DownloadPageState extends State<DownloadPage> {
 ///
 /// 只给入口、不铺清单 —— 单集下载和合集下载是两条路，互不挤占。
 class _SeasonEntryCard extends StatelessWidget {
-  const _SeasonEntryCard({required this.manifest, required this.onOpen});
+  const _SeasonEntryCard({
+    required this.manifest,
+    required this.onOpen,
+    this.hint,
+  });
 
   final SeasonManifest manifest;
   final void Function(Rect? sourceRect) onOpen;
+
+  /// 说明文案。视频带合集时是「这个视频属于该合集」；
+  /// 从空间/lists 链接进来时没有「这个视频」，换一句。
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +465,7 @@ class _SeasonEntryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            l10n.tr('manifest.entryHint'),
+            hint ?? l10n.tr('manifest.entryHint'),
             style: const TextStyle(fontSize: 12, color: Color(0xff6d716f)),
           ),
           const SizedBox(height: 6),

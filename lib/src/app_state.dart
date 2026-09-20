@@ -531,6 +531,26 @@ class AppState extends ChangeNotifier {
 
   // ---------- 解析 ----------
 
+  /// 从空间链接 / lists 链接拉到的合集，等用户在首页点进选集页。
+  ///
+  /// ⚠️ **不直接跳选集页**：跟「视频链接带合集」那条路一致 —— 首页先给一张
+  /// 入口卡片（标题 + 集数/段数），用户点进去才铺清单。
+  SeasonManifest? pendingSeason;
+
+  /// 首页展示一张合集入口卡片。会清掉上一次的解析结果与预检缓存。
+  void showSeasonEntry(SeasonManifest manifest) {
+    pendingSeason = manifest;
+    parsed = null;
+    notice = '';
+    resetPreflight();
+    LogStore.instance.add(
+      '解析',
+      '合集入口：${manifest.title.isEmpty ? '未命名' : manifest.title}'
+      '（${manifest.totalEpisodes} 集 / ${manifest.sections.length} 段）',
+    );
+    notifyListeners();
+  }
+
   /// 解析一个地址。
   ///
   /// [pageOverride] 用来指定多 P 视频里的第几个分 P：不带就按地址里的 `?p=`
@@ -539,6 +559,8 @@ class AppState extends ChangeNotifier {
     addressInput = input;
     busy = true;
     parsed = null;
+    // 换地址了：上一次的空间/lists 合集入口卡片不该继续挂着。
+    pendingSeason = null;
     notice = '';
     // 换了清单：旧的预检结果不能串到新合集上。
     resetPreflight();
