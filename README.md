@@ -4,12 +4,12 @@
 
 # 逸轨（BiliCross）
 
+[![Release](https://img.shields.io/github/v/release/molakesizhanfangguangmang/bilicross?label=%E7%89%88%E6%9C%AC&color=blue)](../../releases/latest)
+
 </div>
 
 逸轨是一个本地运行的 B 站媒体下载与整理客户端。解析、下载、合并在本机完成，
 不依赖外部服务。支持 Windows 与 Android，界面提供简体中文与 English 两种语言。
-
-当前版本：1.1.0
 
 ## 释名
 
@@ -39,6 +39,15 @@
 - 视频轨与音频轨可分别保留或取消。
 - 单文件最多 8 个分片并行下载，支持断点续传；地址过期时按原档位自动重新解析。
 - 任务可暂停（保留分片）或强制结束（连同分片清理）。
+- 支持合集与 UP 主空间批量：合集地址可分集入队，空间列表里可按合集或系列挑选。
+- 入队前逐集预检，不可用或被风控的集会被标出，可只下可用的部分。
+- 命中平台风控（-352）时任务暂停，已下载的部分保留，稍后手动恢复。
+
+### 任务列表
+
+- 按等待、下载中、已下载三栏分组，支持全部暂停、全部终止与批量清理。
+- 单条任务可暂停、继续、强制结束、重试，以及单独重试合并。
+- 清理与清空只删记录和残留文件，不动已下载完的成品。
 
 ### 账号
 
@@ -52,14 +61,16 @@
 - 托盘菜单提供显示主窗口、打开下载目录、暂停全部任务与退出。
 - 有任务运行时退出前会请求确认。可在设置页改为「关闭即退出」。
 
-### 备份与恢复（Windows）
+### 备份与恢复
 
-- 账号信息、设置与任务可导出为加密备份文件，用于安装版与便携版之间迁移。
+- 账号信息、设置与任务可导出为加密备份文件（`.bcbak`），Windows 与 Android 之间也能迁移。
+- 导出时需设置口令（至少 8 位），恢复时需再次输入，口令不保存在备份文件里。
 - 恢复为覆盖式操作，覆盖前自动保留一份回滚备份。
 
 ### 其它
 
 - 界面语言：跟随系统 / 简体中文 / English，选择会保存。
+- 主题色可更换，只影响品牌色；文字与缺档、风控这类状态标记的颜色保持不变。
 - 可自定义启动画面：选一张本地图片，设定停留时长（0–5 秒），默认关闭。
   图片会复制到应用数据目录，原文件移动或删除都不影响。
 - 支持应用内检测更新，启动时也会静默检查一次；发现新版本会列出该版本的更新说明，
@@ -72,8 +83,8 @@
 
 | 包 | 数据位置 | 更新方式 |
 | --- | --- | --- |
-| `BiliCross-windows-x64-setup.exe`（安装版） | `%LOCALAPPDATA%\BiliCross` | 应用内「检测更新」跳转下载，覆盖安装 |
-| `BiliCross-windows-x64-portable.zip`（便携版） | 程序旁的 `data` 目录 | 手动下载新版本替换 |
+| `BiliCross-x.x.x-windows-x64-setup.exe`（安装版） | `%LOCALAPPDATA%\BiliCross` | 应用内「检测更新」跳转下载，覆盖安装 |
+| `BiliCross-x.x.x-windows-x64-portable.zip`（便携版） | 程序旁的 `data` 目录 | 手动下载新版本替换 |
 
 Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26）及以上。
 每个产物附有 `.sha256` 校验文件。
@@ -138,7 +149,7 @@ Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26
 
 ## 致谢
 
-- [BBDownNext](https://github.com/KaiHuaDou)（KaiHuaDou）与 neo-BBDown（bili-vd-bak）提供行为参考。
+- [BBDownNext](https://github.com/KaiHuaDou/BBDownNext) 与 [neo-BBDown](https://github.com/bili-vd-bak/neo-BBDown) 提供行为参考。
 - [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)（SocialSisterYi）提供接口资料。
 
 ## 说明
