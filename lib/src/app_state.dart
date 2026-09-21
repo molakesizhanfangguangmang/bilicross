@@ -17,6 +17,9 @@ import 'core/store.dart';
 import 'i18n/app_localizations.dart';
 import 'i18n/app_localizations_zh.dart';
 
+/// 同名目标的落点。[renamed] 为真表示走了「加编号」分支，调用方据此计数。
+typedef _DuplicateTarget = ({String candidate, String path, bool renamed});
+
 class AppState extends ChangeNotifier {
   AppState._(this.store, this.settings, this.cookie, this.token, this.tasks) {
     persistedSettingsJson = jsonEncode(settings.toJson());
@@ -28,8 +31,8 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// 仅测试用：直接注入依赖建实例，不走 [AppState.load] ——
-  /// 那条路会解析并读写真实的用户数据目录。[store] 一般用 `Store.at(临时目录)`。
+  /// 仅测试用：注入依赖建实例，不走 [AppState.load]（那条会读写真实用户数据目录）。
+  /// 配合 `Store.at(临时目录)` 用。
   @visibleForTesting
   static AppState forTest({
     required Store store,
@@ -733,6 +736,50 @@ class AppState extends ChangeNotifier {
   /// 两位序号：1 -> 01，25 -> 25。
   static String _pad2(int value) => value.toString().padLeft(2, '0');
 
+  /// 同名目标定名。返回 null 表示 `skip` 模式下这一条不登记。
+  ///
+  /// [dir] / [stem] / [extension] 由调用方按各自的落点给（合集落子目录、`.m4a`
+  /// 还是 `.mp4` 只有调用方知道），这里只负责查重与加编号。
+  _DuplicateTarget? _resolveDuplicatePath({
+    required String dir,
+    required String stem,
+    required String extension,
+    required Set<String> taken,
+  }) {
+    final separator = Platform.pathSeparator;
+    var candidate = '$dir$separator$stem';
+    var finalPath = '$candidate.$extension';
+
+    if (!taken.contains(_pathKey(finalPath))) {
+      return (candidate: candidate, path: finalPath, renamed: false);
+    }
+
+    switch (settings.duplicateMode) {
+      case kDuplicateSkip:
+        return null;
+      case kDuplicateRename:
+        // 001 标题.mp4 撞了就试 001 标题 (1).mp4、(2)…… 编号挂在扩展名前，
+        // 所有临时文件从同一个 stem 派生，恢复下载才对得上。
+        var attempt = 1;
+        var renamedStem = stem;
+        while (true) {
+          renamedStem = '$stem ($attempt)';
+          finalPath = '$dir$separator$renamedStem.$extension';
+          if (!taken.contains(_pathKey(finalPath))) break;
+          attempt += 1;
+        }
+        return (
+          candidate: '$dir$separator$renamedStem',
+          path: finalPath,
+          renamed: true,
+        );
+      case kDuplicateOverwrite:
+      default:
+        // 覆盖：沿用原名，等任务开下时由下载器写穿旧文件。
+        return (candidate: candidate, path: finalPath, renamed: false);
+    }
+  }
+
   /// 批量把清单里勾中的集登记进队列。
   ///
   /// **只登记、不解析**：每集的 playurl 要按各自的 cid 单独取，一整部合集
@@ -759,7 +806,6 @@ class AppState extends ChangeNotifier {
     final separator = Platform.pathSeparator;
     final seasonFolder = sanitizeFileName(manifest.title);
     final seasonDir = '$dir$separator$seasonFolder';
-    final duplicateMode = settings.duplicateMode;
 
     // 队列里已有任务占用的路径（规范化后），本批次新登记的也会持续并入。
     final taken = <String>{
@@ -784,35 +830,19 @@ class AppState extends ChangeNotifier {
         // 单集覆盖档位：只有这一集例外，其余集仍按预检给的实际最高档走。
         final video = preflight.videoFor(qualityOverrides[episode.page]);
         final stem = sanitizeFileName('${_pad2(episode.page)} ${episode.title}');
-        var candidate = '$seasonDir$separator$stem';
-        var finalPath = '$candidate.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
-
-        if (taken.contains(_pathKey(finalPath))) {
-          switch (duplicateMode) {
-            case kDuplicateSkip:
-              skipped += 1;
-              continue;
-            case kDuplicateRename:
-              // 001 标题.mp4 撞了就试 001 标题 (1).mp4、(2)…… 编号挂在扩展名前，
-              // 所有临时文件从同一个 stem 派生，恢复下载才对得上。
-              var attempt = 1;
-              var renamedStem = stem;
-              while (true) {
-                renamedStem = '$stem ($attempt)';
-                finalPath =
-                    '$seasonDir$separator$renamedStem.${episode.bvid.isEmpty ? 'm4a' : 'mp4'}';
-                if (!taken.contains(_pathKey(finalPath))) break;
-                attempt += 1;
-              }
-              candidate = '$seasonDir$separator$renamedStem';
-              renamed += 1;
-              break;
-            case kDuplicateOverwrite:
-            default:
-              // 覆盖：什么都不做，等任务开下时由下载器写穿旧文件。
-              break;
-          }
+        final target = _resolveDuplicatePath(
+          dir: seasonDir,
+          stem: stem,
+          extension: episode.bvid.isEmpty ? 'm4a' : 'mp4',
+          taken: taken,
+        );
+        if (target == null) {
+          skipped += 1;
+          continue;
         }
+        if (target.renamed) renamed += 1;
+        final candidate = target.candidate;
+        final finalPath = target.path;
 
         final task = DownloadTask(
           id: '${now.microsecondsSinceEpoch}-${episode.page}',
@@ -888,7 +918,6 @@ class AppState extends ChangeNotifier {
     final source = media.info.bvid.isEmpty
         ? 'https://www.bilibili.com/video/av${media.info.aid}'
         : 'https://www.bilibili.com/video/${media.info.bvid}';
-    final duplicateMode = settings.duplicateMode;
     final taken = <String>{
       for (final task in tasks) _pathKey(task.outputPath),
     };
@@ -903,31 +932,19 @@ class AppState extends ChangeNotifier {
       // 文件名带上 P 序号：多 P 视频一集一个文件，重名会互相覆盖。
       final suffix = page.page > 1 ? ' P${page.page} ${page.part}' : '';
       final stem = sanitizeFileName('${media.info.title}$suffix');
-      var candidate = '$dir$separator$stem';
-      var finalPath = '$candidate.mp4';
-
-      if (taken.contains(_pathKey(finalPath))) {
-        switch (duplicateMode) {
-          case kDuplicateSkip:
-            skipped += 1;
-            continue;
-          case kDuplicateRename:
-            var attempt = 1;
-            var renamedStem = stem;
-            while (true) {
-              renamedStem = '$stem ($attempt)';
-              finalPath = '$dir$separator$renamedStem.mp4';
-              if (!taken.contains(_pathKey(finalPath))) break;
-              attempt += 1;
-            }
-            candidate = '$dir$separator$renamedStem';
-            renamed += 1;
-            break;
-          case kDuplicateOverwrite:
-          default:
-            break;
-        }
+      final target = _resolveDuplicatePath(
+        dir: dir,
+        stem: stem,
+        extension: 'mp4',
+        taken: taken,
+      );
+      if (target == null) {
+        skipped += 1;
+        continue;
       }
+      if (target.renamed) renamed += 1;
+      final candidate = target.candidate;
+      final finalPath = target.path;
 
       final task = DownloadTask(
         id: '${now.microsecondsSinceEpoch}-${page.page}',
@@ -979,6 +996,11 @@ class AppState extends ChangeNotifier {
   bool isPreflighting(int page) => _preflight.isInFlight(page);
 
   PreflightResult preflightOf(int page) => _preflight.of(page);
+
+  /// 仅测试用：直接写预检结果，免去真实请求。
+  @visibleForTesting
+  void seedPreflightForTest(Map<int, PreflightResult> results) =>
+      _preflight.results.addAll(results);
 
   /// 换清单时清空，避免旧合集的结果串到新合集。
   void resetPreflight() => _preflight.reset();
@@ -1312,7 +1334,8 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       _controls.remove(task.id);
-      // 任务停下来了，分片状态定型：让卡片重新判断「重试合并」。
+      _progressPushedAt.remove(task.id);
+      // 分片状态定型，让卡片重新判断「重试合并」。
       _invalidateMergeReady();
       await store.saveTasks(tasks);
       notifyListeners();
@@ -1357,26 +1380,27 @@ class AppState extends ChangeNotifier {
 
   /// 进度回调一秒能来几十次，节流到 100ms 一次再通知界面。
   /// 之前这里只写字段不通知，界面上进度就一直是 0，直到换阶段才跳一下。
-  DateTime _progressPushedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  ///
+  /// 时间戳按任务分别记：共用一个的话，紧跟在前一个任务之后的回调会被吞掉。
+  static const int _progressMinGapMs = 100;
+  final Map<String, DateTime> _progressPushedAt = <String, DateTime>{};
 
   void _pushProgress(DownloadTask task, int received, int total) {
     task.receivedBytes = received;
     task.totalBytes = total;
     final now = DateTime.now();
-    if (now.difference(_progressPushedAt).inMilliseconds < 100) return;
-    _progressPushedAt = now;
+    final last = _progressPushedAt[task.id];
+    if (last != null && now.difference(last).inMilliseconds < _progressMinGapMs) {
+      return;
+    }
+    _progressPushedAt[task.id] = now;
     notifyListeners();
   }
 
   /// 分片是否都还在 —— 任务卡片据此决定「重试合并」按钮显不显示。
   ///
-  /// 结果按任务缓存：卡片 `build` 每次重建都会读它，而底层是同步 `stat`
-  /// （[hasUsableFile] = `existsSync` + `lengthSync`），下载高峰期叠加高频通知
-  /// 会把同步 I/O 压在主 isolate 上。
-  ///
-  /// 分片文件只在两类时点变化：任务运行期间（下载写盘、合并成功后删源），
-  /// 以及用户触发的清理/删除。缓存因此在
-  /// [_invalidateMergeReady] 的调用点统一失效，不在 build 里做失效判断。
+  /// 按任务缓存结果：底层是同步 stat，而卡片每次 build 都会问一次，
+  /// 下载期通知密度高，读盘会直接压在主 isolate 上。
   final Map<String, bool> _mergeReady = <String, bool>{};
 
   bool canRetryMerge(DownloadTask task) {
@@ -1388,10 +1412,8 @@ class AppState extends ChangeNotifier {
     return ready;
   }
 
-  /// 分片文件可能变化后调用：清空缓存，下次读取重新落盘判断。
-  ///
-  /// 清整表而不是按 id 删：调用点少且都不在热路径上，漏掉一个 id 会造成
-  /// 「按钮该出现却不出现」，宁可多算几次。
+  /// 分片可能变化后调用，下次读取重新读盘。
+  /// 清整表而不是按 id 删：调用点少且不在热路径上，漏一个 id 会让按钮该出不出。
   void _invalidateMergeReady() => _mergeReady.clear();
 
   /// 合并成功后原始分片就没用了，顺手清掉，别让下载目录越堆越大。
@@ -1449,12 +1471,8 @@ class AppState extends ChangeNotifier {
         audioPath: task.audioPath,
         outputPath: task.outputPath,
         control: control,
-        // 与下载进度共用同一个节流器：内置合并每写完一个分片就回调一次，
-        // 界面通知按 100ms 节流，但字节字段每次都更新（进度不会停在中途，
-        // 而且合并收尾处还有一次 notifyListeners 兜底）。
-        // ⚠️ 只能节流「通知」，不能降低 onProgress 本身的调用次数 ——
-        // 内置合并的取消检查点（control.throwIfAborted）就挂在这个回调里，
-        // 降频会让「强制结束」变得迟钝。
+        // 与下载进度共用节流器。⚠️ 只能节流这里的通知，不能降低 onProgress
+        // 的调用次数 —— 内置合并的取消检查点就挂在它里面。
         onProgress: (written, total) => _pushProgress(task, written, total),
       );
       task.merged = true;
@@ -1475,6 +1493,7 @@ class AppState extends ChangeNotifier {
       task.message = l10n.tr('msg.muxFailed', {'error': '$error'});
       LogStore.instance.add('合并', '${task.title}：两条路径都失败，保留分片：$error');
     }
+    _progressPushedAt.remove(task.id);
     notifyListeners();
   }
 

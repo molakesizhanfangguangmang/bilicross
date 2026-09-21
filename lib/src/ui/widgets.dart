@@ -227,10 +227,8 @@ class TaskCard extends StatelessWidget {
   final AppState state;
   final DownloadTask task;
 
-  /// 分片都还在时允许单独重跑合并。
-  ///
-  /// 判断走 [AppState.canRetryMerge]：结果由 `AppState` 缓存，
-  /// 避免卡片每次重建都同步 `stat` 磁盘（这里是 build 路径）。
+  /// 分片都还在时允许单独重跑合并。判断走 [AppState.canRetryMerge]（缓存过的），
+  /// 这里在 build 路径上，不能同步 stat。
   bool get _canMerge => state.canRetryMerge(task);
 
   int get _tone => switch (task.stage) {
@@ -306,8 +304,7 @@ class TaskCard extends StatelessWidget {
                 onPressed: running ? null : () => state.retryTask(task.id),
                 child: Text(l10n.tr('tasks.retry')),
               ),
-              // `running` 为真时 && 短路，不在下载/合并途中做磁盘判断 ——
-              // 那时分片还在写，算出来的结果既没意义又正好撞上通知最密的时段。
+              // running 时短路：分片还在写，判断既无意义又正撞上通知最密的时段。
               if (!running && !task.merged && _canMerge)
                 OutlinedButton(
                   onPressed: running ? null : () => state.retryMerge(task.id),
