@@ -400,6 +400,17 @@ class AppLocalizationsEn extends AppLocalizations {
     'logs.verboseOff': 'Verbose logging off',
     'logs.section': 'Log',
 
+    // Rebuild stats (debug only; measures whether per-domain subscriptions pay off)
+    'settings.rebuildStats': 'Rebuild stats',
+    'settings.rebuildStatsHint': 'Log per-page rebuild counts and reset (debug)',
+    'settings.rebuildStatsLogged': 'Written to the run log',
+    'settings.rebuildStatsEmpty': 'No page rebuilds recorded in this period',
+    'rebuild.download': 'Download page',
+    'rebuild.tasks': 'Tasks page',
+    'rebuild.account': 'Account page',
+    'rebuild.settings': 'Settings page',
+    'rebuild.times': '{page} {count}x',
+
     // Web login
     'webLogin.title': 'Web login',
     'webLogin.readCookie': 'Read cookie',

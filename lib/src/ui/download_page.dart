@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/bili_url.dart';
 import '../core/models.dart';
+import '../core/rebuild_stats.dart';
 import '../i18n/app_localizations.dart';
 import 'expand_page_route.dart';
 import 'season_info_sheet.dart';
@@ -57,6 +58,7 @@ class _DownloadPageState extends State<DownloadPage> {
       // 停在解析页也不会被每秒几十次的进度通知拖着重建。
       listenable: state.stableView,
       builder: (context, _) {
+        RebuildStats.tick(RebuildStats.download);
         final media = state.parsed;
         if (media != null) {
           _rememberSelection(media);

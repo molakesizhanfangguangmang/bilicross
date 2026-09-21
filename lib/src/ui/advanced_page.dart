@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/log_store.dart';
 import '../core/models.dart';
+import '../core/rebuild_stats.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
@@ -63,6 +64,36 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
     _appKey.dispose();
     _appSec.dispose();
     super.dispose();
+  }
+
+  /// 取走各页面的重建计数写进运行日志并归零。排错用，不参与业务。
+  void _logRebuildStats(BuildContext context, AppLocalizations l10n) {
+    final counts = RebuildStats.takeAndReset();
+    if (counts.isEmpty) {
+      _toast(context, l10n.tr('settings.rebuildStatsEmpty'));
+      return;
+    }
+    // 固定顺序，避免 Map 迭代顺序让两次结果对不上。
+    const pages = <String>[
+      RebuildStats.download,
+      RebuildStats.tasks,
+      RebuildStats.account,
+      RebuildStats.settings,
+    ];
+    final text = pages
+        .map(
+          (page) => l10n.tr('rebuild.times', {
+            'page': l10n.tr('rebuild.$page'),
+            'count': '${counts[page] ?? 0}',
+          }),
+        )
+        .join(' / ');
+    LogStore.instance.add('重画', text);
+    _toast(context, l10n.tr('settings.rebuildStatsLogged'));
+  }
+
+  void _toast(BuildContext context, String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   @override
@@ -197,6 +228,19 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                   builder: (context) => const LogPage(),
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              leading: const Icon(Icons.bar_chart_outlined),
+              title: Text(l10n.tr('settings.rebuildStats')),
+              subtitle: Text(
+                l10n.tr('settings.rebuildStatsHint'),
+                style: const TextStyle(fontSize: 12, color: kTextMuted),
+              ),
+              onTap: () => _logRebuildStats(context, l10n),
             ),
           ),
           const SizedBox(height: 12),

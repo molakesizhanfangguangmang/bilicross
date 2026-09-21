@@ -384,6 +384,17 @@ class AppLocalizationsZh extends AppLocalizations {
     'logs.verboseOff': '已关闭详细日志',
     'logs.section': '日志',
 
+    // 重建统计（排错用，评估按域订阅是否值得做）
+    'settings.rebuildStats': '重建统计',
+    'settings.rebuildStatsHint': '打印各页面重建次数并归零（排错用）',
+    'settings.rebuildStatsLogged': '已写入运行日志',
+    'settings.rebuildStatsEmpty': '这段时间没有页面重建记录',
+    'rebuild.download': '下载页',
+    'rebuild.tasks': '任务页',
+    'rebuild.account': '账号页',
+    'rebuild.settings': '设置页',
+    'rebuild.times': '{page} {count} 次',
+
     // 网页登录
     'webLogin.title': '网页登录',
     'webLogin.readCookie': '读取 Cookie',
