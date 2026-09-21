@@ -53,7 +53,9 @@ class _DownloadPageState extends State<DownloadPage> {
     final state = widget.state;
     final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
-      listenable: state,
+      // 这一页不显示逐任务进度，订阅不含进度的视图：后台在下东西时
+      // 停在解析页也不会被每秒几十次的进度通知拖着重建。
+      listenable: state.stableView,
       builder: (context, _) {
         final media = state.parsed;
         if (media != null) {

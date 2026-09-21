@@ -113,6 +113,9 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         }
         // 换语言必须重建 MaterialApp：locale 变了整棵树的 Localizations 都要换，
         // 只重建 AppShell 不够。所以监听放在 MaterialApp 外面这一层。
+        // ⚠️ 监听的是 `shellView` 而不是 AppState 本身：外壳只依赖语言、品牌色、
+        // 队列开关与风控标记，其余通知（进度、提示、任务增删…）一律挡在外面，
+        // 否则下载期每秒几十次的进度都会把 MaterialApp 与 ThemeData 重算一遍。
         // Windows 上把窗口与托盘接起来：只做平台外壳，业务动作走回调。
         // 失败只记日志，不影响应用本身（托盘不可用也得能用软件）。
         //
@@ -148,7 +151,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
               : KeyedSubtree(
                   key: const ValueKey<String>('main'),
                   child: ListenableBuilder(
-                    listenable: state,
+                    listenable: state.shellView,
                     builder: (context, _) => _buildApp(state),
                   ),
                 ),
@@ -352,16 +355,10 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     // ⚠️ 这两次刷新**不能**在这里直接调 —— initState 跑在 build 期间
     // （element 正在 mount），而 `refreshAccount()` 在第一个 `await` 之前
-    // 就会同步 `notifyListeners()`（空 Cookie 那条路是纯同步的）。
-    // 它的监听者里有外层那个 `ListenableBuilder`（`_buildApp` 那层），
-    // 此刻**正在构建**、又是当前 element 的祖先 —— 于是被标脏并撞上断言：
-    //
-    //   setState() or markNeedsBuild() called during build.
-    //   ... while dispatching notifications for AppState
-    //
-    // 表现：debug 下每次启动都在控制台冒这段红字；release 里断言被编译掉，
-    // 不崩，但那一次通知等于丢在当前帧（界面要等下一次通知才更新）。
-    // 放到首帧之后再跑就没事 —— 代价是一帧延迟，用户看不出来，
+    // 就会同步 `notifyListeners()`（空 Cookie 那条路是纯同步的），于是撞上
+    // 「setState() or markNeedsBuild() called during build」断言：
+    // debug 下每次启动冒一段红字，release 里断言被编译掉、不崩，但那一次通知
+    // 等于丢在当前帧。放到首帧之后再跑就没事 —— 代价是一帧延迟，用户看不出来，
     // 何况这两件事本来就是异步的。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -466,80 +463,78 @@ class _AppShellState extends State<AppShell> {
         key: _settingsKey,
       ),
     ];
-    return ListenableBuilder(
-      listenable: state,
-      builder: (context, _) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 760;
-            return Scaffold(
-              appBar: AppBar(
-                // ⚠️ 标题显示**当前页名**，不再是应用名 ——
-                // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
-                // 手机上两条标题栏叠着，白占一整行。测试版标识交给满屏水印，
-                // 不再挤在标题里。
-                title: Text(_destinations(l10n)[index].label),
-                actions: [
-                  // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。
-                  if (index == _settingsIndex)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: _settingsCanSave,
-                      builder: (context, canSave, _) => Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: TextButton.icon(
-                          onPressed: canSave
-                              ? () => _settingsKey.currentState?.save()
-                              : null,
-                          icon: const Icon(Icons.save_outlined, size: 18),
-                          label: Text(l10n.tr('settings.save')),
+    // ⚠️ 这里不要再套一层监听 AppState 的 ListenableBuilder：外壳本来就由
+    // `_buildApp` 外层那个订阅 `shellView` 的构建器重建，两层监听同一个源
+    // 只会让每次通知都把壳（含 ThemeData 与整列导航）重建两遍。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 760;
+        return Scaffold(
+          appBar: AppBar(
+            // ⚠️ 标题显示**当前页名**，不再是应用名 ——
+            // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
+            // 手机上两条标题栏叠着，白占一整行。测试版标识交给满屏水印，
+            // 不再挤在标题里。
+            title: Text(_destinations(l10n)[index].label),
+            actions: [
+              // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。
+              if (index == _settingsIndex)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _settingsCanSave,
+                  builder: (context, canSave, _) => Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: TextButton.icon(
+                      onPressed: canSave
+                          ? () => _settingsKey.currentState?.save()
+                          : null,
+                      icon: const Icon(Icons.save_outlined, size: 18),
+                      label: Text(l10n.tr('settings.save')),
+                    ),
+                  ),
+                ),
+              // 状态标（队列运行中 / Dart 引擎）**只在安卓端的设置页**隐藏：
+              // 那是用户 2026-09-21 明确要求的范围（桌面端保持原样），
+              // 理由是设置页标题栏已经有保存按钮，再挤一个标就满了。
+              if (!Platform.isAndroid || index != _settingsIndex)
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: Center(
+                    child: StateChip(
+                      text: state.queueRunning
+                          ? l10n.tr('app.queueRunning')
+                          : l10n.tr('app.dartEngine'),
+                      tone: state.queueRunning ? 1 : 0,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          body: Row(
+            children: [
+              if (wide)
+                NavigationRail(
+                  selectedIndex: index,
+                  labelType: NavigationRailLabelType.all,
+                  onDestinationSelected: (value) => setState(() => index = value),
+                  destinations: _destinations(l10n)
+                      .map(
+                        (item) => NavigationRailDestination(
+                          icon: item.icon,
+                          label: Text(item.label),
                         ),
-                      ),
-                    ),
-                  // 状态标（队列运行中 / Dart 引擎）**只在安卓端的设置页**隐藏：
-                  // 那是用户 2026-09-21 明确要求的范围（桌面端保持原样），
-                  // 理由是设置页标题栏已经有保存按钮，再挤一个标就满了。
-                  if (!Platform.isAndroid || index != _settingsIndex)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: Center(
-                        child: StateChip(
-                          text: state.queueRunning
-                              ? l10n.tr('app.queueRunning')
-                              : l10n.tr('app.dartEngine'),
-                          tone: state.queueRunning ? 1 : 0,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              body: Row(
-                children: [
-                  if (wide)
-                    NavigationRail(
-                      selectedIndex: index,
-                      labelType: NavigationRailLabelType.all,
-                      onDestinationSelected: (value) => setState(() => index = value),
-                      destinations: _destinations(l10n)
-                          .map(
-                            (item) => NavigationRailDestination(
-                              icon: item.icon,
-                              label: Text(item.label),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  Expanded(child: pages[index]),
-                ],
-              ),
-              bottomNavigationBar: wide
-                  ? null
-                  : NavigationBar(
-                      selectedIndex: index,
-                      onDestinationSelected: (value) => setState(() => index = value),
-                      destinations: _destinations(l10n),
-                    ),
-            );
-          },
+                      )
+                      .toList(),
+                ),
+              Expanded(child: pages[index]),
+            ],
+          ),
+          bottomNavigationBar: wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: index,
+                  onDestinationSelected: (value) => setState(() => index = value),
+                  destinations: _destinations(l10n),
+                ),
         );
       },
     );

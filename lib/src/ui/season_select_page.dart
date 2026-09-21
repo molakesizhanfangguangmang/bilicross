@@ -132,7 +132,8 @@ class _SeasonSelectPageState extends State<SeasonSelectPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
-      listenable: widget.state,
+      // 这一页看的是预检结果，与任务字节进度无关。
+      listenable: widget.state.stableView,
       builder: (context, _) {
         final state = widget.state;
         final total = _selected.length;

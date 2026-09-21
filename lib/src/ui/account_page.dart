@@ -23,7 +23,8 @@ class AccountPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return ListenableBuilder(
-      listenable: state,
+      // 账号状态与任务进度无关，订阅不含进度的视图。
+      listenable: state.stableView,
       builder: (context, _) {
         final cookie = state.cookie;
         final webLoginSupported =

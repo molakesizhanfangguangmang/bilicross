@@ -107,7 +107,10 @@ class SettingsPageState extends State<SettingsPage> {
     });
     final windows = Theme.of(context).platform == TargetPlatform.windows;
     return ListenableBuilder(
-      listenable: state,
+      // 订阅不含进度的视图，不是 `shellView`：设置页要靠通知重算
+      // 「有没有未保存的改动」，而保存动作本身（含高级设置里那几处）
+      // 只是普通通知，不该被快照过滤掉。
+      listenable: state.stableView,
       builder: (context, _) {
         final settings = state.settings;
         return PageFrame(

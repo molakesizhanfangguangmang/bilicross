@@ -4,6 +4,9 @@ import 'package:bilicross/src/app_state.dart';
 import 'package:bilicross/src/core/models.dart';
 import 'package:bilicross/src/core/store.dart';
 import 'package:bilicross/src/i18n/app_localizations.dart';
+import 'package:bilicross/src/ui/account_page.dart';
+import 'package:bilicross/src/ui/download_page.dart';
+import 'package:bilicross/src/ui/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -141,5 +144,36 @@ void main() {
     state.showNotice('提示');
     await tester.pump();
     expect(builds, base + 1, reason: '非进度通知仍要重建');
+  });
+
+  testWidgets('不显示进度的页面都订阅了稳定视图', (tester) async {
+    // 哪个页面订阅哪一路，本身就是约定：换成 AppState 会把进度一起收下，
+    // 换成 shellView 又会漏掉（比如设置页要看的 ffmpeg 路径）。
+    Finder subscribedTo(Listenable target) => find.byWidgetPredicate(
+          (widget) =>
+              widget is ListenableBuilder && identical(widget.listenable, target),
+        );
+
+    final pages = <Widget>[
+      DownloadPage(state: state),
+      AccountPage(state: state),
+      SettingsPage(state: state, canSave: ValueNotifier<bool>(false)),
+    ];
+    for (final page in pages) {
+      // 页面在外壳里是 Scaffold 的 body，自己不带 Material。
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: page)),
+      );
+      expect(
+        subscribedTo(state.stableView),
+        findsWidgets,
+        reason: '${page.runtimeType} 该订阅 stableView',
+      );
+      expect(
+        subscribedTo(state),
+        findsNothing,
+        reason: '${page.runtimeType} 不该整页订阅 AppState（会跟着进度重建）',
+      );
+    }
   });
 }
