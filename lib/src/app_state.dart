@@ -205,7 +205,7 @@ class AppState extends ChangeNotifier {
         task.stage = TaskStage.stopped;
       }
     }
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
   }
 
@@ -213,7 +213,7 @@ class AppState extends ChangeNotifier {
   /// 不碰磁盘上已经下好的文件。失败的任务不在这里，不受影响。
   void removeDoneTasks() {
     tasks.removeWhere((task) => task.stage == TaskStage.done);
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
   }
 
@@ -248,7 +248,7 @@ class AppState extends ChangeNotifier {
       }
     }
     if (touchedIdle) {
-      unawaited(store.saveTasks(tasks));
+      _persistTasks();
       notifyListeners();
     }
   }
@@ -286,7 +286,7 @@ class AppState extends ChangeNotifier {
       changed = true;
     }
     if (!changed) return;
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
     unawaited(pumpQueue());
   }
@@ -392,7 +392,7 @@ class AppState extends ChangeNotifier {
       task.videoUrl = '';
       task.audioUrl = '';
     }
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
     unawaited(pumpQueue());
   }
@@ -691,7 +691,7 @@ class AppState extends ChangeNotifier {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     tasks.insert(0, task);
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     LogStore.instance.add('任务', '入队：${task.title}（等待开始）');
     notifyListeners();
     return task;
@@ -840,7 +840,7 @@ class AppState extends ChangeNotifier {
     }
 
     if (enqueued > 0) {
-      unawaited(store.saveTasks(tasks));
+      _persistTasks();
       LogStore.instance.add(
         '任务',
         '批量入队：${manifest.title} —— 加入 $enqueued，跳过 $skipped，重命名 $renamed',
@@ -937,7 +937,7 @@ class AppState extends ChangeNotifier {
     }
 
     if (enqueued > 0) {
-      unawaited(store.saveTasks(tasks));
+      _persistTasks();
       LogStore.instance.add(
         '任务',
         '批量入队（多 P）：${media.info.title} —— 加入 $enqueued，'
@@ -1055,7 +1055,7 @@ class AppState extends ChangeNotifier {
 
   void removeTask(String id) {
     tasks.removeWhere((task) => task.id == id);
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
   }
 
@@ -1146,7 +1146,7 @@ class AppState extends ChangeNotifier {
     task.merged = false;
     task.videoUrl = '';
     task.audioUrl = '';
-    unawaited(store.saveTasks(tasks));
+    _persistTasks();
     notifyListeners();
     unawaited(pumpQueue());
   }
@@ -1300,6 +1300,42 @@ class AppState extends ChangeNotifier {
       await store.saveTasks(tasks);
       notifyListeners();
     }
+  }
+
+  /// 后台落盘任务列表：不阻塞调用点，失败写日志。
+  ///
+  /// 既不静默吞掉错误（写进 [LogStore]），也不产生未处理异步异常（错误在这里被收掉）。
+  /// 需要确认落盘结果的调用点仍然用 `await store.saveTasks(...)`，不走这里。
+  void _persistTasks() {
+    unawaited(
+      store.saveTasks(tasks).catchError((Object error, StackTrace stack) {
+        LogStore.instance.add('存储', '保存任务失败：${_saveFailureText(error)}');
+        // 堆栈标成 detail：只在详细日志打开时才记录，避免默认日志沾上构建期路径。
+        LogStore.instance.add('存储', '保存任务失败堆栈：$stack', detail: true);
+      }),
+    );
+  }
+
+  /// 把保存失败的错误压成一行日志文本，**不含用户数据目录的绝对路径**。
+  ///
+  /// ⚠️ 不要直接写 `$error`：`FileSystemException.toString()` 会把 `path` 拼进去，
+  /// 那是用户数据目录的绝对路径。这里只取异常类型、简短说明与系统错误码。
+  /// 其它异常类型一律**只记类型** —— 本项目自己的异常消息里也会拼路径
+  /// （如「文件不存在：/…」）。
+  /// [LogStore.add] 内部的 `mask()` 只挡凭据、不挡路径，纵深保护不能代替调用点做最小化。
+  String _saveFailureText(Object error) {
+    final parts = <String>[error.runtimeType.toString()];
+    if (error is FileSystemException) {
+      // dart:io 抛 FileSystemException 时 message 是固定文案（路径单独放在 path 字段），
+      // osError.message 是系统文案，两者都不含路径。
+      if (error.message.isNotEmpty) parts.add(error.message);
+      final os = error.osError;
+      if (os != null) parts.add('osError=${os.errorCode} ${os.message}');
+    }
+    final text = parts.join(' | ');
+    // 兜底：无论异常从哪来，都不让数据目录前缀出现在日志里。
+    final root = store.root.path;
+    return root.isEmpty ? text : text.replaceAll(root, '<数据目录>');
   }
 
   /// 进度回调一秒能来几十次，节流到 100ms 一次再通知界面。
