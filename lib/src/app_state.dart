@@ -138,6 +138,57 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  // ---------- 界面通知边界 ----------
+  //
+  // AppState 是个「粗通知源」：50 多处 notifyListeners()，监听者只知道「有东西变了」，
+  // 只能整页重建。其中最密的是任务字节进度（每个任务每秒最多 10 次，并发任务还会叠），
+  // 而外壳重建一次要重算 ThemeData 与整列导航、任务页重建一次要摊平整个列表 ——
+  // 都不该由一次进度回调付账。
+  //
+  // 这里**不在那 50 多个通知点上逐个分类**，而是把通知过滤成界面真正关心的几路。
+  // 分类的失败方式是「漏标一处 → 某个控件再也不刷新」，那是本项目最难查的回归；
+  // 过滤的失败方式最多是「多刷了一次」。两者不对称，所以选过滤。
+
+  /// 本次通知是否只改了任务的字节进度。仅在 [notifyListeners] 派发期间为真。
+  bool _progressOnly = false;
+
+  /// 通知界面：任务字节进度有更新。
+  ///
+  /// 与 [notifyListeners] 分开的唯一理由是让不看进度的界面（见 [stableView]）
+  /// 能免疫这一路最高频的通知；通知的到达时机与频率都没变。
+  void _notifyProgress() {
+    _progressOnly = true;
+    try {
+      notifyListeners();
+    } finally {
+      _progressOnly = false;
+    }
+  }
+
+  /// 外壳（MaterialApp、顶栏、导航）订阅这个。
+  ///
+  /// 只有快照里的几项变了才通知 —— 其余（进度、busy、notice、任务增删、预检结果……）
+  /// 全部挡在外面。
+  ///
+  /// ⚠️ 外壳 build 期间多读一项可变状态，就把那一项加进快照
+  /// （见 `main.dart` 的 `_buildApp` 与 `_AppShellState.build`），否则那一项变了
+  /// 外壳不会重建。
+  late final Listenable shellView = _StateView(
+    this,
+    snapshot: () => (
+      locale: settings.localeCode,
+      theme: settings.themeId,
+      queue: queueRunning,
+      risk: _riskControlHit,
+      splashSeconds: settings.splashSeconds,
+    ),
+  );
+
+  /// 不含任务字节进度的订阅对象：给**不显示逐任务进度**的界面用
+  /// （下载页、账号页、设置页、选集页）。**任务页要显示进度，必须直接订阅
+  /// AppState 本身**，换到这里进度就停更了。
+  late final Listenable stableView = _StateView(this, ignoreProgress: true);
+
   // ---------- 设置 ----------
 
   Future<void> saveSettings() async {
@@ -1394,8 +1445,14 @@ class AppState extends ChangeNotifier {
       return;
     }
     _progressPushedAt[task.id] = now;
-    notifyListeners();
+    _notifyProgress();
   }
+
+  /// 仅测试用：从下载/合并真正走的那条入口发一次进度通知（含节流），
+  /// 用来钉住 [stableView] 确实吞掉了这一路。
+  @visibleForTesting
+  void pushProgressForTest(DownloadTask task, int received, int total) =>
+      _pushProgress(task, received, total);
 
   /// 分片是否都还在 —— 任务卡片据此决定「重试合并」按钮显不显示。
   ///
@@ -1603,6 +1660,40 @@ class AppState extends ChangeNotifier {
     }
     _controls.clear();
     api.close();
+    super.dispose();
+  }
+}
+
+/// 从 [AppState] 上切出来的一小块可监听视图。
+///
+/// 两种过滤可叠加，都在**通知到达时**生效，不改变 AppState 自己的通知时机：
+/// - [ignoreProgress]：吞掉「只改了任务字节进度」的通知；
+/// - [snapshot]：快照用记录类型（按值比较），只有真的变了才往下传。
+class _StateView extends ChangeNotifier {
+  _StateView(this._state, {this.ignoreProgress = false, this.snapshot})
+      : _last = snapshot?.call() {
+    _state.addListener(_onChanged);
+  }
+
+  final AppState _state;
+  final bool ignoreProgress;
+  final Object? Function()? snapshot;
+  Object? _last;
+
+  void _onChanged() {
+    if (ignoreProgress && _state._progressOnly) return;
+    final read = snapshot;
+    if (read != null) {
+      final value = read();
+      if (value == _last) return;
+      _last = value;
+    }
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _state.removeListener(_onChanged);
     super.dispose();
   }
 }
