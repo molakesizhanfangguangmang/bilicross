@@ -145,7 +145,8 @@ class Store {
     Map<String, dynamic> payload, {
     int keepBackups = 0,
   }) {
-    final contents = const JsonEncoder.withIndent('  ').convert(payload);
+    // 紧凑输出：读写两侧都不依赖缩进，带缩进只是白占体积。
+    final contents = jsonEncode(payload);
     return _enqueue(
       file.absolute.path,
       () => _performWrite(file, contents, keepBackups: keepBackups),
