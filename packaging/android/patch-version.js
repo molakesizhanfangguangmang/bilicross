@@ -48,13 +48,20 @@ for (const file of candidates) {
   //   Groovy 老模板:  versionCode flutterVersionCode.toInteger()
   //   Kotlin DSL:     versionCode = flutterVersionCode.toInteger()
   //   Kotlin DSL 新:  versionCode = flutter.versionCode   ← Flutter 3.47 用的是这个
-  // 上一版只认前两种，CI 里就栽在「没有可改的版本行」上。
+  //   **已打过补丁的**: versionCode = 24 / versionName = "2.0.2.1"
+  // 上一版只认前三种，CI 里就栽在「没有可改的版本行」上。
+  //
+  // ⚠️ 第四种必须也认（2026-09-21 本地构建实际踩到）：CI 每次都 flutter create
+  //   重生 android/，所以永远看到的是模板写法；但**本地编译副本的 android/ 是
+  //   复用不重生的**，第二次构建时那两行已经是上一次写进去的字面量，
+  //   只认模板写法就会报「没有可改的版本行」而中断，且旧的字面量版本号会
+  //   静默留在 gradle 里（比报错更危险的是不报错的那种情况）。
   text = text.replace(
-    /versionCode\s*=?\s*(?:flutter\.versionCode|flutterVersionCode\.toInteger\(\))/,
+    /versionCode\s*=?\s*(?:flutter\.versionCode|flutterVersionCode\.toInteger\(\)|\d+)/,
     (m) => (m.includes('=') ? `versionCode = ${CODE}` : `versionCode ${CODE}`),
   );
   text = text.replace(
-    /versionName\s*=?\s*(?:flutter\.versionName|flutterVersionName)/,
+    /versionName\s*=?\s*(?:flutter\.versionName|flutterVersionName|"[^"]*")/,
     (m) =>
       m.includes('=') ? `versionName = "${NAME}"` : `versionName "${NAME}"`,
   );
