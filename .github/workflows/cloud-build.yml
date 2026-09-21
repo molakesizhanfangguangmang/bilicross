@@ -594,7 +594,8 @@ jobs:
             $iscc = Find-Iscc
           }
           if (-not $iscc) { throw '未找到 ISCC.exe（Inno Setup 安装可能失败）' }
-          & $iscc packaging\windows\BiliCross.iss
+          # 版本号同样来自 packaging/version.json，构建时注入，避免 .iss 里的兜底值过期。
+          & $iscc "/DMyAppVersion=$env:APP_VERSION_NAME" packaging\windows\BiliCross.iss
           if (-not (Test-Path BiliCross-windows-x64-setup.exe)) { throw '安装包未生成' }
           $hash = (Get-FileHash BiliCross-windows-x64-setup.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  BiliCross-windows-x64-setup.exe" | Set-Content BiliCross-windows-x64-setup.exe.sha256 -Encoding ascii
