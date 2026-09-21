@@ -6,8 +6,6 @@ import 'package:bilicross/src/core/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 全部用例只用中性假数据：不写真实账号、Cookie、Token，也不依赖本机任何目录。
-///
-/// ⚠️ 本轮处于停止编译状态，这些用例**尚未执行**。
 DownloadTask _task(String id) => DownloadTask(
       id: id,
       title: 'title-$id',
@@ -193,6 +191,20 @@ void main() {
       await store.saveTasks(tasks);
       final loaded = await store.loadTasks();
       expect(loaded.single.toJson(), tasks.single.toJson());
+    });
+
+    test('任务落盘是紧凑 JSON，不带缩进', () async {
+      await store.saveTasks(<DownloadTask>[_task('compact-on-write')]);
+      final raw = store.taskFile.readAsStringSync();
+      expect(jsonEncode(jsonDecode(raw)), raw.trim());
+      expect(raw.contains('\n  '), isFalse);
+    });
+
+    test('设置落盘同样是紧凑 JSON', () async {
+      await store.saveSettings(AppSettings());
+      final raw = store.settingsFile.readAsStringSync();
+      expect(jsonEncode(jsonDecode(raw)), raw.trim());
+      expect(raw.contains('\n  '), isFalse);
     });
 
     test('损坏的 JSON 回落成空列表，不抛异常', () async {
