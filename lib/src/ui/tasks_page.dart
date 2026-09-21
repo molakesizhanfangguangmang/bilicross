@@ -113,7 +113,8 @@ class _TasksPageState extends State<TasksPage> {
     return <List<DownloadTask>>[for (final key in order) groups[key]!];
   }
 
-  List<DownloadTask> _filter(List<DownloadTask> tasks) {    switch (_tab) {
+  List<DownloadTask> _filter(List<DownloadTask> tasks) {
+    switch (_tab) {
       case TaskTab.waiting:
         return tasks.where(_isWaiting).toList();
       case TaskTab.running:
@@ -123,6 +124,14 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
+  /// 摊平结果缓存。`_rows` 要遍历全部分组并逐行 new 对象，而界面重建由通知驱动，
+  /// 下载期每秒来好几次。
+  ///
+  /// 键只覆盖影响**行的结构**的字段：进度字段（`receivedBytes` / `totalBytes`）
+  /// 不在其中 —— 行里存的是任务引用，进度变了照样刷新，不必重排。
+  int? _rowsKey;
+  List<_ListRow> _rowsCache = const <_ListRow>[];
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -131,12 +140,31 @@ class _TasksPageState extends State<TasksPage> {
       builder: (context, _) {
         final state = widget.state;
         final all = state.tasks;
-        final visible = _filter(all);
-        final rows = _rows(visible);
 
-        final waitingCount = all.where(_isWaiting).length;
-        final runningCount = all.where(_isRunning).length;
-        final doneCount = all.where((t) => t.stage == TaskStage.done).length;
+        // 三个计数合成一次遍历，顺带算出行的结构指纹。
+        var waitingCount = 0;
+        var runningCount = 0;
+        var doneCount = 0;
+        var structure = 0;
+        for (final task in all) {
+          if (_isWaiting(task)) {
+            waitingCount++;
+          } else if (_isRunning(task)) {
+            runningCount++;
+          } else if (task.stage == TaskStage.done) {
+            doneCount++;
+          }
+          structure = Object.hash(structure, task.id, task.batchId,
+              task.sectionId, task.sectionTitle, task.stage);
+        }
+
+        final visible = _filter(all);
+        final key = Object.hash(_tab, structure);
+        if (key != _rowsKey) {
+          _rowsKey = key;
+          _rowsCache = _rows(visible);
+        }
+        final rows = _rowsCache;
 
         // 手机端：标题与状态并成一行，省下一整行的高度。
         final compact = isCompactLayout(context);
