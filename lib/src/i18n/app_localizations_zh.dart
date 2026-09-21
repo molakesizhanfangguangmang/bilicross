@@ -329,10 +329,11 @@ class AppLocalizationsZh extends AppLocalizations {
     'theme.ochre': '赭石',
     'theme.violet': '黛紫',
     'theme.graphite': '石墨',
-    'settings.network': '网络与高级',
+    'settings.network': '网络',
     'settings.proxy': '代理',
     'settings.uaHint': '留空使用内置短串 Mozilla/5.0',
     'settings.uaHelper': '只作用于网页请求与网页地址下载；移动端下载地址固定用内置短串',
+    'settings.appParams': 'App 参数',
     'settings.appKeyHint': 'AppKey/AppSec 会随客户端分发，无法真正保密；'
         '只用于申请 APP 授权码。',
     'settings.engine': '解析引擎',

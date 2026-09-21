@@ -16,7 +16,9 @@ import 'palette.dart';
 /// 高级设置：低频、偏配置的项收在这里，设置主页只留常用项。
 ///
 /// 语言不在这里——它是新用户最先要用的一项，放在主页更容易找到。
-/// 「网络与高级」（代理 / UA / AppKey / AppSec）2026-09-20 从主页搬了过来。
+/// 网络相关的项（代理 / UA / AppKey / AppSec）2026-09-20 从主页搬了过来，
+/// 2026-09-21 起拆成两张卡：「网络」（代理 / UA，管请求怎么发出去）与
+/// 「App 参数」（AppKey / AppSec，申请 APP 授权码用）。
 class AdvancedSettingsPage extends StatefulWidget {
   const AdvancedSettingsPage({super.key, required this.state});
 
@@ -114,6 +116,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
+          // 网络：决定「请求怎么发出去」的两项 —— 代理与 User-Agent。
           SectionCard(
             title: l10n.tr('settings.network'),
             child: Column(
@@ -137,7 +140,16 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                     helperText: l10n.tr('settings.uaHelper'),
                   ),
                 ),
-                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // App 参数：申请 APP 授权码用的 AppKey / AppSec。
+          SectionCard(
+            title: l10n.tr('settings.appParams'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
                 TextField(
                   controller: _appKey,
                   decoration: const InputDecoration(labelText: 'AppKey'),

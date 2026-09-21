@@ -495,17 +495,20 @@ class _AppShellState extends State<AppShell> {
                         ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Center(
-                      child: StateChip(
-                        text: state.queueRunning
-                            ? l10n.tr('app.queueRunning')
-                            : l10n.tr('app.dartEngine'),
-                        tone: state.queueRunning ? 1 : 0,
+                  // 状态标（队列运行中 / Dart 引擎）在设置页不显示 ——
+                  // 那里标题栏已经有保存按钮，再挤一个标就满了。
+                  if (index != _settingsIndex)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: Center(
+                        child: StateChip(
+                          text: state.queueRunning
+                              ? l10n.tr('app.queueRunning')
+                              : l10n.tr('app.dartEngine'),
+                          tone: state.queueRunning ? 1 : 0,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               body: Row(

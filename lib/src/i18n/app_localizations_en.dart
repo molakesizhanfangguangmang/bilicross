@@ -340,11 +340,12 @@ class AppLocalizationsEn extends AppLocalizations {
     'theme.ochre': 'Ochre',
     'theme.violet': 'Violet',
     'theme.graphite': 'Graphite',
-    'settings.network': 'Network & advanced',
+    'settings.network': 'Network',
     'settings.proxy': 'Proxy',
     'settings.uaHint': 'Leave empty to use the built-in short string Mozilla/5.0',
     'settings.uaHelper': 'Applies to web requests and web-URL downloads only; '
         'mobile download URLs always use the built-in short string.',
+    'settings.appParams': 'App parameters',
     'settings.appKeyHint': 'AppKey/AppSec ship with the client and cannot really '
         'be kept secret; they are only used to request an app auth code.',
     'settings.engine': 'Parse engine',
