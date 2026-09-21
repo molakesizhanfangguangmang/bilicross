@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'abort.dart';
 import 'bili_api.dart';
+import 'log_store.dart';
 
 /// 一个 MP4 盒子。`size` 是整盒长度，`headerSize` 是 8 或 16（64 位长度时）。
 class Mp4Box {
@@ -176,6 +177,7 @@ class Fmp4Merger {
         return;
       }
       if (message is _MergeDoneMessage) {
+        _logTimings(message.timings);
         done.complete(
           Fmp4MergeResult(
             bytes: message.bytes,
@@ -222,12 +224,13 @@ class Fmp4Merger {
     }
   }
 
-  static Future<Fmp4MergeResult> _mergeInternal({
+  static Future<(Fmp4MergeResult, _MergeTimings)> _mergeInternal({
     required String videoPath,
     required String audioPath,
     required String outputPath,
     Future<void> Function(int written, int total)? onProgress,
   }) async {
+    final clock = Stopwatch()..start();
     final video = await _open(videoPath);
     var tempPath = '';
     IOSink? sink;
@@ -235,6 +238,7 @@ class Fmp4Merger {
     try {
       final audio = await _open(audioPath);
       audioHandle = audio;
+      final scanMicros = clock.elapsedMicroseconds;
       if (video.fragments.isEmpty) {
         throw BiliException('视频流不是分片 MP4（没有 moof），内置合并无法处理');
       }
@@ -273,9 +277,12 @@ class Fmp4Merger {
         });
 
       var total = video.ftyp.length + mergedMoov.length;
+      var moofBytes = 0;
       for (final entry in entries) {
         total += entry.fragment.moof.length + entry.fragment.mdatSize;
+        moofBytes += entry.fragment.moof.length;
       }
+      final buildMicros = clock.elapsedMicroseconds - scanMicros;
 
       tempPath = '$outputPath.part';
       final temp = File(tempPath);
@@ -306,6 +313,7 @@ class Fmp4Merger {
       await sink.flush();
       await sink.close();
       sink = null;
+      final writeMicros = clock.elapsedMicroseconds - scanMicros - buildMicros;
 
       await _verify(
         tempPath,
@@ -313,16 +321,31 @@ class Fmp4Merger {
         expectedFragments: entries.length,
         expectedTrackIds: <int>[...video.trackIds, ...mapping.values],
       );
+      // ⚠️ 先拿到这组数再谈动 `_verify`：没有实测占比就优化它，是拿产物可播放性换未知收益。
+      final timings = _MergeTimings(
+        scanMicros: scanMicros,
+        buildMicros: buildMicros,
+        writeMicros: writeMicros,
+        verifyMicros:
+            clock.elapsedMicroseconds - scanMicros - buildMicros - writeMicros,
+        totalMicros: clock.elapsedMicroseconds,
+        outputBytes: total,
+        fragments: entries.length,
+        moofBytes: moofBytes,
+      );
 
       final target = File(outputPath);
       if (await target.exists()) await target.delete();
       await File(tempPath).rename(outputPath);
       tempPath = '';
 
-      return Fmp4MergeResult(
-        bytes: total,
-        fragments: entries.length,
-        durationSeconds: maxSeconds,
+      return (
+        Fmp4MergeResult(
+          bytes: total,
+          fragments: entries.length,
+          durationSeconds: maxSeconds,
+        ),
+        timings,
       );
     } finally {
       if (sink != null) {
@@ -336,6 +359,23 @@ class Fmp4Merger {
       if (audioHandle != null) await audioHandle.close();
     }
   }
+
+  /// 只在主 isolate 调：后台 isolate 各有一份 [LogStore] 内存，在那里写界面看不到。
+  static void _logTimings(_MergeTimings t) {
+    final verifyPct =
+        t.totalMicros == 0 ? 0 : (t.verifyMicros * 100 / t.totalMicros).round();
+    LogStore.instance.add(
+      '合并',
+      '分片 ${t.fragments}，moof ${_mib(t.moofBytes)}，产物 ${_mib(t.outputBytes)}；'
+      '扫描 ${_sec(t.scanMicros)}s / 构建 ${_sec(t.buildMicros)}s / '
+      '写入 ${_sec(t.writeMicros)}s / 校验 ${_sec(t.verifyMicros)}s（占 $verifyPct%）；'
+      '内部合计 ${_sec(t.totalMicros)}s',
+    );
+  }
+
+  static String _sec(int micros) => (micros / 1000000).toStringAsFixed(2);
+
+  static String _mib(int bytes) => '${(bytes / (1 << 20)).toStringAsFixed(1)}MB';
 
   /// 选一个不与已有轨道冲突的编号。
   static int _pickTrackId(List<int> used) {
@@ -893,11 +933,36 @@ class _MergeDoneMessage {
     required this.bytes,
     required this.fragments,
     required this.durationSeconds,
+    required this.timings,
   });
 
   final int bytes;
   final int fragments;
   final double durationSeconds;
+  final _MergeTimings timings;
+}
+
+/// 合并各阶段的墙钟耗时。必须回传主 isolate 才能落日志（见 [_mergeInternal] 的调用方）。
+class _MergeTimings {
+  const _MergeTimings({
+    required this.scanMicros,
+    required this.buildMicros,
+    required this.writeMicros,
+    required this.verifyMicros,
+    required this.totalMicros,
+    required this.outputBytes,
+    required this.fragments,
+    required this.moofBytes,
+  });
+
+  final int scanMicros;
+  final int buildMicros;
+  final int writeMicros;
+  final int verifyMicros;
+  final int totalMicros;
+  final int outputBytes;
+  final int fragments;
+  final int moofBytes;
 }
 
 class _MergeFailureMessage {
@@ -926,7 +991,7 @@ Future<void> _mergeIsolateEntry(_MergeRequest request) async {
   });
   try {
     request.port.send(_MergeReadyMessage(ack.sendPort));
-    final result = await Fmp4Merger._mergeInternal(
+    final (result, timings) = await Fmp4Merger._mergeInternal(
       videoPath: request.videoPath,
       audioPath: request.audioPath,
       outputPath: request.outputPath,
@@ -945,6 +1010,7 @@ Future<void> _mergeIsolateEntry(_MergeRequest request) async {
         bytes: result.bytes,
         fragments: result.fragments,
         durationSeconds: result.durationSeconds,
+        timings: timings,
       ),
     );
   } on _MergeCancelled {

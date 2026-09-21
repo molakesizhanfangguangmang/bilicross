@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bilicross/src/core/abort.dart';
 import 'package:bilicross/src/core/bili_api.dart';
 import 'package:bilicross/src/core/fmp4.dart';
+import 'package:bilicross/src/core/log_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<int> _be32(int value) => [
@@ -469,6 +470,28 @@ void main() {
     for (var index = 1; index < writtens.length; index++) {
       expect(writtens[index], greaterThan(writtens[index - 1]));
     }
+  });
+
+  test('合并完成时留下阶段耗时日志，供判断 _verify 是否值得优化', () async {
+    final videoPath = '${work.path}${Platform.pathSeparator}video.m4s';
+    final audioPath = '${work.path}${Platform.pathSeparator}audio.m4s';
+    final outputPath = '${work.path}${Platform.pathSeparator}merged.mp4';
+    await _writePair(videoPath, audioPath);
+
+    LogStore.instance.clear();
+    final result = await Fmp4Merger.merge(
+      videoPath: videoPath,
+      audioPath: audioPath,
+      outputPath: outputPath,
+    );
+
+    final dump = LogStore.instance.dump;
+    expect(dump, contains('分片 ${result.fragments}'));
+    expect(dump, contains('moof '));
+    expect(dump, contains('扫描 '));
+    expect(dump, contains('校验 '));
+    expect(dump, contains('%'));
+    expect(dump, contains('内部合计 '));
   });
 
   test('合并中途取消：抛 TaskAborted，不留半成品', () async {
