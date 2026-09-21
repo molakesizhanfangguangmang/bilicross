@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:bilicross/src/core/abort.dart';
 import 'package:bilicross/src/core/bili_api.dart';
 import 'package:bilicross/src/core/fmp4.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -221,8 +222,15 @@ void main() {
   });
 
   tearDown(() async {
-    if (await work.exists()) {
-      await work.delete(recursive: true);
+    // 后台 isolate 刚退出时文件句柄可能还没释放（Windows 会锁文件），重试几次。
+    for (var attempt = 0; attempt < 10; attempt++) {
+      if (!await work.exists()) return;
+      try {
+        await work.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
     }
   });
 
@@ -435,4 +443,87 @@ void main() {
     expect(await File(outputPath).exists(), isFalse);
     expect(await File('$outputPath.part').exists(), isFalse);
   });
+
+  test('进度按分片回传，末次等于总字节数', () async {
+    final videoPath = '${work.path}${Platform.pathSeparator}video.m4s';
+    final audioPath = '${work.path}${Platform.pathSeparator}audio.m4s';
+    final outputPath = '${work.path}${Platform.pathSeparator}merged.mp4';
+    await _writePair(videoPath, audioPath);
+
+    final writtens = <int>[];
+    final totals = <int>[];
+    final result = await Fmp4Merger.merge(
+      videoPath: videoPath,
+      audioPath: audioPath,
+      outputPath: outputPath,
+      onProgress: (written, total) {
+        writtens.add(written);
+        totals.add(total);
+      },
+    );
+
+    // 每个分片一次，不多不少。
+    expect(writtens.length, 5);
+    expect(totals.toSet(), {result.bytes});
+    expect(writtens.last, result.bytes);
+    for (var index = 1; index < writtens.length; index++) {
+      expect(writtens[index], greaterThan(writtens[index - 1]));
+    }
+  });
+
+  test('合并中途取消：抛 TaskAborted，不留半成品', () async {
+    final videoPath = '${work.path}${Platform.pathSeparator}video.m4s';
+    final audioPath = '${work.path}${Platform.pathSeparator}audio.m4s';
+    final outputPath = '${work.path}${Platform.pathSeparator}merged.mp4';
+    await _writePair(videoPath, audioPath);
+
+    final control = AbortControl();
+    var calls = 0;
+    await expectLater(
+      Fmp4Merger.merge(
+        videoPath: videoPath,
+        audioPath: audioPath,
+        outputPath: outputPath,
+        control: control,
+        onProgress: (written, total) {
+          calls += 1;
+          if (calls == 1) control.stop();
+        },
+      ),
+      throwsA(isA<TaskAborted>()),
+    );
+    // 取消之后不再往界面推进度。
+    expect(calls, lessThan(5));
+    expect(await File(outputPath).exists(), isFalse);
+    expect(await File('$outputPath.part').exists(), isFalse);
+  });
+}
+
+/// 3 片视频 + 2 片音频，一共 5 个分片。
+Future<void> _writePair(String videoPath, String audioPath) async {
+  await File(videoPath).writeAsBytes(_sourceFile(
+    trackId: 1,
+    timescale: 90000,
+    movieTimescale: 1000,
+    decodeStep: 90000,
+    movieDuration: 3000,
+    payloads: [
+      [1, 1, 1],
+      [2, 2, 2, 2],
+      [3, 3, 3],
+    ],
+    baseDataOffset: false,
+  ));
+  await File(audioPath).writeAsBytes(_sourceFile(
+    trackId: 1,
+    timescale: 44100,
+    movieTimescale: 1000,
+    decodeStep: 44100,
+    movieDuration: 2000,
+    payloads: [
+      [9, 9],
+      [8, 8, 8],
+    ],
+    baseDataOffset: false,
+  ));
 }

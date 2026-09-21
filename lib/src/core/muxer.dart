@@ -159,11 +159,10 @@ class Muxer {
           videoPath: videoPath,
           audioPath: audioPath,
           outputPath: outputPath,
-          onProgress: (written, total) {
-            // 内置合并是纯 Dart 循环，检查点就放在进度回调里。
-            control?.throwIfAborted();
-            onProgress?.call(written, total);
-          },
+          // 取消与进度都由内置合并自己驱动：它在独立 isolate 上跑，取消靠
+          // [control] 掐 isolate，检查点频率仍是每个分片一次。
+          control: control,
+          onProgress: onProgress,
         );
         LogStore.instance.add('合并', '内置合并完成：${result.bytes} 字节');
         return MuxOutcome(

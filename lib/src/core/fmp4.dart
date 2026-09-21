@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'abort.dart';
 import 'bili_api.dart';
 
 /// 一个 MP4 盒子。`size` 是整盒长度，`headerSize` 是 8 或 16（64 位长度时）。
@@ -111,11 +114,119 @@ class Fmp4Merger {
 
   static const int _chunkSize = 4 << 20;
 
+  /// 内置分片合并，跑在独立 isolate 上：合并期间的同步读写、内存分配与 GC
+  /// 不再和界面抢主 isolate。
+  ///
+  /// 文件句柄不能跨 isolate，所以后台只拿路径、自己开关文件；进度、结果、
+  /// 「放行 / 取消」都走 [SendPort]。⚠️ 每个分片仍回传一次进度（频率不降）——
+  /// 取消检查点就挂在这条消息上：主侧收到后先查 [control]，已取消就通知后台
+  /// **自己收尾退出**，而不是掐掉它 —— `kill` 不会关掉后台已打开的文件句柄，
+  /// Windows 会一直锁着半成品删不掉。掐 isolate 只作后台失联时的兜底。
   static Future<Fmp4MergeResult> merge({
     required String videoPath,
     required String audioPath,
     required String outputPath,
+    AbortControl? control,
     void Function(int written, int total)? onProgress,
+  }) async {
+    final port = ReceivePort();
+    final done = Completer<Fmp4MergeResult>();
+    Isolate? isolate;
+    SendPort? resume;
+    var abortSent = false;
+    Timer? fallback;
+
+    /// 定结果 + 兜底掐掉后台（只在后台失联时才真的会杀到东西）。
+    void finishAborted() {
+      isolate?.kill(priority: Isolate.immediate);
+      if (!done.isCompleted) {
+        done.completeError(TaskAborted(control?.reason ?? AbortReason.stop));
+      }
+    }
+
+    /// 通知后台在下一个检查点退出；它自己关文件、删半成品。
+    void requestAbort() {
+      if (abortSent) return;
+      abortSent = true;
+      resume?.send(false);
+      fallback = Timer(const Duration(seconds: 5), finishAborted);
+    }
+
+    final subscription = port.listen((Object? message) {
+      if (done.isCompleted) return;
+      if (message is _MergeReadyMessage) {
+        resume = message.port;
+        // 后台刚起步就被取消：立刻告诉它别往下写。
+        if (abortSent) resume?.send(false);
+        return;
+      }
+      if (message is _MergeProgressMessage) {
+        if (control != null && control.aborted) {
+          requestAbort();
+          return;
+        }
+        onProgress?.call(message.written, message.total);
+        // 放行下一片：后台在等这个回执，取消检查点因此是真正的「每分片一次」。
+        resume?.send(true);
+        return;
+      }
+      if (message is _MergeAbortedMessage) {
+        // 后台已自己收尾（文件关了、半成品删了），这里只把结果定成取消。
+        finishAborted();
+        return;
+      }
+      if (message is _MergeDoneMessage) {
+        done.complete(
+          Fmp4MergeResult(
+            bytes: message.bytes,
+            fragments: message.fragments,
+            durationSeconds: message.durationSeconds,
+          ),
+        );
+        return;
+      }
+      if (message is _MergeFailureMessage) {
+        done.completeError(BiliException(message.message, code: message.code));
+      }
+    });
+
+    try {
+      isolate = await Isolate.spawn(
+        _mergeIsolateEntry,
+        _MergeRequest(
+          videoPath: videoPath,
+          audioPath: audioPath,
+          outputPath: outputPath,
+          port: port.sendPort,
+        ),
+      );
+      control?.bind(requestAbort);
+      // spawn 之前就被取消时 bind 会立刻回调，这里再兜一次。
+      if (control != null && control.aborted) requestAbort();
+      return await done.future;
+    } finally {
+      control?.unbind();
+      fallback?.cancel();
+      await subscription.cancel();
+      port.close();
+      // 主侧提前退出（异常路径）时后台可能还在写，掐掉别留个野 isolate。
+      // 正常与取消路径下它已经自己结束了，这行是空操作。
+      isolate?.kill(priority: Isolate.immediate);
+      // 只有后台被掐（兜底路径）才会留下半成品。
+      try {
+        final part = File('$outputPath.part');
+        if (await part.exists()) await part.delete();
+      } on FileSystemException {
+        // 句柄还没释放，交给下一次合并覆盖或残留清理。
+      }
+    }
+  }
+
+  static Future<Fmp4MergeResult> _mergeInternal({
+    required String videoPath,
+    required String audioPath,
+    required String outputPath,
+    Future<void> Function(int written, int total)? onProgress,
   }) async {
     final video = await _open(videoPath);
     var tempPath = '';
@@ -188,7 +299,9 @@ class Fmp4Merger {
         written += moof.length;
         await _copyRange(entry.source.handle, entry.fragment.mdatStart, entry.fragment.mdatSize, sink);
         written += entry.fragment.mdatSize;
-        onProgress?.call(written, total);
+        // 这里必须等：后台靠这个点把控制权交回主 isolate，取消才能及时生效
+        // （否则小文件会在「后台已经跑完」之后才被判定取消）。
+        await onProgress?.call(written, total);
       }
       await sink.flush();
       await sink.close();
@@ -734,4 +847,116 @@ class _SourceInfo {
   final List<_Fragment> fragments;
 
   Future<void> close() => handle.close();
+}
+
+/// 后台 isolate 的入参：**只有路径与回传端口** —— `RandomAccessFile` / `IOSink`
+/// 不可跨 isolate 传递，文件必须由后台自己开关。
+class _MergeRequest {
+  const _MergeRequest({
+    required this.videoPath,
+    required this.audioPath,
+    required this.outputPath,
+    required this.port,
+  });
+
+  final String videoPath;
+  final String audioPath;
+  final String outputPath;
+  final SendPort port;
+}
+
+class _MergeAbortedMessage {
+  const _MergeAbortedMessage();
+}
+
+/// 后台自己的退出信号：主 isolate 让它停，它就停（不走 kill，好让文件正常关闭）。
+class _MergeCancelled implements Exception {
+  const _MergeCancelled();
+}
+
+/// 后台回传自己的收件口：主 isolate 拿到它才能放行下一片。
+class _MergeReadyMessage {
+  const _MergeReadyMessage(this.port);
+
+  final SendPort port;
+}
+
+class _MergeProgressMessage {
+  const _MergeProgressMessage(this.written, this.total);
+
+  final int written;
+  final int total;
+}
+
+class _MergeDoneMessage {
+  const _MergeDoneMessage({
+    required this.bytes,
+    required this.fragments,
+    required this.durationSeconds,
+  });
+
+  final int bytes;
+  final int fragments;
+  final double durationSeconds;
+}
+
+class _MergeFailureMessage {
+  const _MergeFailureMessage({required this.message, required this.code});
+
+  final String message;
+  final int? code;
+}
+
+/// isolate 入口：异常就地转成消息回传，别让它变成未处理异常。
+Future<void> _mergeIsolateEntry(_MergeRequest request) async {
+  final ack = ReceivePort();
+  Completer<bool>? gate;
+  final queued = <bool>[];
+  // ⚠️ 不能用 `ack.first`：单订阅流的取消是异步的，循环里反复 first 会撞上
+  // 「Stream has already been listened to」。命令也可能比等待先到，所以排队。
+  final ackSub = ack.listen((Object? message) {
+    final go = message is! bool || message;
+    final pending = gate;
+    gate = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(go);
+    } else {
+      queued.add(go);
+    }
+  });
+  try {
+    request.port.send(_MergeReadyMessage(ack.sendPort));
+    final result = await Fmp4Merger._mergeInternal(
+      videoPath: request.videoPath,
+      audioPath: request.audioPath,
+      outputPath: request.outputPath,
+      onProgress: (written, total) async {
+        request.port.send(_MergeProgressMessage(written, total));
+        // 等主 isolate 的命令；它说取消就在这里退出，交给 _mergeInternal 的
+        // finally 关文件、删半成品。
+        final pending = Completer<bool>();
+        gate = pending;
+        final go = queued.isNotEmpty ? queued.removeAt(0) : await pending.future;
+        if (!go) throw const _MergeCancelled();
+      },
+    );
+    request.port.send(
+      _MergeDoneMessage(
+        bytes: result.bytes,
+        fragments: result.fragments,
+        durationSeconds: result.durationSeconds,
+      ),
+    );
+  } on _MergeCancelled {
+    request.port.send(const _MergeAbortedMessage());
+  } on BiliException catch (error) {
+    request.port.send(
+      _MergeFailureMessage(message: error.message, code: error.code),
+    );
+  } on Object catch (error) {
+    request.port.send(_MergeFailureMessage(message: '$error', code: null));
+  } finally {
+    await ackSub.cancel();
+    ack.close();
+  }
 }
