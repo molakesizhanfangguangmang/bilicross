@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../i18n/app_localizations.dart';
-import '../core/downloader.dart';
 import '../core/models.dart';
 import '../app_state.dart';
 import './palette.dart';
@@ -229,11 +228,10 @@ class TaskCard extends StatelessWidget {
   final DownloadTask task;
 
   /// 分片都还在时允许单独重跑合并。
-  bool get _canMerge =>
-      !task.singleTrack &&
-      task.audioPath.isNotEmpty &&
-      hasUsableFile(task.videoPath) &&
-      hasUsableFile(task.audioPath);
+  ///
+  /// 判断走 [AppState.canRetryMerge]：结果由 `AppState` 缓存，
+  /// 避免卡片每次重建都同步 `stat` 磁盘（这里是 build 路径）。
+  bool get _canMerge => state.canRetryMerge(task);
 
   int get _tone => switch (task.stage) {
         TaskStage.done => 1,
@@ -308,7 +306,9 @@ class TaskCard extends StatelessWidget {
                 onPressed: running ? null : () => state.retryTask(task.id),
                 child: Text(l10n.tr('tasks.retry')),
               ),
-              if (!task.merged && _canMerge)
+              // `running` 为真时 && 短路，不在下载/合并途中做磁盘判断 ——
+              // 那时分片还在写，算出来的结果既没意义又正好撞上通知最密的时段。
+              if (!running && !task.merged && _canMerge)
                 OutlinedButton(
                   onPressed: running ? null : () => state.retryMerge(task.id),
                   child: Text(l10n.tr('tasks.retryMux')),

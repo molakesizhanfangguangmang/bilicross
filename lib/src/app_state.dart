@@ -28,6 +28,18 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// 仅测试用：直接注入依赖建实例，不走 [AppState.load] ——
+  /// 那条路会解析并读写真实的用户数据目录。[store] 一般用 `Store.at(临时目录)`。
+  @visibleForTesting
+  static AppState forTest({
+    required Store store,
+    required AppSettings settings,
+    WebCookie cookie = const WebCookie.empty(),
+    AppToken? token,
+    List<DownloadTask>? tasks,
+  }) =>
+      AppState._(store, settings, cookie, token, tasks ?? <DownloadTask>[]);
+
   /// [isWindows] 只给测试用：真机不传。见 [Store.open] 的说明。
   static Future<AppState> load({bool? isWindows}) async {
     final store = await Store.open(isWindows: isWindows);
@@ -261,6 +273,7 @@ class AppState extends ChangeNotifier {
     task.stage = TaskStage.stopped;
     task.message = l10n.tr('msg.stopped', {'count': '$removed'});
     _riskPaused.remove(task.id);
+    _invalidateMergeReady();
     await store.saveTasks(tasks);
     LogStore.instance.add('任务', '${task.title}：强制结束，已删除 $removed 个残留文件');
     notifyListeners();
@@ -343,6 +356,7 @@ class AppState extends ChangeNotifier {
     if (!task.merged) {
       removed += await removeArtifacts(task.outputPath);
     }
+    _invalidateMergeReady();
     return removed;
   }
 
@@ -1132,6 +1146,7 @@ class AppState extends ChangeNotifier {
       task.message = l10n.tr('msg.stopped', {'count': '$removed'});
       LogStore.instance.add('任务', '${task.title}：强制结束，已删除 $removed 个残留文件');
     }
+    _invalidateMergeReady();
     notifyListeners();
   }
 
@@ -1297,6 +1312,8 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       _controls.remove(task.id);
+      // 任务停下来了，分片状态定型：让卡片重新判断「重试合并」。
+      _invalidateMergeReady();
       await store.saveTasks(tasks);
       notifyListeners();
     }
@@ -1351,6 +1368,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 分片是否都还在 —— 任务卡片据此决定「重试合并」按钮显不显示。
+  ///
+  /// 结果按任务缓存：卡片 `build` 每次重建都会读它，而底层是同步 `stat`
+  /// （[hasUsableFile] = `existsSync` + `lengthSync`），下载高峰期叠加高频通知
+  /// 会把同步 I/O 压在主 isolate 上。
+  ///
+  /// 分片文件只在两类时点变化：任务运行期间（下载写盘、合并成功后删源），
+  /// 以及用户触发的清理/删除。缓存因此在
+  /// [_invalidateMergeReady] 的调用点统一失效，不在 build 里做失效判断。
+  final Map<String, bool> _mergeReady = <String, bool>{};
+
+  bool canRetryMerge(DownloadTask task) {
+    if (task.singleTrack || task.audioPath.isEmpty) return false;
+    final cached = _mergeReady[task.id];
+    if (cached != null) return cached;
+    final ready = hasUsableFile(task.videoPath) && hasUsableFile(task.audioPath);
+    _mergeReady[task.id] = ready;
+    return ready;
+  }
+
+  /// 分片文件可能变化后调用：清空缓存，下次读取重新落盘判断。
+  ///
+  /// 清整表而不是按 id 删：调用点少且都不在热路径上，漏掉一个 id 会造成
+  /// 「按钮该出现却不出现」，宁可多算几次。
+  void _invalidateMergeReady() => _mergeReady.clear();
+
   /// 合并成功后原始分片就没用了，顺手清掉，别让下载目录越堆越大。
   Future<int> _removeSources(DownloadTask task) async {
     var removed = await removeArtifacts(task.videoPath);
@@ -1358,6 +1401,7 @@ class AppState extends ChangeNotifier {
     if (removed > 0) {
       LogStore.instance.add('合并', '${task.title}：已清理 $removed 个分片');
     }
+    _invalidateMergeReady();
     return removed;
   }
 
@@ -1405,11 +1449,13 @@ class AppState extends ChangeNotifier {
         audioPath: task.audioPath,
         outputPath: task.outputPath,
         control: control,
-        onProgress: (written, total) {
-          task.receivedBytes = written;
-          task.totalBytes = total;
-          notifyListeners();
-        },
+        // 与下载进度共用同一个节流器：内置合并每写完一个分片就回调一次，
+        // 界面通知按 100ms 节流，但字节字段每次都更新（进度不会停在中途，
+        // 而且合并收尾处还有一次 notifyListeners 兜底）。
+        // ⚠️ 只能节流「通知」，不能降低 onProgress 本身的调用次数 ——
+        // 内置合并的取消检查点（control.throwIfAborted）就挂在这个回调里，
+        // 降频会让「强制结束」变得迟钝。
+        onProgress: (written, total) => _pushProgress(task, written, total),
       );
       task.merged = true;
       task.stage = TaskStage.done;
