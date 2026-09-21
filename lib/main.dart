@@ -495,9 +495,10 @@ class _AppShellState extends State<AppShell> {
                         ),
                       ),
                     ),
-                  // 状态标（队列运行中 / Dart 引擎）在设置页不显示 ——
-                  // 那里标题栏已经有保存按钮，再挤一个标就满了。
-                  if (index != _settingsIndex)
+                  // 状态标（队列运行中 / Dart 引擎）**只在安卓端的设置页**隐藏：
+                  // 那是用户 2026-09-21 明确要求的范围（桌面端保持原样），
+                  // 理由是设置页标题栏已经有保存按钮，再挤一个标就满了。
+                  if (!Platform.isAndroid || index != _settingsIndex)
                     Padding(
                       padding: const EdgeInsets.only(right: 16),
                       child: Center(

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -157,12 +159,14 @@ class _TasksPageState extends State<TasksPage> {
                   // ⚠️ 之前把它当成 CustomScrollView 里的 SliverToBoxAdapter，
                   // 那是跟着内容一起滚的 —— 注释写着「滚动不动」，实际会滚走。
                   Padding(
-                    // ⚠️ 顶部内边距压到 2/4：标题栏（AppBar）里「任务」二字是
-                    // 垂直居中的，文字下方本来就自带约半行空白，再叠加这里的
-                    // 8/12，标题与下面那行状态（并发数…）之间就空出一大段。
+                    // ⚠️ 只在**安卓端**收窄（用户 2026-09-21 明确要求）：安卓上
+                    // 标题栏里的「任务」二字垂直居中，文字下方本就带约半行空白，
+                    // 再叠 8 的顶部内边距，标题与下面那行状态（并发数…）之间
+                    // 就空出一大段。桌面窗口宽，看着正常，保持原值 12 不动。
                     padding: EdgeInsets.fromLTRB(
                       20,
-                      compact ? 2 : 4,
+                      // 安卓收到 2；其余平台保持原样（手机宽度 8 / 宽屏 12）。
+                      Platform.isAndroid ? 2 : (compact ? 8 : 12),
                       20,
                       compact ? 6 : 10,
                     ),
