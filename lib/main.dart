@@ -373,7 +373,13 @@ class _AppShellState extends State<AppShell> {
 
   /// 启动后静默查一次更新：有新版弹说明弹窗，查不到提示一句，已是最新不出声。
   /// Android 与 Windows 都查：前者换侧载包，后者换安装包/便携包。
+  ///
+  /// ⚠️ 内测版一律不查：它的版本号是「当前 base + 第四段」，与正式版不可比
+  /// （base 落后时四段号也赢不了），查出来只会给一个不该装的正式版；而且内测
+  /// 包名带 `.test`，那个包装上是**并列安装**、不会覆盖内测版。关于页手动那条
+  /// 同理，见 `about_dialog.dart` 的 `_check()` —— 两处必须保持一致。
   Future<void> _checkUpdateOnce() async {
+    if (kTestBuild) return;
     if (!mounted) return;
     final platform = Theme.of(context).platform;
     if (platform != TargetPlatform.android &&
