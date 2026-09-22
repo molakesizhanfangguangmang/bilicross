@@ -10,8 +10,6 @@ class AppLocalizationsZh extends AppLocalizations {
   static const Map<String, String> data = {
     // 应用与导航
     'app.name': '逸轨',
-    // 内部测试版标识，加在首页标题与关于页版本旁。
-    'app.internalBuild': '内部测试版',
     // 动画调节（长按设置页的「高级设置」入口解锁，解锁不可逆）
     'settings.animUnlocked': '已解锁动画调节，可在高级设置里调整',
     'settings.animTitle': '展开动画',
@@ -75,8 +73,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'spaceSheet.series': '系列',
     'spaceSheet.noEpisodes': '这个合集没有可下载的集',
     'spaceSheet.empty': '这个 UP 没有公开的合集或系列',
-    // 关于页的测试版警示语。
-    'about.testBuildWarning': '该版本仅用于技术验证，请谨慎使用，禁止外泄',
     'nav.download': '下载',
     'nav.tasks': '任务',
     'nav.account': '账号',
@@ -97,7 +93,6 @@ class AppLocalizationsZh extends AppLocalizations {
     // 关于与更新
     'about.projectUrl': '项目地址',
     'about.checkUpdate': '检测更新',
-    'about.testBuildNoUpdate': '该版本为内部测试版，更新暂不可用。',
     'about.versionUnknown': '当前版本 未知',
     'about.version': '当前版本 {version}',
     'about.upToDate': '已是最新',

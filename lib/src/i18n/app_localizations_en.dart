@@ -11,7 +11,6 @@ class AppLocalizationsEn extends AppLocalizations {
   static const Map<String, String> data = {
     // App and navigation
     'app.name': 'BiliCross',
-    'app.internalBuild': 'Internal Build',
     'settings.animUnlocked': 'Animation tuning unlocked - see Advanced settings',
     'settings.animTitle': 'Page animation',
     'settings.animHint': 'Unlocked debug options; Android only',
@@ -76,8 +75,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'spaceSheet.series': 'Series',
     'spaceSheet.noEpisodes': 'This collection has no downloadable episodes',
     'spaceSheet.empty': 'This uploader has no public seasons or series',
-    'about.testBuildWarning':
-        'This build is for technical validation only. Use with caution, and do not distribute.',
     'nav.download': 'Download',
     'nav.tasks': 'Tasks',
     'nav.account': 'Account',
@@ -98,7 +95,6 @@ class AppLocalizationsEn extends AppLocalizations {
     // About and updates
     'about.projectUrl': 'Project',
     'about.checkUpdate': 'Check for updates',
-    'about.testBuildNoUpdate': 'This is an internal test build; update checking is unavailable.',
     'about.versionUnknown': 'Current version unknown',
     'about.version': 'Current version {version}',
     'about.upToDate': 'Already up to date',

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../core/build_flags.dart';
 import '../core/distribution.dart';
 import '../core/release_target.dart';
 import '../core/update_check.dart';
@@ -119,26 +118,6 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
   Future<void> _check() async {
     if (_checking) return;
 
-    // ⚠️ 内部测试版**不做更新检查**：它的版本号比正式版还新
-    // （2.0.1.2 这种四段号 > 2.0.1），查了要么提示「已是最新」、
-    // 要么给出一个不该装的正式版，两种都是误导。直接说明情况。
-    if (kTestBuild) {
-      final l10n = AppLocalizations.of(context);
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          content: Text(l10n.tr('about.testBuildNoUpdate')),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(l10n.tr('common.close')),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
     setState(() => _checking = true);
     final result = await checkForUpdate(currentVersion: _version);
     if (!mounted) return;
@@ -149,9 +128,7 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
     final version = _version;
     if (version == null) return '';
     if (version.isEmpty) return l10n.tr('about.versionUnknown');
-    // 版本号后带内部测试版标识，与首页标题保持一致。
-    return '${l10n.tr('about.version', {'version': version})}'
-        ' · ${l10n.tr('app.internalBuild')}';
+    return l10n.tr('about.version', {'version': version});
   }
 
   @override
@@ -247,17 +224,6 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
                       color: kTextFaint,
                     ),
                   ),
-                  // 用途与传播限制只在测试构建里显示，正式版不出现。
-                  if (kTestBuild) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.tr('about.testBuildWarning'),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: kWarning,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

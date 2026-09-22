@@ -1,13 +1,8 @@
 name: Cloud build
 
 on:
-  # 手动触发时可选平台与构建类型：内测出安卓包，发版选 both + release。
-  #
-  # ⚠️ **默认是内测形态（test），不是正式形态** —— 用户 2026-09-20 明确要求。
-  # 判据写成 `!= 'release'` 而不是 `== 'test'`：push 事件没有 inputs，
-  # 用前者才能让「推 main 自动出包」也落在内测形态上，正式包只有显式选
-  # buildType=release 才出（避免手滑推一次就出个看着像正式版的东西）。
-  # 内测标记 = 水印 + 界面标识 + .test 包名 + 禁截图。
+  # 手动触发才出包：push 只跑格式、静态检查与测试，不产出任何安装包。
+  # 安装包一律是正式形态；内测形态不入仓库，只在本地构建。
   workflow_dispatch:
     inputs:
       platforms:
@@ -17,13 +12,6 @@ on:
           - android
           - both
         default: android
-      buildType:
-        description: '构建类型'
-        type: choice
-        options:
-          - release
-          - test
-        default: test
   push:
     branches: [main]
 
@@ -38,8 +26,53 @@ env:
   FLUTTER_CHANNEL: stable
 
 jobs:
+  # push 与手动触发都跑：只做检查，不产出安装包。
+  checks:
+    name: Format, analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flutter stable
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_CHANNEL" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve dependencies
+        shell: bash
+        run: flutter pub get
+
+      - name: Check formatting
+        shell: bash
+        run: dart format lib test
+
+      # 按目录分开跑：analyze 报错时，失败的步骤名直接指出问题在哪个目录。
+      - name: Analyze core
+        shell: bash
+        run: flutter analyze lib/src/core
+
+      - name: Analyze ui
+        shell: bash
+        run: flutter analyze lib/src/ui
+
+      - name: Analyze tests
+        shell: bash
+        run: flutter analyze test
+
+      - name: Analyze whole project
+        shell: bash
+        run: flutter analyze
+
+      - name: Run tests
+        shell: bash
+        run: flutter test
+
   android-arm64:
     name: Android arm64 (API 26+)
+    needs: checks
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -47,17 +80,13 @@ jobs:
 
       # 版本号只有一个来源：packaging/version.json（说明见 packaging/version.js）。
       # ⚠️ 四段 versionName 走不了 `--build-name` —— Flutter 按 semver 解析，
-      # 四段会失败并把版本退化成 1.0.0（实测）。所以：
-      #   平台版本用三段 base，第四段用 dart-define 传给应用在显示层拼。
+      # 四段会失败并把版本退化成 1.0.0（实测）。所以平台版本只取三段 base。
       - name: Read version
         shell: bash
         run: |
-          echo "APP_VERSION_NAME=$(node packaging/version.js)" >> "$GITHUB_ENV"
-          echo "APP_VERSION_BASE=$(node packaging/version.js --base)" >> "$GITHUB_ENV"
-          echo "APP_VERSION_TEST=$(node packaging/version.js --test)" >> "$GITHUB_ENV"
+          echo "APP_VERSION_NAME=$(node packaging/version.js --base)" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=$(node packaging/version.js --code)" >> "$GITHUB_ENV"
-          echo "APP_TEST_VERSION_DEFINE=--dart-define=BILICROSS_TEST_VERSION=$(node packaging/version.js --test)" >> "$GITHUB_ENV"
-          echo "版本：$(node packaging/version.js)（versionCode $(node packaging/version.js --code)）"
+          echo "版本：$(node packaging/version.js --base)（versionCode $(node packaging/version.js --code)）"
 
       - name: Install Flutter stable
         shell: bash
@@ -275,66 +304,16 @@ jobs:
           sed -i 's/proguard-android\.txt/proguard-android-optimize.txt/g' "$f"
           grep -n 'proguard-android' "$f"
 
-      - name: Check formatting
-        shell: bash
-        run: dart format lib test
-
-      # 按目录分开跑：analyze 报错时，失败的步骤名直接指出问题在哪个目录。
-      - name: Analyze core
-        shell: bash
-        run: flutter analyze lib/src/core
-
-      - name: Analyze ui
-        shell: bash
-        run: flutter analyze lib/src/ui
-
-      - name: Analyze tests
-        shell: bash
-        run: flutter analyze test
-
-      - name: Analyze whole project
-        shell: bash
-        run: flutter analyze
-
-      - name: Run tests
-        shell: bash
-        run: flutter test
-
-      # 内部测试版：给 MainActivity 加 FLAG_SECURE，禁止截屏与录屏。
-      # 版本号：安卓的 versionName 接受任意字符串，所以四段号在这里直接写进去
-      # （`--build-name` 对四段会解析失败，不能用）。
-      # 正式版与测试版都要，所以不挂在 buildType 判断上。
       - name: Set APK version
         shell: bash
         run: node packaging/android/patch-version.js "$APP_VERSION_NAME" "$APP_VERSION_CODE"
 
-      # 逻辑放在仓库内脚本里：android/ 目录不入仓，每次 flutter create 都会重生。
-      - name: Enable FLAG_SECURE (block screenshots)
-        if: inputs.buildType != 'release'
-        shell: bash
-        run: node packaging/android/patch-secure-window.js
-
-      # 内部测试版：换 applicationId，让它能与正式版同时安装、数据各自隔离。
-      # 同包名不同签名会装不上，同包名同签名会覆盖安装，只有不同包名才能并存。
-      - name: Use test applicationId (allow side-by-side install)
-        if: inputs.buildType != 'release'
-        shell: bash
-        run: node packaging/android/patch-app-id.js .test
-
-      # 内部测试版：应用显示名也带上标识，便于与正式版区分。
-      - name: Set test app label
-        if: inputs.buildType != 'release'
-        shell: bash
-        run: node packaging/android/patch-app-label.js
-
       - name: Build release APK
         shell: bash
         # 备份密钥通过 Secret 注入；GitHub 会自动遮蔽 Secret 的值，日志里不会出现。
-        # 测试另有独立测试密钥，不使用这里的值。
         env:
           BACKUP_KEY_DEFINE: --dart-define=BILICROSS_BACKUP_KEY_V1=${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
-          TEST_BUILD_DEFINE: --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
-        run: flutter build apk --release --target-platform android-arm64 --build-number=$APP_VERSION_CODE $BACKUP_KEY_DEFINE $TEST_BUILD_DEFINE $APP_TEST_VERSION_DEFINE
+        run: flutter build apk --release --target-platform android-arm64 --build-number=$APP_VERSION_CODE $BACKUP_KEY_DEFINE
 
       - name: Verify APK architecture
         shell: bash
@@ -430,8 +409,8 @@ jobs:
 
   windows-x64:
     name: Windows x64
-    # 平时 push 只出安卓包（内测迭代更快、产物更小）；
-    # 需要 Windows 包（发版）时手动触发并选 both。
+    # 只在手动触发并选 both 时出包。
+    needs: checks
     if: github.event_name == 'workflow_dispatch' && inputs.platforms == 'both'
     runs-on: windows-latest
     timeout-minutes: 45
@@ -442,13 +421,11 @@ jobs:
       - name: Read version
         shell: pwsh
         run: |
-          $name = node packaging/version.js
+          $base = node packaging/version.js --base
           $code = node packaging/version.js --code
-          $test = node packaging/version.js --test
-          "APP_VERSION_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION_NAME=$base" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "APP_VERSION_CODE=$code" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "APP_VERSION_TEST=$test" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "版本：$name（versionCode $code）"
+          Write-Host "版本：$base（versionCode $code）"
 
       - name: Install Flutter stable
         shell: pwsh
@@ -504,31 +481,6 @@ jobs:
         shell: pwsh
         run: flutter pub get
 
-      - name: Check formatting
-        shell: pwsh
-        run: dart format lib test
-
-      # 同 Android：按目录分开跑，失败时步骤名指出目录。
-      - name: Analyze core
-        shell: pwsh
-        run: flutter analyze lib/src/core
-
-      - name: Analyze ui
-        shell: pwsh
-        run: flutter analyze lib/src/ui
-
-      - name: Analyze tests
-        shell: pwsh
-        run: flutter analyze test
-
-      - name: Analyze whole project
-        shell: pwsh
-        run: flutter analyze
-
-      - name: Run tests
-        shell: pwsh
-        run: flutter test
-
       - name: Build Windows release
         shell: pwsh
         # 与 Android 同一个 Secret；值不会被打印到日志。
@@ -537,7 +489,7 @@ jobs:
         env:
           BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
         run: |
-          flutter build windows --release --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_TEST_VERSION=$env:APP_VERSION_TEST --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1" --dart-define=BILICROSS_TEST_BUILD=${{ inputs.buildType != 'release' }}
+          flutter build windows --release --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
 
       # 捆绑 ffmpeg（BtbN LGPL win64）：用发布方 checksums.sha256 校验完整性，再解到 tools\ffmpeg\ffmpeg.exe。
       # 注意：BtbN 的 “latest” 发布不带校验和，只有带版本号的发布才带 checksums.sha256，

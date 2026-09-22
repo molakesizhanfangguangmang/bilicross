@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
-import 'src/core/build_flags.dart';
 import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
 import 'src/core/splash_config.dart';
@@ -22,7 +21,6 @@ import 'src/ui/settings_page.dart';
 import 'src/ui/splash_screen.dart';
 import 'src/ui/startup_failure_page.dart';
 import 'src/ui/tasks_page.dart';
-import 'src/ui/watermark.dart';
 import 'src/ui/widgets.dart';
 import './src/ui/palette.dart';
 
@@ -250,18 +248,6 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // 内部测试版水印：铺在所有页面之上，用 IgnorePointer 屏蔽指针，
-      // 所以只影响观感、不影响操作。文字固定中文，不跟随界面语言。
-      // 水印只在内部测试构建里出现，正式版不带。
-      builder: (context, child) => Stack(
-        children: <Widget>[
-          ?child,
-          if (kTestBuild)
-            const Positioned.fill(
-              child: Watermark(text: '逸轨·技术验证专用'),
-            ),
-        ],
-      ),
       theme: ThemeData(
         colorScheme: scheme,
         scaffoldBackgroundColor: kSurfacePage,
@@ -373,13 +359,7 @@ class _AppShellState extends State<AppShell> {
 
   /// 启动后静默查一次更新：有新版弹说明弹窗，查不到提示一句，已是最新不出声。
   /// Android 与 Windows 都查：前者换侧载包，后者换安装包/便携包。
-  ///
-  /// ⚠️ 内测版一律不查：它的版本号是「当前 base + 第四段」，与正式版不可比
-  /// （base 落后时四段号也赢不了），查出来只会给一个不该装的正式版；而且内测
-  /// 包名带 `.test`，那个包装上是**并列安装**、不会覆盖内测版。关于页手动那条
-  /// 同理，见 `about_dialog.dart` 的 `_check()` —— 两处必须保持一致。
   Future<void> _checkUpdateOnce() async {
-    if (kTestBuild) return;
     if (!mounted) return;
     final platform = Theme.of(context).platform;
     if (platform != TargetPlatform.android &&
@@ -479,8 +459,7 @@ class _AppShellState extends State<AppShell> {
           appBar: AppBar(
             // ⚠️ 标题显示**当前页名**，不再是应用名 ——
             // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
-            // 手机上两条标题栏叠着，白占一整行。测试版标识交给满屏水印，
-            // 不再挤在标题里。
+            // 手机上两条标题栏叠着，白占一整行。
             title: Text(_destinations(l10n)[index].label),
             actions: [
               // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。

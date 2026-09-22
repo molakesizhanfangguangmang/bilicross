@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'build_flags.dart';
-
 /// 项目主页：关于弹窗的「项目地址」与更新跳转都用它。
 const String kProjectUrl = 'https://github.com/molakesizhanfangguangmang/bilicross';
 
@@ -193,12 +191,6 @@ UpdateCheckResult resultFromRelease(Object? payload, String currentVersion) {
 Future<String> readCurrentVersion() async {
   try {
     final info = await PackageInfo.fromPlatform();
-    // 测试版在平台版本后面拼第四段（1.1.0 → 1.1.0.1）。
-    // ⚠️ 平台版本本身保持三段：Flutter 的 --build-name 吃不下四段
-    // （会解析失败并把版本退化成 1.0.0），所以第四段只在显示层拼。
-    if (kTestBuild && kTestVersionSuffix.isNotEmpty) {
-      return '${info.version}.$kTestVersionSuffix';
-    }
     return info.version;
   } catch (_) {
     return '';
