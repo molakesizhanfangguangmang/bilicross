@@ -176,18 +176,35 @@ MediaStream? pickStream(List<MediaStream> streams, int qualityId, String codecs)
 }
 
 /// 重试或重新解析时按任务记录挑流。`recorded` 是记录的档位号：
-/// 0 表示这条轨道不下载，-1 表示老任务没记录（取 [fallbackFirst] 指定的那一端，
-/// 视频取第一条、音频取最后一条），其余按档位号取。
+/// 0 表示这条轨道不下载，-1 表示档位待定（老任务或批量入队时没记录），其余按档位号取。
+///
+/// 档位待定时优先用 [preferred]（设置里的首选档位）：首选档在就用它；视频是
+/// 从高到低排的，缺档就取**不超过首选的最接近档**（扫到第一条档位不高于它的）；
+/// 结果里全是比首选高的档，或音频缺档，才回落到 [fallbackFirst] 那一端。
+/// 这样既尊重设置，又不会因为某集缺这一档就整条失败。
+///
 /// 返回 null 表示这次解析结果里没有可用的流，调用方据此决定报错还是降级。
 MediaStream? resolveRecordedStream(
   List<MediaStream> streams,
   int recorded,
   String codecs, {
   required bool fallbackFirst,
+  int preferred = 0,
 }) {
   if (recorded == 0) return null;
   if (recorded < 0) {
     if (streams.isEmpty) return null;
+    if (preferred > 0) {
+      final exact = pickStream(streams, preferred, codecs);
+      if (exact != null) return exact;
+      // 音频只有四五个档位且编号与高低不同序，不做「最接近」扫档，直接走回落。
+      if (fallbackFirst) {
+        final rank = qualityRank(preferred);
+        for (final item in streams) {
+          if (qualityRank(item.id) >= rank) return item;
+        }
+      }
+    }
     return fallbackFirst ? streams.first : streams.last;
   }
   return pickStream(streams, recorded, codecs);

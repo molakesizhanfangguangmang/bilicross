@@ -1025,7 +1025,8 @@ class AppState extends ChangeNotifier {
         outputPath: finalPath,
         engine: engine,
         channel: media.channel,
-        // -1 = 「要这条轨道、档位待定」：开跑时按设置里的首选档位解析。
+        // -1 = 「要这条轨道、档位待定」：开跑时按设置里的首选档位取，
+        // 该集缺这一档就取不超过它的最接近档。
         // 写 0 会被当成「不要这条轨道」，写死档位又会在缺档时报错。
         videoQualityId: -1,
         audioQualityId: -1,
@@ -1098,8 +1099,8 @@ class AppState extends ChangeNotifier {
         cookie: cookie,
         token: token ?? _emptyToken,
       );
-      // 取这集实际能给的最高档：第一条视频、最后一条音频，
-      // 与下载侧「-1 档位」的回落规则一致。
+      // 预检要的是这集最高可用档（用于缺档判定与标注），不是下载时按设置
+      // 首选取流的那套规则，所以直接取第一条视频、最后一条音频。
       final video = media.videos.isEmpty ? null : media.videos.first;
       final audio = media.audios.isEmpty ? null : media.audios.last;
       if (video == null && audio == null) {
@@ -1630,8 +1631,8 @@ class AppState extends ChangeNotifier {
   ///
   /// 取流严格按任务记录的档位与编码（`videoQualityId` / `audioQualityId`）：找不到同一个
   /// 档位就报错，不静默换成别的档位——否则用户选了 8K、重试后拿到更低的档位也不会发现。
-  /// 档位为 -1 的是没有记录的老任务，按老行为取（视频第一条、音频最后一条），
-  /// 取完把实际用到的档位补写回任务。
+  /// 档位为 -1 的是档位待定（老任务或批量入队），按设置里的首选档位取，缺档取
+  /// 不超过它的最接近档；取完把实际用到的档位补写回任务。
   Future<void> _refreshTaskUrls(DownloadTask task) async {
     LogStore.instance.add('任务', '${task.title}：地址已失效，按原档位重新解析');
     final media = await parseService.parseTarget(
@@ -1647,6 +1648,7 @@ class AppState extends ChangeNotifier {
         task.videoQualityId,
         task.videoCodecs,
         fallbackFirst: true,
+        preferred: settings.preferredQuality,
       );
       if (video == null) {
         throw BiliException(task.videoQualityId > 0
@@ -1670,6 +1672,7 @@ class AppState extends ChangeNotifier {
         task.audioQualityId,
         task.audioCodecs,
         fallbackFirst: false,
+        preferred: settings.preferredAudio,
       );
       if (audio == null) {
         if (task.audioQualityId > 0) {

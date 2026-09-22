@@ -66,6 +66,56 @@ void main() {
     test('档位 0 依然表示不下载', () {
       expect(resolveRecordedStream(videos, 0, '', fallbackFirst: true), isNull);
     });
+
+    test('档位待定时先用设置里的首选档位', () {
+      expect(
+        resolveRecordedStream(videos, -1, '', fallbackFirst: true, preferred: 126)?.id,
+        126,
+      );
+    });
+
+    test('该集没有首选档时取不超过它的最接近档，不越级给更高的档', () {
+      final streams = <MediaStream>[
+        _video(127, 'av01.0.12M.08'),
+        _video(116, 'avc1.640033'),
+        _video(64, 'avc1.640032'),
+      ];
+      expect(
+        resolveRecordedStream(streams, -1, '', fallbackFirst: true, preferred: 80)?.id,
+        64,
+      );
+    });
+
+    test('结果里全是比首选高的档时回落最高档，不报失败', () {
+      final streams = <MediaStream>[
+        _video(127, 'av01.0.12M.08'),
+        _video(120, 'av01.0.10M.08'),
+      ];
+      expect(
+        resolveRecordedStream(streams, -1, '', fallbackFirst: true, preferred: 80)?.id,
+        127,
+      );
+    });
+
+    test('音频按首选编号取，缺档维持原来的最后一条', () {
+      final audios = <MediaStream>[
+        _audio(30216, 'mp4a.40.2'),
+        _audio(30250, 'ec-3'),
+        _audio(30280, 'mp4a.40.2'),
+      ];
+      expect(
+        resolveRecordedStream(audios, -1, '', fallbackFirst: false, preferred: 30216)?.id,
+        30216,
+      );
+      expect(
+        resolveRecordedStream(audios, -1, '', fallbackFirst: false, preferred: 30251)?.id,
+        30280,
+      );
+    });
+
+    test('不传首选档位时保持原来的回落（视频第一条、音频最后一条）', () {
+      expect(resolveRecordedStream(videos, -1, '', fallbackFirst: true)?.id, 127);
+    });
   });
 
   group('UA 与下载请求头', () {

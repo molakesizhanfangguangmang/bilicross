@@ -11,9 +11,9 @@
 ; 安装版不带 portable.marker（靠构建期常量认通道），故走安装版数据位置。
 
 #define MyAppName "逸轨 BiliCross"
-; 版本号可由构建时注入：ISCC /DMyAppVersion=2.1.4；未注入时用下面的兜底值。
+; 版本号可由构建时注入：ISCC /DMyAppVersion=2.1.5；未注入时用下面的兜底值。
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.4"
+  #define MyAppVersion "2.1.5"
 #endif
 #define MyAppExeName "bilicross.exe"
 ; AppId 必须保持不变：它决定安装器是否把新版识别为「同一个应用的升级」。
