@@ -35,7 +35,35 @@ class TasksPage extends StatefulWidget {
 }
 
 class _TasksPageState extends State<TasksPage> {
-  TaskTab _tab = TaskTab.waiting;
+  /// 当前栏。初始值由 [_landingTab] 定。
+  late TaskTab _tab;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = _landingTab();
+  }
+
+  /// 进来时落哪一栏：按「最近一次从下载页入队的那批任务」**此刻**的真实状态定。
+  ///
+  /// 用户刚点过「加入任务 / 立即下载」，就把他带到相符的栏，而不是永远停在
+  /// 「等待下载」。没有记录（重启过、或这次没在下载页入过队）就回落等待栏。
+  ///
+  /// ⚠️ 只在 initState 算这一次：外壳每次切页都重建这一页（`pages[index]` 在
+  /// 同一位置换了 widget 类型），所以「点任务页才落栏」天然成立，不必额外传参。
+  TaskTab _landingTab() {
+    final recent = widget.state.tasks
+        .where((task) => widget.state.recentEnqueuedIds.contains(task.id))
+        .toList();
+    if (recent.isEmpty) return TaskTab.waiting;
+    // 有在跑的（含暂停：暂停的任务仍占着「下载中」那一栏）就落下载栏。
+    if (recent.any(_isRunning)) return TaskTab.running;
+    // 整批都下完了才落「已下载」；其余（等待中 / 失败 / 终止）都在等待栏。
+    if (recent.every((task) => task.stage == TaskStage.done)) {
+      return TaskTab.done;
+    }
+    return TaskTab.waiting;
+  }
 
   bool _isWaiting(DownloadTask task) =>
       task.stage == TaskStage.pending ||

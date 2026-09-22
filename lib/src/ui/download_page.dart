@@ -259,6 +259,8 @@ class _DownloadPageState extends State<DownloadPage> {
     final audioIndex = (_audioIndex ?? (media.audios.isEmpty ? -1 : media.audios.length - 1))
         .clamp(-1, media.audios.length - 1);
     final canStart = videoIndex >= 0 || audioIndex >= 0;
+    // 多 P 视频才在流卡片上标出是哪个 P、才给换 P 的入口 —— 单 P 视频不添乱。
+    final manyParts = media.info.pages.length > 1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -279,19 +281,6 @@ class _DownloadPageState extends State<DownloadPage> {
                 label: l10n.tr('download.part'),
                 value: '${media.page.page} / ${media.info.pages.length} · ${media.page.part}',
               ),
-              // 多 P 视频：给一个选集入口。解析本身只取一个分 P（地址里的 ?p=，
-              // 没有就是第 1 P），所以这里换 P 是**重新解析那一 P**，不是本地切换。
-              if (media.info.pages.length > 1)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _pickPage(state, media),
-                    icon: const Icon(Icons.list_alt, size: 16),
-                    label: Text(l10n.tr('download.pickPage', {
-                      'count': '${media.info.pages.length}',
-                    })),
-                  ),
-                ),
               InfoLine(
                 label: l10n.tr('download.duration'),
                 value: formatDuration(media.durationSec),
@@ -317,7 +306,22 @@ class _DownloadPageState extends State<DownloadPage> {
         ],
         const SizedBox(height: 12),
         SectionCard(
-          title: l10n.tr('download.videoStreams'),
+          // 多 P 视频在标题里带出当前是哪个 P：选流时就地知道这组流属于谁，
+          // 不必回头看上面的信息卡。换 P 的入口也放这里，两件事同一块区域。
+          title: manyParts
+              ? l10n.tr('download.videoStreamsPart', {
+                  'page': '${media.page.page}',
+                  'total': '${media.info.pages.length}',
+                })
+              : l10n.tr('download.videoStreams'),
+          // 换 P 走 _pickPage：解析只取一个分 P，换 P 得重新解析那一 P。
+          trailing: manyParts
+              ? TextButton.icon(
+                  onPressed: () => _pickPage(state, media),
+                  icon: const Icon(Icons.list_alt, size: 16),
+                  label: Text(l10n.tr('download.pickPageAction')),
+                )
+              : null,
           child: Column(
             children: [
               ChoiceTile(
@@ -363,7 +367,7 @@ class _DownloadPageState extends State<DownloadPage> {
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              // 「加入任务」只入队：队列要人去任务页点「开始任务」才跑。
+              // 「加入任务」只入队：队列要人去任务页点「全部开始」才跑。
               FilledButton.icon(
                 onPressed: !canStart
                     ? null

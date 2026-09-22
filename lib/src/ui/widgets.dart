@@ -300,10 +300,20 @@ class TaskCard extends StatelessWidget {
                   onPressed: () => state.resumeTask(task.id),
                   child: Text(l10n.tr('tasks.resume')),
                 ),
-              OutlinedButton(
-                onPressed: running ? null : () => state.retryTask(task.id),
-                child: Text(l10n.tr('tasks.retry')),
-              ),
+              // 等待中的任务：「开始」只下这一条，不动等待栏里其他待下的。
+              // 其余状态仍是「重试」—— 同一按钮位按状态换名，不让两个按钮做同一件事。
+              if (task.stage == TaskStage.pending)
+                FilledButton.icon(
+                  onPressed:
+                      state.queueRunning ? null : () => state.startTask(task.id),
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: Text(l10n.tr('tasks.start')),
+                )
+              else
+                OutlinedButton(
+                  onPressed: running ? null : () => state.retryTask(task.id),
+                  child: Text(l10n.tr('tasks.retry')),
+                ),
               // running 时短路：分片还在写，判断既无意义又正撞上通知最密的时段。
               if (!running && !task.merged && _canMerge)
                 OutlinedButton(

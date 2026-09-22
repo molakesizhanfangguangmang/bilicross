@@ -365,7 +365,7 @@ class _AppShellState extends State<AppShell> {
       widget.state.refreshFfmpeg();
       widget.state.refreshAccount();
       // 启动不自动开跑：上次中断的任务会带着分片回到「等待」，
-      // 队列要人点了任务页的「开始任务」才动，跟新入队的任务一个规矩。
+      // 队列要人点了任务页的「全部开始」才动，跟新入队的任务一个规矩。
       // （单个任务的「重试」「继续」仍是点了就跑。）
       _checkUpdateOnce();
     });

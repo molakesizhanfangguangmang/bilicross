@@ -121,6 +121,17 @@ class AppState extends ChangeNotifier {
   bool queueRunning = false;
   String? ffmpegPath;
 
+  /// 最近一次从下载页入队的那批任务 id（只存内存，重启即忘，不落盘）。
+  ///
+  /// 任务页切进来时用它决定默认落在哪一栏：用户刚点过「加入任务 / 立即下载」，
+  /// 就把他带到与这批任务当前状态相符的栏，而不是永远停在「等待下载」。
+  /// ⚠️ 只在入队时赋值、**不发通知** —— 它不是界面状态，只是给任务页的一次性
+  /// 线索，别掺进通知边界。
+  Set<String> _recentEnqueued = const <String>{};
+
+  /// 最近一次入队的那批任务 id（只读，任务页用）。
+  Set<String> get recentEnqueuedIds => _recentEnqueued;
+
   AppAuthCode? pendingAuth;
   String authStatus = '';
   Timer? _authTimer;
@@ -759,6 +770,8 @@ class AppState extends ChangeNotifier {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     tasks.insert(0, task);
+    // 单条入队也记进「最近一批」：任务页据此决定切进去时落在哪一栏。
+    _recentEnqueued = <String>{task.id};
     _persistTasks();
     LogStore.instance.add('任务', '入队：${task.title}（等待开始）');
     notifyListeners();
@@ -867,6 +880,7 @@ class AppState extends ChangeNotifier {
     var skipped = 0;
     var renamed = 0;
     final now = DateTime.now();
+    final enqueuedIds = <String>{};
 
     for (final section in manifest.sections) {
       for (final episode in section.episodes) {
@@ -930,11 +944,14 @@ class AppState extends ChangeNotifier {
         );
         taken.add(_pathKey(finalPath));
         tasks.insert(0, task);
+        enqueuedIds.add(task.id);
         enqueued += 1;
       }
     }
 
     if (enqueued > 0) {
+      // 这一批就是「最近一批」：任务页切进来时按它们的实际状态落栏。
+      _recentEnqueued = enqueuedIds;
       _persistTasks();
       LogStore.instance.add(
         '任务',
@@ -977,6 +994,7 @@ class AppState extends ChangeNotifier {
     var skipped = 0;
     var renamed = 0;
     final now = DateTime.now();
+    final enqueuedIds = <String>{};
 
     for (final page in media.info.pages) {
       if (!pages.contains(page.page)) continue;
@@ -1015,10 +1033,13 @@ class AppState extends ChangeNotifier {
       );
       taken.add(_pathKey(finalPath));
       tasks.insert(0, task);
+      enqueuedIds.add(task.id);
       enqueued += 1;
     }
 
     if (enqueued > 0) {
+      // 这一批就是「最近一批」：任务页切进来时按它们的实际状态落栏。
+      _recentEnqueued = enqueuedIds;
       _persistTasks();
       LogStore.instance.add(
         '任务',
@@ -1134,7 +1155,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 有没有等着开跑的活。任务页的「开始任务」按这个决定能不能点。
+  /// 有没有等着开跑的活。任务页的「全部开始」按这个决定能不能点。
   int get pendingCount =>
       tasks.where((task) => task.stage == TaskStage.pending).length;
 
@@ -1239,7 +1260,25 @@ class AppState extends ChangeNotifier {
     unawaited(pumpQueue());
   }
 
-  Future<void> pumpQueue() async {
+  /// 任务页等待栏单条卡片的「开始」：只启动这一条。
+  ///
+  /// 与顶部的「全部开始」（[pumpQueue] 不带过滤）分开 —— 等待栏排了好几条时，
+  /// 用户常常只想先下其中一条。不是 `pending` 的直接忽略（界面上这个按钮也
+  /// 只出现在 `pending` 态）。队列已在跑时这里等于没动，那条会被正在跑的
+  /// 循环带走，不必也不能再起第二个泵。
+  void startTask(String id) {
+    final wanted = tasks.any(
+      (item) => item.id == id && item.stage == TaskStage.pending,
+    );
+    if (!wanted) return;
+    unawaited(pumpQueue(only: <String>{id}));
+  }
+
+  /// 跑队列：把 `pending` 的任务按并发上限一批批跑完。
+  ///
+  /// [only] 非空时只跑集合里的那些 —— 任务页等待栏单条卡片的「开始」用它，
+  /// 点一条不会把等待栏里其他待下的一起带跑。省略即「全部开始」。
+  Future<void> pumpQueue({Set<String>? only}) async {
     if (queueRunning) return;
     queueRunning = true;
     notifyListeners();
@@ -1248,7 +1287,14 @@ class AppState extends ChangeNotifier {
       while (true) {
         // 风控：立刻停手，剩下的等用户点恢复。
         if (_riskControlHit) break;
-        final batch = tasks.where((task) => task.stage == TaskStage.pending).take(limit).toList();
+        final batch = tasks
+            .where(
+              (task) =>
+                  task.stage == TaskStage.pending &&
+                  (only == null || only.contains(task.id)),
+            )
+            .take(limit)
+            .toList();
         if (batch.isEmpty) break;
         await Future.wait(batch.map(_runTask));
         await store.saveTasks(tasks);
