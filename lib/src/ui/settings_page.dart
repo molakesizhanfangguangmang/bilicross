@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/models.dart';
-import '../core/rebuild_stats.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
 import 'backup_card.dart';
@@ -113,7 +112,6 @@ class SettingsPageState extends State<SettingsPage> {
       // 只是普通通知，不该被快照过滤掉。
       listenable: state.stableView,
       builder: (context, _) {
-        RebuildStats.tick(RebuildStats.settings);
         final settings = state.settings;
         return PageFrame(
           child: Column(

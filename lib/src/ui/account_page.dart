@@ -7,7 +7,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../core/bili_api.dart';
-import '../core/rebuild_stats.dart';
 import '../i18n/app_localizations.dart';
 import 'qr_login_page.dart';
 import 'web_login.dart';
@@ -27,7 +26,6 @@ class AccountPage extends StatelessWidget {
       // 账号状态与任务进度无关，订阅不含进度的视图。
       listenable: state.stableView,
       builder: (context, _) {
-        RebuildStats.tick(RebuildStats.account);
         final cookie = state.cookie;
         final webLoginSupported =
             Platform.isAndroid || Platform.isIOS || Platform.isWindows;

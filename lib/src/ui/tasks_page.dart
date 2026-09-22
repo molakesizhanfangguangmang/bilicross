@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/models.dart';
-import '../core/rebuild_stats.dart';
 import '../i18n/app_localizations.dart';
 import 'widgets.dart';
 import './palette.dart';
@@ -139,7 +138,6 @@ class _TasksPageState extends State<TasksPage> {
     return ListenableBuilder(
       listenable: widget.state,
       builder: (context, _) {
-        RebuildStats.tick(RebuildStats.tasks);
         final state = widget.state;
         final all = state.tasks;
 
