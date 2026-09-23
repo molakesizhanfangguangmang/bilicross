@@ -1,0 +1,145 @@
+name: Probe win-arm64
+
+# 一次性探针：只回答一个问题——在 GitHub 的原生 arm64 Windows runner 上，
+# Flutter stable 能不能真的编出 Windows arm64 产物。
+#
+# 为什么需要它：本机是 x64，既没有 arm64 交叉工具链，`flutter build windows`
+# 也没有 `--target-platform`，所以本机根本无法验证。GitHub 的 windows-11-arm
+# 提供了一个真 arm64 宿主，是唯一能验证的渠道。
+#
+# 判定三件事：
+#   1. dart --version 报 win_arm64 还是 win_x64（后者 = Flutter 回落到 x64 Dart SDK，
+#      工具跑在仿真下，编出来的必然是 x64，而且不会报错）。
+#   2. 产物落在 build\windows\arm64\ 还是 build\windows\x64\。
+#   3. bilicross.exe 的 PE machine 字段：0xAA64 = ARM64，0x8664 = x64。
+#
+# 只做诊断：不打包、不传产物、不发 Release、不碰版本号。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe Windows arm64 build
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host architecture
+        shell: pwsh
+        run: |
+          Write-Host "IMAGE_OS               = $env:ImageOS"
+          Write-Host "PROCESSOR_ARCHITECTURE = $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "OSArchitecture         = $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+          Write-Host "ProcessArchitecture    = $([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)"
+
+      - name: Visual Studio arm64 toolchain
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            Write-Host "--- 默认实例 ---"
+            & $vswhere -latest -products * -format value -property installationPath
+            Write-Host "--- 装有 VC.Tools.ARM64 的实例（空 = 没有 arm64 工具链）---"
+            & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -format value -property installationPath
+          } else {
+            Write-Host "vswhere 不存在"
+          }
+          Write-Host "--- arm64 MSVC 工具目录 ---"
+          Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio" -Recurse -Directory -Filter arm64 -ErrorAction SilentlyContinue |
+            Select-Object -First 15 -ExpandProperty FullName
+
+      - name: Install Flutter stable
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$env:RUNNER_TEMP\flutter"
+          "$env:RUNNER_TEMP\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "$env:RUNNER_TEMP\flutter\bin\cache\dart-sdk\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Flutter and Dart architecture
+        shell: pwsh
+        run: |
+          flutter --version
+          Write-Host "--- dart --version（看结尾的 on "win_xxx"）---"
+          dart --version
+
+      - name: Generate Windows shell
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter create --platforms=windows --org io.github.molakesizhanfangguangmang --project-name bilicross .
+          Remove-Item test\widget_test.dart -ErrorAction SilentlyContinue
+
+      # 与正式构建同样的补丁：flutter_inappwebview_windows 0.6.0 的 C++ 用了
+      # <experimental/coroutine> + /await，新版 MSVC 把它升级成硬错误。不打这个补丁，
+      # 构建会失败，但那和 arm64 无关，会污染结论。
+      - name: Patch MSVC coroutine define for in-app WebView2 plugin
+        shell: pwsh
+        run: |
+          $cmake = 'windows\CMakeLists.txt'
+          if (-not (Test-Path $cmake)) { throw "未找到 $cmake" }
+          $text = Get-Content $cmake -Raw
+          if ($text -notmatch '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS') {
+            $text = $text -replace 'cmake_minimum_required\(VERSION (\d+\.\d+)\)', "cmake_minimum_required(VERSION `$1)`nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)"
+            Set-Content $cmake $text -NoNewline -Encoding utf8
+          }
+          Select-String -Path $cmake -Pattern '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS'
+
+      - name: Resolve dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Build Windows release
+        id: build
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          flutter build windows --release *>&1 | Tee-Object -FilePath build.log
+          Write-Host "flutter build 退出码 = $LASTEXITCODE"
+
+      - name: Report findings
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== 1. Flutter 引擎缓存（看有没有 windows-arm64）==="
+          Get-ChildItem "$env:RUNNER_TEMP\flutter\bin\cache\artifacts\engine" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name
+
+          Write-Host "=== 2. dart-sdk 实际架构 ==="
+          dart --version
+
+          Write-Host "=== 3. build\windows 下的架构目录 ==="
+          $archDirs = Get-ChildItem build\windows -Directory -ErrorAction SilentlyContinue
+          if ($archDirs) { $archDirs | Select-Object -ExpandProperty Name } else { Write-Host "（没有 build\windows，构建没走到那一步）" }
+
+          Write-Host "=== 4. Release 产物 ==="
+          Get-ChildItem build\windows -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'Release' } |
+            Select-Object -ExpandProperty FullName
+
+          Write-Host "=== 5. bilicross.exe 的 PE machine（0xAA64=ARM64 / 0x8664=x64）==="
+          $exe = Get-ChildItem build\windows -Recurse -Filter bilicross.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($exe) {
+            $fs = [System.IO.File]::OpenRead($exe.FullName)
+            $br = New-Object System.IO.BinaryReader($fs)
+            $fs.Seek(0x3C, 'Begin') | Out-Null
+            $peOffset = $br.ReadInt32()
+            $fs.Seek($peOffset + 4, 'Begin') | Out-Null
+            $machine = $br.ReadUInt16()
+            $br.Close(); $fs.Close()
+            Write-Host ("{0}  machine = 0x{1:X4}" -f $exe.FullName, $machine)
+          } else {
+            Write-Host "bilicross.exe 未生成"
+          }
+
+          Write-Host "=== 6. 构建日志尾部 ==="
+          if (Test-Path build.log) {
+            Get-Content build.log -Tail 60
+          } else {
+            Write-Host "（没有 build.log）"
+          }
