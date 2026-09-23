@@ -718,11 +718,21 @@ jobs:
             $iscc = Find-Iscc
           }
           if (-not $iscc) { throw '未找到 ISCC.exe（Inno Setup 安装可能失败）' }
-          # arm64 的架构标识是 Inno Setup 6.3 才加的；低版本会报 unknown architecture，先拦一道给出人话。
-          $verText = (Get-Item $iscc).VersionInfo.FileVersion
-          $ver = [version]([regex]::Match($verText, '\d+(\.\d+){1,3}').Value)
-          Write-Host "Inno Setup $ver（$iscc）"
-          if ($ver -lt [version]'6.3.0') { throw "Inno Setup $ver 不支持 arm64，需要 6.3 及以上" }
+          Write-Host "ISCC：$iscc"
+          # arm64 的架构标识要 Inno Setup 6.3+。别去读版本号：Inno 的 FileVersion 取出来是
+          # 0.0.0.0（实测），按它判断会把正常的 6.7 误判成不支持。直接拿最小脚本试编一次。
+          $probe = Join-Path $env:RUNNER_TEMP 'arm64-probe.iss'
+          Set-Content -Path $probe -Encoding ascii -Value @(
+            '[Setup]',
+            'AppName=arm64-probe',
+            'AppVersion=0.0.1',
+            'DefaultDirName={tmp}\arm64-probe',
+            "OutputDir=$env:RUNNER_TEMP",
+            'OutputBaseFilename=arm64-probe',
+            'ArchitecturesInstallIn64BitMode=arm64'
+          )
+          & $iscc $probe
+          if ($LASTEXITCODE -ne 0) { throw '这台 ISCC 不认 arm64，需要 Inno Setup 6.3 及以上' }
           & $iscc "/DMyAppVersion=$env:APP_VERSION_NAME" "/DMyAppArch=arm64" packaging\windows\BiliCross.iss
           if (-not (Test-Path BiliCross-windows-arm64-setup.exe)) { throw '安装包未生成' }
           $hash = (Get-FileHash BiliCross-windows-arm64-setup.exe -Algorithm SHA256).Hash.ToLower()
