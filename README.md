@@ -9,7 +9,7 @@
 </div>
 
 逸轨是一个本地运行的 B 站媒体下载与整理客户端。解析、下载、合并在本机完成，
-不依赖外部服务。支持 Windows 与 Android，界面提供简体中文与 English 两种语言。
+不依赖外部服务。支持 Windows（x64 与 arm64）与 Android（arm64），界面提供简体中文与 English 两种语言。
 
 ## 释名
 
@@ -80,19 +80,22 @@
 
 ## 安装包说明
 
-安装包在 [Releases](../../releases) 页面提供。Windows 分为两种：
+安装包在 [Releases](../../releases) 页面提供。Windows 分 x64 与 arm64 两套架构，每套都有安装版与便携版：
 
-| 包 | 数据位置 | 更新方式 |
+| 包（`<架构>` 取 `x64` 或 `arm64`） | 数据位置 | 更新方式 |
 | --- | --- | --- |
-| `BiliCross-x.x.x-windows-x64-setup.exe`（安装版） | `%LOCALAPPDATA%\BiliCross` | 应用内「检测更新」跳转下载，覆盖安装 |
-| `BiliCross-x.x.x-windows-x64-portable.zip`（便携版） | 程序旁的 `data` 目录 | 手动下载新版本替换 |
+| `BiliCross-x.x.x-windows-<架构>-setup.exe`（安装版） | `%LOCALAPPDATA%\BiliCross` | 应用内「检测更新」跳转下载，覆盖安装 |
+| `BiliCross-x.x.x-windows-<架构>-portable.zip`（便携版） | 程序旁的 `data` 目录 | 手动下载新版本替换 |
+
+应用内的「检测更新」会按本机架构挑对应的包：arm64 机器优先取 arm64 包，没有时退回 x64 包
+（Arm64 上以仿真方式运行，性能与内存占用不如原生）。
 
 Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26）及以上。
 每个产物附有 `.sha256` 校验文件。
 
 依赖说明：
 
-- 两种 Windows 包均内置 `ffmpeg.exe`（`tools\ffmpeg`），用于合并；缺失时自动回落到内置 fMP4 合并。
+- Windows 各包均内置与自身架构一致的 `ffmpeg.exe`（`tools\ffmpeg`），用于合并；缺失时自动回落到内置 fMP4 合并。
 - Windows 需要 Microsoft Visual C++ 运行库（Windows 10/11 通常已自带）。
 - 网页登录需要 Microsoft Edge WebView2 运行时；启动自检会在缺失时提示并提供下载入口。
 
@@ -136,8 +139,13 @@ Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26
 
 ## 构建
 
-推送至 `main` 或手动触发 `Cloud build` 工作流。工作流在干净的 runner 上安装 Flutter stable、
-生成平台壳、注入图标与显示名、配置发布签名，执行 `flutter analyze` 与 `flutter test` 后出包。
+推送至 `main` 只跑格式检查、静态分析与测试，不产出安装包。安装包由手动触发 `Cloud build` 工作流选择平台构建：
+Android arm64、Windows x64、Windows arm64。工作流在干净的 runner 上安装 Flutter stable、生成平台壳、
+注入图标与显示名、配置发布签名，执行 `flutter analyze` 与 `flutter test` 后出包。
+
+Windows arm64 跑在原生 arm64 runner（`windows-11-arm`）上：`flutter build windows` 没有 `--target-platform`，
+出什么架构全看宿主，引擎拉不到 arm64 时会静默回落成 x64，所以构建前后都会读 PE 头核对架构
+（`packaging/windows/pe-machine.js`）而非只看构建是否成功。Inno Setup 安装脚本的架构由 `/DMyAppArch=` 注入。
 
 ## 目录
 
@@ -146,7 +154,7 @@ Android 包为 `BiliCross-x.x.x-android-arm64.apk`，要求 Android 8.0（API 26
 - `lib/src/ui` — 下载、任务、账号、设置四个页面与启动自检阻塞页。
 - `test` — 离线测试：地址与 Cookie 解析、签名向量、DASH 组装、分片下载、暂停与强制结束、
   fMP4 合并、档位选择、版本号比较与更新检查、发行通道与数据目录、备份编解码与服务、启动自检。
-- `packaging` — 图标资源（Android 各密度图标与自适应图标、Windows `ico`）与 Inno Setup 安装脚本。
+- `packaging` — 图标资源（Android 各密度图标与自适应图标、Windows `ico`）、Inno Setup 安装脚本（架构由 `/DMyAppArch=` 注入）与打包辅助脚本。
 
 ## 致谢
 
