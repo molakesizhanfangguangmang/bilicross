@@ -11,6 +11,7 @@ on:
         options:
           - android
           - both
+          - windows-arm64
         default: android
   push:
     branches: [main]
@@ -72,7 +73,8 @@ jobs:
   android-arm64:
     name: Android arm64 (API 26+)
     needs: checks
-    if: github.event_name == 'workflow_dispatch'
+    # 手动触发且不是「只要 Windows arm64」时出包。
+    if: github.event_name == 'workflow_dispatch' && inputs.platforms != 'windows-arm64'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -577,4 +579,176 @@ jobs:
             BiliCross-windows-x64-setup.exe.sha256
             BiliCross-windows-x64-portable.zip
             BiliCross-windows-x64-portable.zip.sha256
+          if-no-files-found: error
+
+  windows-arm64:
+    name: Windows arm64
+    # 手动触发并选 windows-arm64 时出包。跑在 GitHub 的原生 arm64 Windows runner 上
+    # （windows-11-arm 是公共预览，公开仓库免费、不用排队）。
+    # ⚠️ `flutter build windows` 没有 --target-platform，出什么架构全看宿主：
+    # 宿主不是 arm64、或引擎拉不到 arm64 时 Flutter 会**静默回落 x64**，
+    # 命令行照样报「构建成功」。所以下面两处必须自己校验架构，见 pe-machine.js。
+    needs: checks
+    if: github.event_name == 'workflow_dispatch' && inputs.platforms == 'windows-arm64'
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # 与另外两个 job 同一个来源：packaging/version.json。
+      - name: Read version
+        shell: pwsh
+        run: |
+          $base = node packaging/version.js --base
+          $code = node packaging/version.js --code
+          "APP_VERSION_NAME=$base" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION_CODE=$code" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "版本：$base（versionCode $code）"
+
+      - name: Install Flutter stable
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch $env:FLUTTER_CHANNEL https://github.com/flutter/flutter.git "$env:RUNNER_TEMP\flutter"
+          "$env:RUNNER_TEMP\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Generate platform shell
+        shell: pwsh
+        run: |
+          flutter --version
+          # 判据一：拉下来的 Dart SDK 必须是 ARM64 那份 —— 引擎回落时它先回落，且不报错。
+          node packaging/windows/pe-machine.js "$env:RUNNER_TEMP\flutter\bin\cache\dart-sdk\bin\dart.exe" arm64
+          flutter config --enable-windows-desktop
+          flutter create --platforms=windows --org io.github.molakesizhanfangguangmang --project-name bilicross .
+          Remove-Item test\widget_test.dart -ErrorAction SilentlyContinue
+
+      - name: Apply icon and window title
+        shell: pwsh
+        run: |
+          Copy-Item packaging\windows\app_icon.ico windows\runner\resources\app_icon.ico -Force
+          if (-not (Test-Path windows\runner\resources\app_icon.ico)) { throw '图标未写入' }
+          $main = 'windows\runner\main.cpp'
+          $text = Get-Content $main -Raw
+          $text = $text -replace 'window\.Create\(L"[^"]*"', 'window.Create(L"\u9038\u8f68"'
+          Set-Content $main $text -NoNewline -Encoding utf8
+          if (-not (Select-String -Path $main -SimpleMatch 'u9038')) { throw '未能设置窗口标题' }
+          Select-String -Path $main -Pattern 'window\.Create'
+
+      # 与 x64 同一套首帧前置绘制补丁，逻辑同样放在 packaging\windows 下的脚本里。
+      - name: Use dark background before first frame
+        run: node packaging/windows/patch-dark-background.js
+
+      - name: Patch Windows toolchain for in-app WebView2 plugin
+        shell: pwsh
+        run: |
+          $cmake = 'windows\CMakeLists.txt'
+          if (-not (Test-Path $cmake)) { throw "未找到 $cmake" }
+          $text = Get-Content $cmake -Raw
+          if ($text -notmatch '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS') {
+            $text = $text -replace 'cmake_minimum_required\(VERSION (\d+\.\d+)\)', "cmake_minimum_required(VERSION `$1)`nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)"
+            Set-Content $cmake $text -NoNewline -Encoding utf8
+          }
+          Select-String -Path $cmake -Pattern '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS'
+
+      - name: Resolve dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Build Windows release
+        shell: pwsh
+        env:
+          BILICROSS_BACKUP_KEY_V1: ${{ secrets.BILICROSS_BACKUP_KEY_V1 }}
+        run: |
+          flutter build windows --release --build-number=$env:APP_VERSION_CODE --dart-define=BILICROSS_BACKUP_KEY_V1="$env:BILICROSS_BACKUP_KEY_V1"
+
+      # 判据二：产物落在 arm64 目录里，且 PE machine 是 0xAA64。
+      - name: Verify ARM64 executable
+        shell: pwsh
+        run: |
+          $exe = 'build\windows\arm64\runner\Release\bilicross.exe'
+          if (-not (Test-Path $exe)) { throw "ARM64 产物不存在：$exe（Flutter 多半回落到了 x64 目录）" }
+          node packaging/windows/pe-machine.js $exe arm64
+
+      # 与 x64 同样的流程，只把资产换成 BtbN 的 winarm64 构建（同一份 checksums.sha256 校验）。
+      - name: Fetch and verify ffmpeg (BtbN LGPL winarm64)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $hdr = @{ 'User-Agent' = 'bilicross-ci'; 'Authorization' = "Bearer $env:GITHUB_TOKEN" }
+          $list = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=10' -Headers $hdr
+          $rel = $null; $assetName = $null; $zipUrl = $null; $sumsUrl = $null
+          foreach ($r in $list) {
+            if ($r.tag_name -eq 'latest') { continue }
+            $zip = $r.assets | Where-Object { $_.name -match 'winarm64-lgpl\.zip$' -and $_.name -notmatch 'shared' } | Select-Object -First 1
+            $sums = $r.assets | Where-Object { $_.name -eq 'checksums.sha256' } | Select-Object -First 1
+            if ($zip -and $sums) { $rel = $r; $assetName = $zip.name; $zipUrl = $zip.browser_download_url; $sumsUrl = $sums.browser_download_url; break }
+          }
+          if (-not $rel) { throw '找不到带 checksums.sha256 的 arm64 FFmpeg 发布' }
+          Write-Output ("选定 ffmpeg 版本: " + $rel.tag_name + " / " + $assetName)
+          Invoke-WebRequest -Uri $zipUrl -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri $sumsUrl -OutFile checksums.sha256
+          $line = Select-String -Path checksums.sha256 -Pattern "[0-9a-fA-F]{64}" | Where-Object { $_.Line -match [regex]::Escape($assetName) } | Select-Object -First 1
+          if (-not $line) { throw "checksums.sha256 里找不到 $assetName 的校验值" }
+          $expected = ($line.Line -replace '[^0-9a-fA-F].*$','').Trim().ToLower()
+          $actual = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "ffmpeg SHA256 不匹配：期望 $expected 实际 $actual" }
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_extracted
+          $src = Get-ChildItem ffmpeg_extracted -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $src) { throw 'ffmpeg.exe 未找到' }
+          New-Item tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item $src.FullName tools\ffmpeg\ffmpeg.exe -Force
+          Write-Output ("ffmpeg 就绪: " + (Get-Item tools\ffmpeg\ffmpeg.exe).Length + " 字节, sha256=" + $actual)
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            (Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup 6" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue |
+              Select-Object -First 1).FullName
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            try { choco install innosetup -y --no-progress 2>$null } catch { }
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) {
+            $url = 'https://jrsoftware.org/download.php/is.exe'
+            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\innosetup.exe" -MaximumRedirection 10
+            Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw '未找到 ISCC.exe（Inno Setup 安装可能失败）' }
+          # arm64 的架构标识是 Inno Setup 6.3 才加的；低版本会报 unknown architecture，先拦一道给出人话。
+          $verText = (Get-Item $iscc).VersionInfo.FileVersion
+          $ver = [version]([regex]::Match($verText, '\d+(\.\d+){1,3}').Value)
+          Write-Host "Inno Setup $ver（$iscc）"
+          if ($ver -lt [version]'6.3.0') { throw "Inno Setup $ver 不支持 arm64，需要 6.3 及以上" }
+          & $iscc "/DMyAppVersion=$env:APP_VERSION_NAME" "/DMyAppArch=arm64" packaging\windows\BiliCross.iss
+          if (-not (Test-Path BiliCross-windows-arm64-setup.exe)) { throw '安装包未生成' }
+          $hash = (Get-FileHash BiliCross-windows-arm64-setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-arm64-setup.exe" | Set-Content BiliCross-windows-arm64-setup.exe.sha256 -Encoding ascii
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $rel = 'build\windows\arm64\runner\Release'
+          if (-not (Test-Path "$rel\bilicross.exe")) { throw 'Windows executable not found' }
+          New-Item dist-portable -ItemType Directory -Force | Out-Null
+          Copy-Item "$rel\*" dist-portable -Recurse -Force
+          New-Item dist-portable\tools\ffmpeg -ItemType Directory -Force | Out-Null
+          Copy-Item tools\ffmpeg\ffmpeg.exe dist-portable\tools\ffmpeg\ffmpeg.exe -Force
+          New-Item dist-portable\portable.marker -ItemType File -Force | Out-Null
+          Compress-Archive -Path dist-portable\* -DestinationPath BiliCross-windows-arm64-portable.zip -Force
+          $hash = (Get-FileHash BiliCross-windows-arm64-portable.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  BiliCross-windows-arm64-portable.zip" | Set-Content BiliCross-windows-arm64-portable.zip.sha256 -Encoding ascii
+
+      - name: Upload Windows arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BiliCross-windows-arm64
+          path: |
+            BiliCross-windows-arm64-setup.exe
+            BiliCross-windows-arm64-setup.exe.sha256
+            BiliCross-windows-arm64-portable.zip
+            BiliCross-windows-arm64-portable.zip.sha256
           if-no-files-found: error
