@@ -1310,15 +1310,12 @@ class AppState extends ChangeNotifier {
   Future<void> _runTask(DownloadTask task) async {
     LogStore.instance.add(
       '任务',
-      '开始：${task.title}｜引擎 ${task.engine}'
+      '开始：${task.title}'
       '｜通道 ${task.channel.isEmpty ? '未记录' : task.channel}',
     );
     final control = AbortControl();
     _controls[task.id] = control;
     try {
-      if (task.engine != 'dart') {
-        throw BiliException(l10n.tr('err.engineMissing'));
-      }
       final dir = Directory(settings.downloadDir);
       if (!dir.existsSync()) {
         await dir.create(recursive: true);
@@ -1568,7 +1565,7 @@ class AppState extends ChangeNotifier {
     task.message = l10n.tr('msg.muxing');
     notifyListeners();
     try {
-      final outcome = await Muxer.merge(
+      await Muxer.merge(
         ffmpegPath: ffmpegPath ?? '',
         preferFfmpeg: settings.preferFfmpegMux,
         videoPath: task.videoPath,
@@ -1582,10 +1579,7 @@ class AppState extends ChangeNotifier {
       task.merged = true;
       task.stage = TaskStage.done;
       final removed = await _removeSources(task);
-      task.message = l10n.tr(
-            'msg.done',
-            {'engine': outcome.engineLabel, 'path': task.outputPath},
-          ) +
+      task.message = l10n.tr('msg.done', {'path': task.outputPath}) +
           (removed > 0
               ? l10n.tr('msg.fragmentsRemoved', {'count': '$removed'})
               : '');

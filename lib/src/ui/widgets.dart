@@ -91,6 +91,74 @@ class SectionCard extends StatelessWidget {
   }
 }
 
+/// 可折叠的设置分组：组头一行（标题 + 当前值摘要 + 展开箭头），点一下开合。
+///
+/// ⚠️ 展开状态由调用方持有 —— 不要写进设置对象，否则点一下展开就会被
+/// 当成「有未保存的改动」。
+class CollapsibleSection extends StatelessWidget {
+  const CollapsibleSection({
+    required this.title,
+    required this.summary,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+    super.key,
+  });
+
+  final String title;
+
+  /// 收起时也看得见的当前值，排在标题右侧。
+  final String summary;
+
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: kTextSubtle,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: child,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class InfoLine extends StatelessWidget {
   const InfoLine({required this.label, required this.value, super.key});
 
@@ -272,10 +340,6 @@ class TaskCard extends StatelessWidget {
             value: task.page > 1
                 ? l10n.tr('tasks.pagePart', {'page': '${task.page}', 'cid': '${task.cid}'})
                 : l10n.tr('tasks.cidOnly', {'cid': '${task.cid}'}),
-          ),
-          InfoLine(
-            label: l10n.tr('tasks.engine'),
-            value: task.engine == 'dart' ? l10n.tr('tasks.dartEngine') : task.engine,
           ),
           if (task.message.isNotEmpty)
             InfoLine(label: l10n.tr('tasks.status'), value: task.message),

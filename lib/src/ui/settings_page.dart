@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -33,6 +34,16 @@ class SettingsPageState extends State<SettingsPage> {
   /// 而控制器是这一页私有的。
   ValueNotifier<bool> get canSave => widget.canSave;
 
+  /// 展开中的分组 id。**默认全部收起**（2026-09-24 定）。
+  ///
+  /// ⚠️ 只放内存，不写进设置对象 —— 一进设置对象就会被 [_dirty] 当成
+  /// 「有未保存的改动」，点一下箭头右上角保存按钮就跟着亮。
+  final Set<String> _expanded = <String>{};
+
+  void _toggle(String id) => setState(() {
+        if (!_expanded.remove(id)) _expanded.add(id);
+      });
+
   /// 基线 = 最近一次**落盘**的内容（由 AppState 维护）。
   ///
   /// ⚠️ 不能自己「进页面时拍个快照」：设置页在 IndexedStack 里是常驻的，
@@ -40,7 +51,7 @@ class SettingsPageState extends State<SettingsPage> {
 
   /// 有没有未保存的改动。
   ///
-  /// ⚠️ 文本比较用的是 `trim()` 后的值 —— 必须跟 [_save] 写入时的规范化一致，
+  /// ⚠️ 文本比较用的是 `trim()` 后的值 —— 必须跟 [save] 写入时的规范化一致，
   /// 否则会出现「敲个空格按钮亮起、点保存却什么都没变」这种怪状。
   bool get _dirty {
     final settings = widget.state.settings;
@@ -143,8 +154,12 @@ class SettingsPageState extends State<SettingsPage> {
                       )
                     : const SizedBox.shrink(),
               ),
-              SectionCard(
+              CollapsibleSection(
                 title: l10n.tr('settings.download'),
+                summary: '${qualityLabel(settings.preferredQuality, l10n)}'
+                    ' · ${audioLabel(settings.preferredAudio, l10n)}',
+                expanded: _expanded.contains('download'),
+                onToggle: () => _toggle('download'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -207,7 +222,20 @@ class SettingsPageState extends State<SettingsPage> {
                         setState(() {});
                       },
                     ),
-                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              CollapsibleSection(
+                title: l10n.tr('settings.groupBehavior'),
+                summary:
+                    '${l10n.tr('tasks.parallel', {'count': '${settings.maxParallelTasks}'})}'
+                    ' · ${l10n.tr('settings.summaryParts', {'count': '${settings.partsPerFile}'})}',
+                expanded: _expanded.contains('behavior'),
+                onToggle: () => _toggle('behavior'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Row(
                       children: [
                         SizedBox(width: 96, child: Text(l10n.tr('settings.parallelTasks'))),
@@ -270,18 +298,62 @@ class SettingsPageState extends State<SettingsPage> {
                       title: Text(l10n.tr('settings.grpcHdr')),
                       subtitle: Text(l10n.tr('settings.grpcHint')),
                     ),
+                    const Divider(height: 24),
+                    // 预检的并发策略：默认严格串行加间隔，稳；要快可开并行。
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: settings.parallelPreflight,
+                      title: Text(l10n.tr('settings.parallelPreflight')),
+                      subtitle: Text(l10n.tr('settings.parallelPreflightHint')),
+                      // ⚠️ 只写内存，落盘交给保存按钮 —— 全页统一一种语义，
+                      // 否则这两个字段改完就落盘、别的要按保存，按钮的含义就乱了。
+                      onChanged: (value) => setState(
+                        () => settings.parallelPreflight = value,
+                      ),
+                    ),
+                    const Divider(height: 24),
+                    // 同名文件处理：批量下载几乎必然撞名，这里定撞名时的行为。
+                    // 即选即落盘，不等「保存设置」。
+                    Text(
+                      l10n.tr('settings.duplicate'),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.tr('settings.duplicateHint'),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        for (final mode in kDuplicateModes)
+                          ChoiceChip(
+                            label: Text(
+                              l10n.tr('settings.duplicate.$mode'),
+                            ),
+                            selected: settings.duplicateMode == mode,
+                            onSelected: (_) => setState(
+                              () => settings.duplicateMode = mode,
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              SectionCard(
+              CollapsibleSection(
                 title: l10n.tr('settings.mux'),
-                trailing: StateChip(
-                  text: state.ffmpegPath == null
-                      ? l10n.tr('settings.builtinMux')
-                      : l10n.tr('settings.ffmpegReady'),
-                  tone: 1,
-                ),
+                summary: state.ffmpegPath == null
+                    ? l10n.tr('settings.builtinMux')
+                    : l10n.tr('settings.ffmpegReady'),
+                expanded: _expanded.contains('mux'),
+                onToggle: () => _toggle('mux'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -322,142 +394,106 @@ class SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              SectionCard(
-                title: l10n.tr('settings.engine'),
-                trailing: StateChip(text: l10n.tr('settings.engineDart')),
+              // 界面与语言放一起：都是「点了就想看效果」的项，
+              // 主题色原来在高级设置里，2026-09-24 挪回主页。
+              CollapsibleSection(
+                title: l10n.tr('settings.groupInterface'),
+                summary: '${_localeName(l10n, settings.localeCode)}'
+                    ' · ${l10n.tr('theme.${normalizeThemeId(settings.themeId)}')}',
+                expanded: _expanded.contains('interface'),
+                onToggle: () => _toggle('interface'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(l10n.tr('settings.engineDartDesc')),
-                    const SizedBox(height: 6),
                     Text(
-                      windows
-                          ? l10n.tr('settings.engineFuture')
-                          : l10n.tr('settings.engineOnlyDart'),
+                      l10n.tr('settings.themeColor'),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: <Widget>[
+                        for (final entry in kThemeSeeds.entries)
+                          _ThemeSwatch(
+                            id: entry.key,
+                            color: Color(entry.value),
+                            selected: settings.themeId == entry.key,
+                            onTap: () {
+                              setState(() => settings.themeId = entry.key);
+                              // 主题是"点了就想看到"的东西，顺手落盘，
+                              // 不该等到点顶部保存按钮才生效。
+                              unawaited(state.saveSettings());
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      l10n.tr('settings.themeHint'),
                       style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
+                    const SizedBox(height: 16),
+                    // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
+                    DropdownButtonFormField<String>(
+                      initialValue: settings.localeCode,
+                      decoration: InputDecoration(
+                        labelText: l10n.tr('settings.language'),
+                        prefixIcon: const Icon(Icons.translate),
+                      ),
+                      items: [
+                        for (final code in kLocaleCodes)
+                          DropdownMenuItem(
+                            value: code,
+                            child: Text(_localeName(l10n, code)),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        state.setLocale(value);
+                      },
+                    ),
+                    // ⚠️ 关闭行为仍只给 Windows —— 那是托盘的概念，安卓没有。
+                    if (windows) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<bool>(
+                        initialValue: settings.closeToTray,
+                        decoration: InputDecoration(
+                          labelText: l10n.tr('settings.closeBehavior'),
+                          prefixIcon: const Icon(Icons.exit_to_app_outlined),
+                        ),
+                        items: [
+                          DropdownMenuItem<bool>(
+                            value: true,
+                            child: Text(l10n.tr('settings.closeToTray')),
+                          ),
+                          DropdownMenuItem<bool>(
+                            value: false,
+                            child: Text(l10n.tr('settings.closeToExit')),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          settings.closeToTray = value;
+                          setState(() {});
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
               // 备份与恢复现在两端都有：
               // - Windows 侧原本是给「安装版 ↔ 便携版」互相迁移用的；
               // - 安卓侧同样需要（换机、重装、清数据都会丢配置与任务列表），
               //   导出落在下载目录里，跟视频放在一起。
-              // ⚠️ 关闭行为仍只给 Windows —— 那是托盘的概念，安卓没有。
               BackupCard(state: state),
               const SizedBox(height: 12),
-              if (windows) ...[
-                // 关闭行为：默认最小化到托盘，任务继续跑；选「退出」才真退。
-                SectionCard(
-                  title: l10n.tr('settings.closeBehavior'),
-                  child: DropdownButtonFormField<bool>(
-                    initialValue: settings.closeToTray,
-                    decoration: InputDecoration(
-                      labelText: l10n.tr('settings.closeBehavior'),
-                      prefixIcon: const Icon(Icons.exit_to_app_outlined),
-                    ),
-                    items: [
-                      DropdownMenuItem<bool>(
-                        value: true,
-                        child: Text(l10n.tr('settings.closeToTray')),
-                      ),
-                      DropdownMenuItem<bool>(
-                        value: false,
-                        child: Text(l10n.tr('settings.closeToExit')),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      settings.closeToTray = value;
-                      setState(() {});
-                    },
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-              const SizedBox(height: 12),
-              // 预检的并发策略：默认严格串行加间隔，稳；要快可开并行。
-              SectionCard(
-                title: l10n.tr('settings.parallelPreflight'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(
-                      l10n.tr('settings.parallelPreflightHint'),
-                      style: const TextStyle(
-                          fontSize: 12, color: kTextMuted),
-                    ),
-                    const SizedBox(height: 4),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: settings.parallelPreflight,
-                      title: Text(l10n.tr('settings.parallelPreflight')),
-                      // ⚠️ 只写内存，落盘交给保存按钮 —— 全页统一一种语义，
-                      // 否则这两个字段改完就落盘、别的要按保存，按钮的含义就乱了。
-                      onChanged: (value) => setState(
-                        () => settings.parallelPreflight = value,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // 同名文件处理：批量下载几乎必然撞名，这里定撞名时的行为。
-              // 即选即落盘，不等「保存设置」。
-              SectionCard(
-                title: l10n.tr('settings.duplicate'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(l10n.tr('settings.duplicateHint'),
-                        style: const TextStyle(
-                            fontSize: 12, color: kTextMuted)),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: <Widget>[
-                        for (final mode in kDuplicateModes)
-                          ChoiceChip(
-                            label: Text(
-                              l10n.tr('settings.duplicate.$mode'),
-                            ),
-                            selected: settings.duplicateMode == mode,
-                            onSelected: (_) => setState(
-                              () => settings.duplicateMode = mode,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // 语言切换是即选即生效：改完直接落盘并重建界面，不等「保存设置」。
-              SectionCard(
-                title: l10n.tr('settings.language'),
-                child: DropdownButtonFormField<String>(
-                  initialValue: settings.localeCode,
-                  decoration: InputDecoration(
-                    labelText: l10n.tr('settings.language'),
-                    prefixIcon: const Icon(Icons.translate),
-                  ),
-                  items: [
-                    for (final code in kLocaleCodes)
-                      DropdownMenuItem(
-                        value: code,
-                        child: Text(_localeName(l10n, code)),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    state.setLocale(value);
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
               // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
-              // 放在主页会把常用设置挤下去。语言留在主页，新用户要能一眼找到。
+              // 放在主页会把常用设置挤下去。
               Card(
                 key: _advancedKey,
                 child: ListTile(
@@ -523,6 +559,47 @@ class SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppLocalizations.of(context).tr('settings.saved'))),
+    );
+  }
+}
+
+/// 主题色小圆点：选中时加一圈描边并打勾。
+class _ThemeSwatch extends StatelessWidget {
+  const _ThemeSwatch({
+    required this.id,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String id;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: AppLocalizations.of(context).tr('theme.$id'),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? kTextPrimary : kBorder,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: selected
+              ? const Icon(Icons.check, size: 18, color: Colors.white)
+              : null,
+        ),
+      ),
     );
   }
 }

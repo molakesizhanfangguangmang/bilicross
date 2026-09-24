@@ -79,7 +79,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'nav.settings': '设置',
     'app.initFailed': '初始化失败：{error}',
     'app.queueRunning': '队列运行中',
-    'app.dartEngine': 'Dart 引擎',
 
     // 通用
     'common.cancel': '取消',
@@ -209,8 +208,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'tasks.notRecorded': '未记录',
     'tasks.pagePart': '第 {page} P · cid {cid}',
     'tasks.cidOnly': 'cid {cid}',
-    'tasks.engine': '引擎',
-    'tasks.dartEngine': 'Dart 内置',
     'tasks.status': '状态',
     'tasks.output': '输出',
     'tasks.pause': '暂停',
@@ -250,7 +247,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'msg.downloadAudio': '下载音频流',
     'msg.singleTrackDone': '完成（单轨）：{path}',
     'msg.muxing': '合并音视频',
-    'msg.done': '完成（{engine}）：{path}',
+    'msg.done': '完成：{path}',
     'msg.fragmentsRemoved': '（已清理 {count} 个分片）',
     'msg.muxFailed': '合并失败，两个分片已保留，可稍后重试：{error}',
     'msg.singleTrackNoMux': '该任务只下了一条轨道，没有可合并的分片',
@@ -262,7 +259,6 @@ class AppLocalizationsZh extends AppLocalizations {
     // 错误提示
     'err.noSessdata': '没有从内容里提取到 SESSDATA 字段',
     'err.needWebCookie': '请先写入 WEB Cookie',
-    'err.engineMissing': 'BBDownNext 兼容引擎尚未接入，请改用 Dart 内置引擎',
     'err.noTrack': '任务没有选择任何轨道',
     'err.emptyVideo': '视频分片为空',
     'err.emptyAudio': '音频分片为空',
@@ -293,12 +289,15 @@ class AppLocalizationsZh extends AppLocalizations {
     // 设置
     'settings.title': '设置',
     'settings.download': '下载',
+    'settings.groupBehavior': '下载行为',
+    'settings.groupInterface': '界面与语言',
     'settings.downloadDir': '下载目录',
     'settings.chooseDir': '选择目录',
     'settings.quality': '默认画质',
     'settings.audio': '默认音质',
     'settings.parallelTasks': '并发任务',
     'settings.partsPerFile': '单文件连接',
+    'settings.summaryParts': '{count} 段',
     'settings.partsHint': '同一个文件切成几段并行下载，1 表示单连接。'
         '服务端不支持分段或文件较小时会自动退回单连接。',
     'settings.preferApp': '优先使用 APP 通道解析',
@@ -318,7 +317,6 @@ class AppLocalizationsZh extends AppLocalizations {
         '按 moof/mdat 把两条流交替写成 MP4，采样数据原样搬运。'
         '两条路都失败才会保留分片并写进任务消息，之后可以在任务页单独重试合并。',
     'settings.unsavedHint': '有未保存的改动，点右上角「保存设置」。',
-    'settings.appearance': '外观',
     'settings.themeColor': '主题色',
     'settings.themeHint': '只改变品牌色；文字与状态标记（缺档、风控）的颜色不变。',
     'settings.advancedAutoSave': '本页改动在退出时自动保存。',
@@ -334,12 +332,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.appParams': 'App 参数',
     'settings.appKeyHint': 'AppKey/AppSec 会随客户端分发，无法真正保密；'
         '只用于申请 APP 授权码。',
-    'settings.engine': '解析引擎',
-    'settings.engineDart': 'Dart 内置',
-    'settings.engineDartDesc': '当前所有任务由 Dart 内置引擎执行。',
-    'settings.engineFuture': 'BBDownNext 兼容引擎（随包附带、本地 serve 模式）尚未接入，'
-        '接入后可按任务切换。',
-    'settings.engineOnlyDart': '该平台只提供 Dart 内置引擎。',
     'settings.logs': '运行日志',
     'settings.logsHint': '解析走了哪条通道、为什么回退、下载与合并的细节',
     'settings.logFile': '记录文件：{path}',

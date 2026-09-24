@@ -81,7 +81,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'nav.settings': 'Settings',
     'app.initFailed': 'Initialization failed: {error}',
     'app.queueRunning': 'Queue running',
-    'app.dartEngine': 'Dart engine',
 
     // Common
     'common.cancel': 'Cancel',
@@ -215,8 +214,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'tasks.notRecorded': 'Not recorded',
     'tasks.pagePart': 'Part {page} · cid {cid}',
     'tasks.cidOnly': 'cid {cid}',
-    'tasks.engine': 'Engine',
-    'tasks.dartEngine': 'Dart built-in',
     'tasks.status': 'Status',
     'tasks.output': 'Output',
     'tasks.pause': 'Pause',
@@ -257,7 +254,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'msg.downloadAudio': 'Downloading audio stream',
     'msg.singleTrackDone': 'Done (single track): {path}',
     'msg.muxing': 'Muxing audio and video',
-    'msg.done': 'Done ({engine}): {path}',
+    'msg.done': 'Done: {path}',
     'msg.fragmentsRemoved': ' ({count} fragment(s) removed)',
     'msg.muxFailed': 'Muxing failed; fragments kept, retry later: {error}',
     'msg.singleTrackNoMux': 'This task downloaded a single track; nothing to mux',
@@ -269,7 +266,6 @@ class AppLocalizationsEn extends AppLocalizations {
     // Errors
     'err.noSessdata': 'No SESSDATA field found in the content',
     'err.needWebCookie': 'Save a web cookie first',
-    'err.engineMissing': 'The BBDownNext engine is not available yet; use the built-in Dart engine',
     'err.noTrack': 'No track selected for this task',
     'err.emptyVideo': 'Video fragments are empty',
     'err.emptyAudio': 'Audio fragments are empty',
@@ -300,12 +296,15 @@ class AppLocalizationsEn extends AppLocalizations {
     // Settings
     'settings.title': 'Settings',
     'settings.download': 'Download',
+    'settings.groupBehavior': 'Download behaviour',
+    'settings.groupInterface': 'Interface and language',
     'settings.downloadDir': 'Download folder',
     'settings.chooseDir': 'Choose folder',
     'settings.quality': 'Default video quality',
     'settings.audio': 'Default audio quality',
     'settings.parallelTasks': 'Parallel tasks',
     'settings.partsPerFile': 'Connections per file',
+    'settings.summaryParts': '{count} part(s)',
     'settings.partsHint': 'Splits one file into several ranges downloaded in '
         'parallel; 1 means a single connection. Falls back to a single '
         'connection when the server rejects ranges or the file is small.',
@@ -330,7 +329,6 @@ class AppLocalizationsEn extends AppLocalizations {
         'are fragments kept and reported on the task, and you can retry muxing '
         'from the tasks page.',
     'settings.unsavedHint': 'You have unsaved changes — use Save in the top bar.',
-    'settings.appearance': 'Appearance',
     'settings.themeColor': 'Theme color',
     'settings.themeHint': 'Changes the brand color only; text and status markers keep their colors.',
     'settings.advancedAutoSave': 'Changes on this page are saved when you leave it.',
@@ -347,12 +345,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.appParams': 'App parameters',
     'settings.appKeyHint': 'AppKey/AppSec ship with the client and cannot really '
         'be kept secret; they are only used to request an app auth code.',
-    'settings.engine': 'Parse engine',
-    'settings.engineDart': 'Dart built-in',
-    'settings.engineDartDesc': 'All tasks currently run on the built-in Dart engine.',
-    'settings.engineFuture': 'The BBDownNext engine (bundled, local serve mode) '
-        'is not wired up yet; once it is you can switch per task.',
-    'settings.engineOnlyDart': 'Only the built-in Dart engine is available on this platform.',
     'settings.logs': 'Run log',
     'settings.logsHint': 'Which parse channel was used, why it fell back, and '
         'download/mux details',

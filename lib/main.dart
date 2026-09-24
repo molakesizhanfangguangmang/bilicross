@@ -477,18 +477,17 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ),
                 ),
-              // 状态标（队列运行中 / Dart 引擎）**只在安卓端的设置页**隐藏：
-              // 那是用户 2026-09-21 明确要求的范围（桌面端保持原样），
-              // 理由是设置页标题栏已经有保存按钮，再挤一个标就满了。
-              if (!Platform.isAndroid || index != _settingsIndex)
+              // 只在队列真的在跑时显示状态标，空闲时不再占位置
+              // （2026-09-24 去掉了原来的「Dart 引擎」标）。
+              // 安卓端的设置页仍然隐藏：那里标题栏已有保存按钮。
+              if (state.queueRunning &&
+                  (!Platform.isAndroid || index != _settingsIndex))
                 Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: Center(
                     child: StateChip(
-                      text: state.queueRunning
-                          ? l10n.tr('app.queueRunning')
-                          : l10n.tr('app.dartEngine'),
-                      tone: state.queueRunning ? 1 : 0,
+                      text: l10n.tr('app.queueRunning'),
+                      tone: 1,
                     ),
                   ),
                 ),

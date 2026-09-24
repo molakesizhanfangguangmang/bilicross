@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../core/log_store.dart';
-import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
@@ -76,46 +75,8 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           // 配置项在前，排错用的日志在后。
-          SectionCard(
-            title: l10n.tr('settings.appearance'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  l10n.tr('settings.themeColor'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: <Widget>[
-                    for (final entry in kThemeSeeds.entries)
-                      _ThemeSwatch(
-                        id: entry.key,
-                        color: Color(entry.value),
-                        selected: state.settings.themeId == entry.key,
-                        onTap: () {
-                          setState(() => state.settings.themeId = entry.key);
-                          // 主题是"点了就想看到"的东西，顺手落盘，
-                          // 不该等到退出页面才保存。
-                          unawaited(state.saveSettings());
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  l10n.tr('settings.themeHint'),
-                  style: const TextStyle(fontSize: 12, color: kTextMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
+          // ⚠️ 外观（主题色）2026-09-24 挪回了设置主页 —— 那是「点了就想看效果」
+          // 的项，藏在二级页里不合适。
           // 网络：决定「请求怎么发出去」的两项 —— 代理与 User-Agent。
           SectionCard(
             title: l10n.tr('settings.network'),
@@ -213,47 +174,6 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 主题色小圆点：选中时加一圈描边并打勾。
-class _ThemeSwatch extends StatelessWidget {
-  const _ThemeSwatch({
-    required this.id,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String id;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: AppLocalizations.of(context).tr('theme.$id'),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? kTextPrimary : kBorder,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: selected
-              ? const Icon(Icons.check, size: 18, color: Colors.white)
-              : null,
-        ),
       ),
     );
   }
