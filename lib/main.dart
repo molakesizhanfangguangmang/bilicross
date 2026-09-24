@@ -263,15 +263,21 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       // 背景层垫在所有路由**之下**：页面怎么切换它都不动。
-      // 没背景时不加这一层，保持旧版结构。
-      builder: hasBackground
-          ? (context, child) => _backgroundLayer(
-                child: child,
-                file: backgroundFile,
-                opacity: backgroundOpacity,
-                fit: backgroundFit,
-              )
-          : null,
+      // ⚠️ 兜底色不能省：只把 `scaffoldBackgroundColor` 改透明的话，透明处会露到
+      // **窗口底色**（Windows 白/黑、安卓黑），而不是页面底。
+      builder: (context, child) => Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          const ColoredBox(color: kSurfacePage),
+          if (hasBackground)
+            _backgroundImage(
+              file: backgroundFile,
+              opacity: backgroundOpacity,
+              fit: backgroundFit,
+            ),
+          ?child,
+        ],
+      ),
       theme: ThemeData(
         colorScheme: scheme,
         // 只有开了背景才把页面底改透明，让底下那层背景透上来。
@@ -351,42 +357,31 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     );
   }
 
-  /// 背景叠层：兜底色 → 背景图 → 内容。
-  ///
-  /// ⚠️ 底层那块 [kSurfacePage] 不能省：只把 `scaffoldBackgroundColor` 改透明的话，
-  /// 透明处会露到**窗口底色**（Windows 白/黑、安卓黑），而不是页面底。
+  /// 背景图。
   ///
   /// ⚠️ 解码尺寸封顶（[kBackgroundDecodeCap]）而不是按窗口算：按窗口算的话
   /// 拖一次窗口就换一次解码目标，得再引一层 resize 防抖；固定上限既压住内存，
   /// 也省掉防抖。
-  Widget _backgroundLayer({
-    required Widget? child,
+  Widget _backgroundImage({
     required File file,
     required double opacity,
     required String fit,
   }) {
     final tile = fit == kBackgroundFitTile;
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        const ColoredBox(color: kSurfacePage),
-        Image(
-          image: ResizeImage(
-            FileImage(file),
-            width: kBackgroundDecodeCap,
-            height: kBackgroundDecodeCap,
-            policy: ResizeImagePolicy.fit,
-          ),
-          opacity: AlwaysStoppedAnimation<double>(opacity),
-          fit: tile
-              ? BoxFit.none
-              : (fit == kBackgroundFitContain ? BoxFit.contain : BoxFit.cover),
-          repeat: tile ? ImageRepeat.repeat : ImageRepeat.noRepeat,
-          // 图有可能在读出与绘制之间被外部删掉，别让异常冒到渲染层。
-          errorBuilder: (context, error, stack) => const SizedBox.shrink(),
-        ),
-        ?child,
-      ],
+    return Image(
+      image: ResizeImage(
+        FileImage(file),
+        width: kBackgroundDecodeCap,
+        height: kBackgroundDecodeCap,
+        policy: ResizeImagePolicy.fit,
+      ),
+      opacity: AlwaysStoppedAnimation<double>(opacity),
+      fit: tile
+          ? BoxFit.none
+          : (fit == kBackgroundFitContain ? BoxFit.contain : BoxFit.cover),
+      repeat: tile ? ImageRepeat.repeat : ImageRepeat.noRepeat,
+      // 图有可能在读出与绘制之间被外部删掉，别让异常冒到渲染层。
+      errorBuilder: (context, error, stack) => const SizedBox.shrink(),
     );
   }
 }
