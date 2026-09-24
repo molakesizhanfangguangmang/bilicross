@@ -377,6 +377,32 @@ class AppLocalizationsEn extends AppLocalizations {
         'The image is copied into the app data folder, so moving or deleting '
         'the original does not affect it.',
 
+    // Background
+    'background.title': 'Background',
+    'background.hint':
+        'The image is copied into the app data folder, so moving or deleting '
+        'the original does not affect it.',
+    'background.imageSet': 'Image set',
+    'background.imageNone': 'No image chosen',
+    'background.pickImage': 'Choose image',
+    'background.clearImage': 'Clear image',
+    'background.imageSaved': 'Image saved',
+    'background.imageCleared': 'Cleared',
+    'background.imageFailed': 'Failed to save the image',
+    'background.imageFailedWith': 'Failed to save the image: {error}',
+    'background.opacity': 'Background opacity {value}% (0% turns it off)',
+    'background.opacityHint':
+        'Only changes how strongly the wallpaper itself shows through.',
+    'background.fit': 'Scaling',
+    'background.fit.cover': 'Fill and crop',
+    'background.fit.contain': 'Fit inside',
+    'background.fit.tile': 'Tile',
+    'background.uiOpacity': 'Interface opacity {value}%',
+    'background.uiOpacityHint':
+        'Applies to the top bar, bottom navigation and cards together; '
+        'dialogs are unaffected. The 20% floor is a safety stop.',
+    'background.summary': 'Backdrop {value}%',
+
     // Log page
     'logs.title': 'Run log',
     'logs.copyAll': 'Copy all',

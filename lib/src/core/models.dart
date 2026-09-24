@@ -3,6 +3,7 @@
 import '../i18n/app_localizations.dart';
 import '../i18n/app_localizations_zh.dart';
 import 'anim_config.dart';
+import 'background_config.dart';
 import 'splash_config.dart';
 
 const String kDefaultAppKey = '783bbb7264451d82';
@@ -984,6 +985,9 @@ class AppSettings {
     this.duplicateMode = kDuplicateDefault,
     this.parallelPreflight = false,
     this.themeId = kThemeDefault,
+    this.backgroundOpacity = kBackgroundDefaultOpacity,
+    this.uiOpacity = kUiDefaultOpacity,
+    this.backgroundFit = kBackgroundFitDefault,
   });
 
   String downloadDir;
@@ -1049,6 +1053,16 @@ class AppSettings {
   /// 主题色 id，取值见 [kThemeSeeds]。只影响品牌色，语义色不变。
   String themeId;
 
+  /// 背景图浓度（0–1）。0 表示不显示背景 —— 不额外存开关，看这个值即可。
+  /// 图片本身是否存在按文件判（固定名 `background.img`），同样不存 flag。
+  double backgroundOpacity;
+
+  /// 界面（顶栏 / 底栏 / 卡片）不透明度（0.2–1）。1 表示与旧版完全一致。
+  double uiOpacity;
+
+  /// 背景铺满方式，取值见 [kBackgroundFits]。
+  String backgroundFit;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -1076,6 +1090,9 @@ class AppSettings {
         'duplicate_mode': duplicateMode,
         'parallel_preflight': parallelPreflight,
         'theme_id': themeId,
+        'background_opacity': backgroundOpacity,
+        'ui_opacity': uiOpacity,
+        'background_fit': backgroundFit,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -1109,6 +1126,14 @@ class AppSettings {
         duplicateMode: normalizeDuplicateMode(json['duplicate_mode'] as String?),
         parallelPreflight: json['parallel_preflight'] as bool? ?? false,
         themeId: normalizeThemeId(json['theme_id'] as String?),
+        backgroundOpacity: clampBackgroundOpacity(
+          (json['background_opacity'] as num?)?.toDouble() ??
+              kBackgroundDefaultOpacity,
+        ),
+        uiOpacity: clampUiOpacity(
+          (json['ui_opacity'] as num?)?.toDouble() ?? kUiDefaultOpacity,
+        ),
+        backgroundFit: normalizeBackgroundFit(json['background_fit'] as String?),
       );
 }
 

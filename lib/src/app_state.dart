@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'core/abort.dart';
+import 'core/background_config.dart';
 import 'core/bili_api.dart';
 import 'core/downloader.dart';
 import 'core/log_store.dart';
@@ -192,6 +193,13 @@ class AppState extends ChangeNotifier {
       queue: queueRunning,
       risk: _riskControlHit,
       splashSeconds: settings.splashSeconds,
+      // 背景三件套 + 图在不在：外壳要拿它们算叠层与四处底色。
+      // ⚠️ 图是文件而不是设置字段，只能在这里探一次 —— 选了图 / 清了图之后
+      // 必须有一次通知，外壳才会跟着铺上或撤掉背景层。
+      backgroundOpacity: settings.backgroundOpacity,
+      uiOpacity: settings.uiOpacity,
+      backgroundFit: settings.backgroundFit,
+      hasBackground: backgroundImageFile(store.root).existsSync(),
     ),
   );
 
@@ -209,6 +217,13 @@ class AppState extends ChangeNotifier {
     await refreshFfmpeg();
     notifyListeners();
   }
+
+  /// 只通知界面、不落盘。
+  ///
+  /// 给「拖动中要实时看到效果」的外观项用（背景浓度 / 界面浓度）：拖动中每动一格
+  /// 都走 [saveSettings] 太贵（写盘 + 重建 API + 探测 ffmpeg），但完全不通知界面
+  /// 又看不到效果。所以拖动中只发这一路通知，松手再落盘。
+  void notifyAppearanceChanged() => notifyListeners();
 
   /// 恢复备份之后重新读盘并重新验证。
   ///

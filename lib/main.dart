@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
+import 'src/core/background_config.dart';
 import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
 import 'src/core/splash_config.dart';
@@ -233,6 +234,19 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       brightness: Brightness.light,
       surface: kSurfacePage,
     );
+    // 背景：浓度 > 0 **且**图确实在磁盘上，才算「有背景」。
+    // 不额外存开关 —— 0% 就是关，文件在不在就是图在不在。
+    final backgroundFile = backgroundImageFile(state.store.root);
+    final backgroundOpacity = clampBackgroundOpacity(
+      state.settings.backgroundOpacity,
+    );
+    final hasBackground = backgroundOpacity > kBackgroundMinOpacity &&
+        backgroundFile.existsSync();
+    // 界面不透明度：100% 时**一个主题字段都不覆盖** —— 默认值必须与旧版像素级一致。
+    // 低于 100% 才是「给同一批底色在运行时加 alpha」，不是换成别的色。
+    final uiOpacity = clampUiOpacity(state.settings.uiOpacity);
+    final translucentUi = uiOpacity < kUiMaxOpacity;
+    final backgroundFit = normalizeBackgroundFit(state.settings.backgroundFit);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
@@ -248,13 +262,38 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // 背景层垫在所有路由**之下**：页面怎么切换它都不动。
+      // 没背景时不加这一层，保持旧版结构。
+      builder: hasBackground
+          ? (context, child) => _backgroundLayer(
+                child: child,
+                file: backgroundFile,
+                opacity: backgroundOpacity,
+                fit: backgroundFit,
+              )
+          : null,
       theme: ThemeData(
         colorScheme: scheme,
-        scaffoldBackgroundColor: kSurfacePage,
+        // 只有开了背景才把页面底改透明，让底下那层背景透上来。
+        scaffoldBackgroundColor:
+            hasBackground ? Colors.transparent : kSurfacePage,
         useMaterial3: true,
+        // ⚠️ 界面不透明度只在 < 100% 时才覆盖底色；100% 时全为 null、
+        // 回落到 M3 默认（`surface` / `surfaceContainer` / `surfaceContainerLow`），
+        // 与旧版完全一致。`palette.dart` 一个字都不改。
+        appBarTheme: translucentUi
+            ? AppBarTheme(
+                backgroundColor: scheme.surface.withValues(alpha: uiOpacity),
+                // M3 的滚动态会再盖一层 surfaceTint，把透明效果吃掉。
+                scrolledUnderElevation: 0,
+              )
+            : null,
         // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
         // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
         navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: translucentUi
+              ? scheme.surfaceContainer.withValues(alpha: uiOpacity)
+              : null,
           indicatorColor: scheme.primary,
           iconTheme: WidgetStateProperty.resolveWith((states) {
             final selected = states.contains(WidgetState.selected);
@@ -273,6 +312,9 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         ),
         // 宽屏走 NavigationRail，配色要与底部导航保持一致，否则两端观感不同。
         navigationRailTheme: NavigationRailThemeData(
+          backgroundColor: translucentUi
+              ? scheme.surface.withValues(alpha: uiOpacity)
+              : null,
           indicatorColor: scheme.primary,
           selectedIconTheme: IconThemeData(color: scheme.onPrimary),
           unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
@@ -286,10 +328,15 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
             color: scheme.onSurfaceVariant,
           ),
         ),
-        cardTheme: const CardThemeData(
+        // 卡片也跟界面不透明度走：`SectionCard` 是裸 `Card`（ui/widgets.dart），
+        // 改这一处就能覆盖全部卡片。
+        cardTheme: CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
+          color: translucentUi
+              ? scheme.surfaceContainerLow.withValues(alpha: uiOpacity)
+              : null,
+          shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
             side: BorderSide(color: kBorder),
           ),
@@ -301,6 +348,45 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         ),
       ),
       home: AppShell(state: state),
+    );
+  }
+
+  /// 背景叠层：兜底色 → 背景图 → 内容。
+  ///
+  /// ⚠️ 底层那块 [kSurfacePage] 不能省：只把 `scaffoldBackgroundColor` 改透明的话，
+  /// 透明处会露到**窗口底色**（Windows 白/黑、安卓黑），而不是页面底。
+  ///
+  /// ⚠️ 解码尺寸封顶（[kBackgroundDecodeCap]）而不是按窗口算：按窗口算的话
+  /// 拖一次窗口就换一次解码目标，得再引一层 resize 防抖；固定上限既压住内存，
+  /// 也省掉防抖。
+  Widget _backgroundLayer({
+    required Widget? child,
+    required File file,
+    required double opacity,
+    required String fit,
+  }) {
+    final tile = fit == kBackgroundFitTile;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ColoredBox(color: kSurfacePage),
+        Image(
+          image: ResizeImage(
+            FileImage(file),
+            width: kBackgroundDecodeCap,
+            height: kBackgroundDecodeCap,
+            policy: ResizeImagePolicy.fit,
+          ),
+          opacity: AlwaysStoppedAnimation<double>(opacity),
+          fit: tile
+              ? BoxFit.none
+              : (fit == kBackgroundFitContain ? BoxFit.contain : BoxFit.cover),
+          repeat: tile ? ImageRepeat.repeat : ImageRepeat.noRepeat,
+          // 图有可能在读出与绘制之间被外部删掉，别让异常冒到渲染层。
+          errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+        ),
+        ?child,
+      ],
     );
   }
 }

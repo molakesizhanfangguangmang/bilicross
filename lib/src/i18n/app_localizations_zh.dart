@@ -361,6 +361,28 @@ class AppLocalizationsZh extends AppLocalizations {
     'splash.seconds': '停留时间 {value} 秒',
     'splash.hint': '图片会复制到应用数据目录，原文件移动或删除都不影响。',
 
+    // 背景
+    'background.title': '背景',
+    'background.hint': '图片会复制到应用数据目录，原文件移动或删除都不影响。',
+    'background.imageSet': '已设置图片',
+    'background.imageNone': '还没有选图片',
+    'background.pickImage': '选择图片',
+    'background.clearImage': '清除图片',
+    'background.imageSaved': '图片已保存',
+    'background.imageCleared': '已清除',
+    'background.imageFailed': '图片保存失败',
+    'background.imageFailedWith': '图片保存失败：{error}',
+    'background.opacity': '背景不透明度 {value}%（0% 即关闭背景）',
+    'background.opacityHint': '只调背景图自身的浓淡，越淡越接近页面底色。',
+    'background.fit': '铺满方式',
+    'background.fit.cover': '撑满裁切',
+    'background.fit.contain': '完整显示',
+    'background.fit.tile': '平铺',
+    'background.uiOpacity': '界面不透明度 {value}%',
+    'background.uiOpacityHint': '顶部标题栏、底部导航与卡片一起变；弹窗不受影响。'
+        '下限 20% 是防呆，再低界面就点不回来了。',
+    'background.summary': '背景 {value}%',
+
     // 日志页
     'logs.title': '运行日志',
     'logs.copyAll': '复制全部',

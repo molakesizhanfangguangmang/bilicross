@@ -5,9 +5,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../core/background_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
+import 'background_card.dart';
 import 'backup_card.dart';
 import 'expand_page_route.dart';
 import 'widgets.dart';
@@ -399,7 +401,10 @@ class SettingsPageState extends State<SettingsPage> {
               CollapsibleSection(
                 title: l10n.tr('settings.groupInterface'),
                 summary: '${_localeName(l10n, settings.localeCode)}'
-                    ' · ${l10n.tr('theme.${normalizeThemeId(settings.themeId)}')}',
+                    ' · ${l10n.tr('theme.${normalizeThemeId(settings.themeId)}')}'
+                    ' · ${l10n.tr('background.summary', {
+                      'value': '${(clampBackgroundOpacity(settings.backgroundOpacity) * 100).round()}',
+                    })}',
                 expanded: _expanded.contains('interface'),
                 onToggle: () => _toggle('interface'),
                 child: Column(
@@ -482,6 +487,10 @@ class SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    // 背景与主题色同类（「点了就想看效果」），所以同组；
+                    // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
+                    BackgroundCard(state: state),
                   ],
                 ),
               ),
