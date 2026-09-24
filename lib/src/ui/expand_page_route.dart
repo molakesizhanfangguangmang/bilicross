@@ -58,7 +58,7 @@ class ExpandPageRoute<T> extends PageRouteBuilder<T> {
   ///
   /// 平行外扩本身是四条边同速移动，观感偏"机械"；给内容叠一点点缩放
   /// （0.97 → 1.0）能补出"浮起来"的层次。缩放露出的边缘由外层 Material
-  /// 的 surface 色兜住，所以看不出破绽。
+  /// 的页面底色兜住，所以看不出破绽。
   static const double _contentScaleFrom = 0.97;
 
   @override
@@ -121,7 +121,9 @@ class ExpandPageRoute<T> extends PageRouteBuilder<T> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(radius),
                   child: Material(
-                    color: Theme.of(context).colorScheme.surface,
+                    // ⚠️ 垫底色必须取「页面底」而不是写死不透明色：写死的话展开期间
+                    // 会把背景图整块盖住，直到动画结束交回真实布局才"啪"地变透明。
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     child: Opacity(
                       opacity: contentOpacity,
                       child: Transform.scale(
