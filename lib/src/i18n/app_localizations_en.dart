@@ -397,10 +397,14 @@ class AppLocalizationsEn extends AppLocalizations {
     'background.fit.cover': 'Fill and crop',
     'background.fit.contain': 'Fit inside',
     'background.fit.tile': 'Tile',
-    'background.uiOpacity': 'Interface opacity {value}%',
-    'background.uiOpacityHint':
-        'Applies to the top bar, bottom navigation and cards together; '
-        'dialogs are unaffected. The 20% floor is a safety stop.',
+    'background.cardOpacity': 'Card opacity {value}%',
+    'background.cardOpacityHint':
+        'Applies to cards only; dialogs stay opaque. '
+        'The 20% floor is a safety stop.',
+    'background.barOpacity': 'Top and bottom bar opacity {value}%',
+    'background.barOpacityHint':
+        'Applies to the top app bar and the bottom navigation / side rail; '
+        'dialogs are unaffected. The 10% floor is a safety stop.',
     'background.summary': 'Backdrop {value}%',
 
     // Log page

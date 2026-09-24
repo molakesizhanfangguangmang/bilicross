@@ -193,11 +193,12 @@ class AppState extends ChangeNotifier {
       queue: queueRunning,
       risk: _riskControlHit,
       splashSeconds: settings.splashSeconds,
-      // 背景三件套 + 图在不在：外壳要拿它们算叠层与四处底色。
+      // 背景四件套 + 图在不在：外壳要拿它们算叠层与各处底色 / 转场垫底色。
       // ⚠️ 图是文件而不是设置字段，只能在这里探一次 —— 选了图 / 清了图之后
       // 必须有一次通知，外壳才会跟着铺上或撤掉背景层。
       backgroundOpacity: settings.backgroundOpacity,
       uiOpacity: settings.uiOpacity,
+      barOpacity: settings.barOpacity,
       backgroundFit: settings.backgroundFit,
       hasBackground: backgroundImageFile(store.root).existsSync(),
     ),

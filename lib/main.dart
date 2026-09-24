@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+// `CupertinoPageTransitionsBuilder` 只在 cupertino 库里，material 不导出它。
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
@@ -242,11 +244,18 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     );
     final hasBackground = backgroundOpacity > kBackgroundMinOpacity &&
         backgroundFile.existsSync();
-    // 界面不透明度：100% 时**一个主题字段都不覆盖** —— 默认值必须与旧版像素级一致。
+    // 卡片不透明度：100% 时**一个主题字段都不覆盖** —— 默认值必须与旧版像素级一致。
     // 低于 100% 才是「给同一批底色在运行时加 alpha」，不是换成别的色。
     final uiOpacity = clampUiOpacity(state.settings.uiOpacity);
     final translucentUi = uiOpacity < kUiMaxOpacity;
+    // 上下栏（顶栏 / 底栏 / 宽屏侧栏）与卡片解耦，各自一个值。
+    final barOpacity = clampBarOpacity(state.settings.barOpacity);
+    final translucentBar = barOpacity < kBarMaxOpacity;
     final backgroundFit = normalizeBackgroundFit(state.settings.backgroundFit);
+    // 转场垫底色。框架默认用 `colorScheme.surface` 当**不透明**垫底，进入动画期间
+    // 会把背景图整块盖掉（看起来就是突兀的一片白）。这里改成跟卡片浓度同步：
+    // 卡片不透时与旧版一样是近白，卡片透多少垫底就透多少。
+    final transitionBackground = scheme.surface.withValues(alpha: uiOpacity);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
@@ -284,12 +293,13 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         scaffoldBackgroundColor:
             hasBackground ? Colors.transparent : kSurfacePage,
         useMaterial3: true,
-        // ⚠️ 界面不透明度只在 < 100% 时才覆盖底色；100% 时全为 null、
+        // ⚠️ 两个不透明度都只在 < 100% 时才覆盖底色；100% 时全为 null、
         // 回落到 M3 默认（`surface` / `surfaceContainer` / `surfaceContainerLow`），
         // 与旧版完全一致。`palette.dart` 一个字都不改。
-        appBarTheme: translucentUi
+        // 顶栏 / 底栏 / 宽屏侧栏跟「上下栏」滑杆，卡片跟「卡片」滑杆，互不牵连。
+        appBarTheme: translucentBar
             ? AppBarTheme(
-                backgroundColor: scheme.surface.withValues(alpha: uiOpacity),
+                backgroundColor: scheme.surface.withValues(alpha: barOpacity),
                 // M3 的滚动态会再盖一层 surfaceTint，把透明效果吃掉。
                 scrolledUnderElevation: 0,
               )
@@ -297,8 +307,8 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
         // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: translucentUi
-              ? scheme.surfaceContainer.withValues(alpha: uiOpacity)
+          backgroundColor: translucentBar
+              ? scheme.surfaceContainer.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
           iconTheme: WidgetStateProperty.resolveWith((states) {
@@ -318,8 +328,8 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         ),
         // 宽屏走 NavigationRail，配色要与底部导航保持一致，否则两端观感不同。
         navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: translucentUi
-              ? scheme.surface.withValues(alpha: uiOpacity)
+          backgroundColor: translucentBar
+              ? scheme.surface.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
           selectedIconTheme: IconThemeData(color: scheme.onPrimary),
@@ -334,7 +344,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
             color: scheme.onSurfaceVariant,
           ),
         ),
-        // 卡片也跟界面不透明度走：`SectionCard` 是裸 `Card`（ui/widgets.dart），
+        // 卡片不透明度：`SectionCard` 是裸 `Card`（ui/widgets.dart），
         // 改这一处就能覆盖全部卡片。
         cardTheme: CardThemeData(
           elevation: 0,
@@ -347,6 +357,28 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
             side: BorderSide(color: kBorder),
           ),
         ),
+        // 转场垫底色：只在「开了背景或任一滑杆 < 100%」时才覆盖主题，
+        // 默认状态连这一项都不碰。iOS / macOS 的 Cupertino 转场不铺底色，
+        // 但**必须显式列出** —— 漏了的平台会 fallback 到 Zoom，反而改变观感。
+        pageTransitionsTheme: (hasBackground || translucentUi || translucentBar)
+            ? PageTransitionsTheme(
+                builders: <TargetPlatform, PageTransitionsBuilder>{
+                  TargetPlatform.android: PredictiveBackPageTransitionsBuilder(
+                    fallbackColor: transitionBackground,
+                  ),
+                  TargetPlatform.windows: ZoomPageTransitionsBuilder(
+                    backgroundColor: transitionBackground,
+                  ),
+                  TargetPlatform.linux: ZoomPageTransitionsBuilder(
+                    backgroundColor: transitionBackground,
+                  ),
+                  TargetPlatform.iOS:
+                      const cupertino.CupertinoPageTransitionsBuilder(),
+                  TargetPlatform.macOS:
+                      const cupertino.CupertinoPageTransitionsBuilder(),
+                },
+              )
+            : null,
         inputDecorationTheme: const InputDecorationTheme(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.all(Radius.circular(6)),

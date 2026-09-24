@@ -8,7 +8,8 @@ import '../core/background_config.dart';
 import '../i18n/app_localizations.dart';
 import 'palette.dart';
 
-/// 设置页「界面与语言」组里的背景控件：选图 / 清除 + 两个不透明度滑杆 + 铺满方式。
+/// 设置页「界面与语言」组里的背景控件：选图 / 清除 + 铺满方式 +
+/// 卡片与上下栏两个不透明度滑杆。
 ///
 /// 不用 [SectionCard]：本控件是嵌在「界面与语言」那个分组卡片里的，
 /// 再套一层卡片就成了卡中卡。
@@ -98,6 +99,7 @@ class _BackgroundCardState extends State<BackgroundCard> {
     final settings = _state.settings;
     final background = clampBackgroundOpacity(settings.backgroundOpacity);
     final ui = clampUiOpacity(settings.uiOpacity);
+    final bar = clampBarOpacity(settings.barOpacity);
     final fit = normalizeBackgroundFit(settings.backgroundFit);
     const hint = TextStyle(fontSize: 12, color: kTextMuted);
     const label = TextStyle(fontSize: 13, fontWeight: FontWeight.w500);
@@ -173,7 +175,7 @@ class _BackgroundCardState extends State<BackgroundCard> {
         ),
         const SizedBox(height: 20),
         Text(
-          l10n.tr('background.uiOpacity', {'value': '${(ui * 100).round()}'}),
+          l10n.tr('background.cardOpacity', {'value': '${(ui * 100).round()}'}),
         ),
         Slider(
           value: ui,
@@ -188,7 +190,25 @@ class _BackgroundCardState extends State<BackgroundCard> {
           },
           onChangeEnd: (_) => _persist(),
         ),
-        Text(l10n.tr('background.uiOpacityHint'), style: hint),
+        Text(l10n.tr('background.cardOpacityHint'), style: hint),
+        const SizedBox(height: 20),
+        Text(
+          l10n.tr('background.barOpacity', {'value': '${(bar * 100).round()}'}),
+        ),
+        Slider(
+          value: bar,
+          min: kBarMinOpacity,
+          max: kBarMaxOpacity,
+          divisions: 18,
+          label: '${(bar * 100).round()}%',
+          onChanged: (value) {
+            settings.barOpacity = clampBarOpacity(value);
+            setState(() {});
+            _preview();
+          },
+          onChangeEnd: (_) => _persist(),
+        ),
+        Text(l10n.tr('background.barOpacityHint'), style: hint),
       ],
     );
   }

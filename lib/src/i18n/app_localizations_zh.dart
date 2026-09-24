@@ -378,9 +378,12 @@ class AppLocalizationsZh extends AppLocalizations {
     'background.fit.cover': '撑满裁切',
     'background.fit.contain': '完整显示',
     'background.fit.tile': '平铺',
-    'background.uiOpacity': '界面不透明度 {value}%',
-    'background.uiOpacityHint': '顶部标题栏、底部导航与卡片一起变；弹窗不受影响。'
-        '下限 20% 是防呆，再低界面就点不回来了。',
+    'background.cardOpacity': '卡片不透明度 {value}%',
+    'background.cardOpacityHint': '只影响卡片；弹窗始终不透明。'
+        '下限 20% 是防呆，再低卡片就点不回来了。',
+    'background.barOpacity': '上下栏不透明度 {value}%',
+    'background.barOpacityHint': '顶部标题栏与底部导航 / 宽屏侧栏一起变；弹窗不受影响。'
+        '下限 10% 是防呆。',
     'background.summary': '背景 {value}%',
 
     // 日志页

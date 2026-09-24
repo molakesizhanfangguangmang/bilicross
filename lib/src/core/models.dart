@@ -987,6 +987,7 @@ class AppSettings {
     this.themeId = kThemeDefault,
     this.backgroundOpacity = kBackgroundDefaultOpacity,
     this.uiOpacity = kUiDefaultOpacity,
+    this.barOpacity = kBarDefaultOpacity,
     this.backgroundFit = kBackgroundFitDefault,
   });
 
@@ -1057,8 +1058,12 @@ class AppSettings {
   /// 图片本身是否存在按文件判（固定名 `background.img`），同样不存 flag。
   double backgroundOpacity;
 
-  /// 界面（顶栏 / 底栏 / 卡片）不透明度（0.2–1）。1 表示与旧版完全一致。
+  /// 卡片不透明度（0.2–1）。1 表示与旧版完全一致。
+  /// ⚠️ JSON 键仍是 `ui_opacity`（老设置与 `.bcbak` 里的值继续生效），只是作用面收窄到卡片。
   double uiOpacity;
+
+  /// 上下栏（顶栏 / 底部导航 / 宽屏侧栏）不透明度（0.1–1）。1 表示与旧版完全一致。
+  double barOpacity;
 
   /// 背景铺满方式，取值见 [kBackgroundFits]。
   String backgroundFit;
@@ -1092,6 +1097,7 @@ class AppSettings {
         'theme_id': themeId,
         'background_opacity': backgroundOpacity,
         'ui_opacity': uiOpacity,
+        'bar_opacity': barOpacity,
         'background_fit': backgroundFit,
       };
 
@@ -1132,6 +1138,9 @@ class AppSettings {
         ),
         uiOpacity: clampUiOpacity(
           (json['ui_opacity'] as num?)?.toDouble() ?? kUiDefaultOpacity,
+        ),
+        barOpacity: clampBarOpacity(
+          (json['bar_opacity'] as num?)?.toDouble() ?? kBarDefaultOpacity,
         ),
         backgroundFit: normalizeBackgroundFit(json['background_fit'] as String?),
       );

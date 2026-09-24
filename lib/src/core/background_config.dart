@@ -13,13 +13,20 @@ const double kBackgroundMaxOpacity = 1.0;
 /// 默认浓度：选了图就按这个值显示，不至于选完什么也看不见。
 const double kBackgroundDefaultOpacity = 0.6;
 
-/// 界面（顶栏 / 底栏 / 卡片）不透明度的上下限。
+/// 卡片不透明度（浮在背景上的那层面板）的上下限。
 ///
-/// ⚠️ 下限刻意不是 0：调到 0 界面就彻底看不见了，连设置页的滑杆都点不回来。
+/// ⚠️ 下限刻意不是 0：调到 0 卡片就彻底看不见了，连设置页的滑杆都点不回来。
 /// 20% 是防呆线，不是「好看的下限」。
 const double kUiMinOpacity = 0.2;
 const double kUiMaxOpacity = 1.0;
 const double kUiDefaultOpacity = 1.0;
+
+/// 上下栏（顶栏 + 底部导航 / 宽屏侧栏）不透明度的上下限。
+///
+/// 下限比卡片更低：这两条是窄边、压住的文字少，拖到 10% 还认得出来。
+const double kBarMinOpacity = 0.1;
+const double kBarMaxOpacity = 1.0;
+const double kBarDefaultOpacity = 1.0;
 
 /// 背景图解码上限（物理像素，长边）。
 ///
@@ -50,11 +57,19 @@ double clampBackgroundOpacity(double value) {
   return value;
 }
 
-/// 同上，界面不透明度。
+/// 同上，卡片不透明度。
 double clampUiOpacity(double value) {
   if (value.isNaN) return kUiDefaultOpacity;
   if (value < kUiMinOpacity) return kUiMinOpacity;
   if (value > kUiMaxOpacity) return kUiMaxOpacity;
+  return value;
+}
+
+/// 同上，上下栏不透明度。
+double clampBarOpacity(double value) {
+  if (value.isNaN) return kBarDefaultOpacity;
+  if (value < kBarMinOpacity) return kBarMinOpacity;
+  if (value > kBarMaxOpacity) return kBarMaxOpacity;
   return value;
 }
 
