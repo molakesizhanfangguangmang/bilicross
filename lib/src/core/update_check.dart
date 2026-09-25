@@ -197,6 +197,17 @@ Future<String> readCurrentVersion() async {
   }
 }
 
+/// 本机安装包的包名（`applicationId`）。内测包以 `.test` 结尾 —— 服务端靠这个
+/// 后缀分辨内测 / 正式版的提交。读不出来返回空串。
+Future<String> readPackageName() async {
+  try {
+    final info = await PackageInfo.fromPlatform();
+    return info.packageName;
+  } catch (_) {
+    return '';
+  }
+}
+
 /// 查一次最新正式版。任何异常都收敛成 [UpdateOutcome.failed]，不往外抛。
 Future<UpdateCheckResult> checkForUpdate({
   http.Client? client,

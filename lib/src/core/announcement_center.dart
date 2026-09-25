@@ -272,6 +272,7 @@ class AnnouncementCenter extends ChangeNotifier {
       deviceKey: _deviceKey,
       nonce: nonce,
       deviceInfo: _deviceInfo,
+      pkg: await readPackageName(),
       options: options,
       client: _client,
       baseUrl: _baseUrl,
