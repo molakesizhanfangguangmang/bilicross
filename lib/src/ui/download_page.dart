@@ -65,28 +65,34 @@ class _DownloadPageState extends State<DownloadPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      onChanged: (value) => state.addressInput = value,
-                      onSubmitted: (value) => _parse(state, value),
-                      decoration: InputDecoration(
-                        labelText: l10n.tr('download.addressHint'),
-                        hintText: 'https://www.bilibili.com/video/BV... b23.tv',
-                        prefixIcon: const Icon(Icons.link),
+              // 地址输入行是这一页唯一的常驻控件，默认态下面没有任何卡片 ——
+              // 开了背景或卡片 < 100% 时给它一块跟卡片同源的底，别让整页「全透明」。
+              PanelBox(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        onChanged: (value) => state.addressInput = value,
+                        onSubmitted: (value) => _parse(state, value),
+                        decoration: InputDecoration(
+                          labelText: l10n.tr('download.addressHint'),
+                          hintText: 'https://www.bilibili.com/video/BV... b23.tv',
+                          prefixIcon: const Icon(Icons.link),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: state.busy ? null : () => _parse(state, _controller.text),
-                    icon: const Icon(Icons.search),
-                    label: Text(l10n.tr('download.parse')),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed:
+                          state.busy ? null : () => _parse(state, _controller.text),
+                      icon: const Icon(Icons.search),
+                      label: Text(l10n.tr('download.parse')),
+                    ),
+                  ],
+                ),
               ),
               if (state.notice.isNotEmpty) ...[
                 const SizedBox(height: 10),

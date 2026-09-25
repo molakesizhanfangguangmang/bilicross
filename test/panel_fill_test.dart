@@ -53,6 +53,49 @@ void main() {
     expect(emptyFill(tester), fill);
   });
 
+  Future<void> pumpBox(WidgetTester tester, ThemeData theme) {
+    return tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: const PanelBox(
+          padding: EdgeInsets.all(12),
+          child: SizedBox(height: 20),
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration? boxDecoration(WidgetTester tester) {
+    final container = tester.widget<Container>(
+      find
+          .descendant(
+            of: find.byType(PanelBox),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    return container.decoration as BoxDecoration?;
+  }
+
+  testWidgets('PanelBox 默认态只留内边距、不加底色', (tester) async {
+    await pumpBox(tester, ThemeData());
+    expect(boxDecoration(tester), isNull);
+
+    await pumpBox(tester, withFill(null));
+    expect(boxDecoration(tester), isNull);
+  });
+
+  testWidgets('PanelBox 有底色时套上该底色与圆角', (tester) async {
+    const fill = Color(0xff123456);
+    await pumpBox(tester, withFill(fill));
+    final decoration = boxDecoration(tester)!;
+    expect(decoration.color, fill);
+    expect(
+      decoration.borderRadius,
+      BorderRadius.circular(8),
+    );
+  });
+
   test('copyWith 不传值时保留原值，传值时覆盖', () {
     const fill = Color(0xff123456);
     expect(const PanelFill(fill).copyWith().color, fill);

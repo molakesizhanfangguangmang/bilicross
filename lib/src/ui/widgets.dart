@@ -30,6 +30,40 @@ class PanelFill extends ThemeExtension<PanelFill> {
 Color? panelColor(BuildContext context) =>
     Theme.of(context).extension<PanelFill>()?.color;
 
+/// 给「非卡片面」（下载页地址行、任务页顶部固定条）套一层兜底底色，圆角与卡片一致。
+///
+/// ⚠️ `panelColor` 为 `null`（默认态）时**只留内边距、不加底色** —— 几何与旧版逐像素
+/// 一致，零回归。要在别处给非卡片面上底，一律走这里，别再各写各的。
+/// ⚠️ `radius` 默认 8（浮在页面里的面板）；贴着 AppBar 的通栏（任务页顶部固定条）
+/// 传 0 —— 上边贴边还带圆角会像被裁掉的卡片。
+class PanelBox extends StatelessWidget {
+  const PanelBox({
+    required this.child,
+    this.padding,
+    this.radius = 8,
+    super.key,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = panelColor(context);
+    return Container(
+      padding: padding,
+      decoration: color == null
+          ? null
+          : BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(radius),
+            ),
+      child: child,
+    );
+  }
+}
+
 /// 手机端的宽度断点：窄于这个宽度按手机布局处理。
 ///
 /// ⚠️ 有些改动**只在手机端生效**（用户 2026-09-20 明确要求）—— 桌面窗口宽，
