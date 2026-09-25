@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bilicross/src/core/announcement.dart';
 import 'package:bilicross/src/core/announcement_center.dart';
+import 'package:bilicross/src/core/device_identity.dart';
 import 'package:bilicross/src/core/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -157,6 +158,43 @@ void main() {
     });
   });
 
+  group('设备指纹与票据', () {
+    test('指纹只出摘要：同值同摘要、异值不同摘要、系统占位值一律作废', () {
+      final hashed = hashDeviceId('abcdef0123456789');
+      expect(hashed, hasLength(64));
+      expect(hashed, isNot(contains('abcdef0123456789')), reason: '上报值里不能有原文');
+      expect(hashDeviceId('abcdef0123456789'), hashed);
+      expect(hashDeviceId('  abcdef0123456789  '), hashed, reason: '首尾空白去掉后同值');
+      expect(hashDeviceId('fedcba9876543210'), isNot(hashed));
+
+      for (final placeholder in <String>[
+        '',
+        '   ',
+        'unknown',
+        'UNKNOWN',
+        'null',
+        '0',
+        '0000000000000000',
+        '9774d56d682e549c',
+      ]) {
+        expect(hashDeviceId(placeholder), isEmpty, reason: '占位值「$placeholder」不算标识');
+      }
+    });
+
+    test('领票据：正常拿到，坏响应一律 null（调用方据此判失败）', () async {
+      Future<String?> fetch(http.Response response) => fetchNonce(
+            client: MockClient((_) async => response),
+            baseUrl: 'https://announce.test',
+          );
+
+      expect(await fetch(_json(<String, Object?>{'nonce': 'abc'})), 'abc');
+      expect(await fetch(_json(<String, Object?>{'nonce': '  '})), isNull);
+      expect(await fetch(_json(<String, Object?>{})), isNull);
+      expect(await fetch(_json(<String, Object?>{}, 503)), isNull);
+      expect(await fetch(http.Response('not json', 200)), isNull);
+    });
+  });
+
   group('公告中心', () {
     late Directory dir;
     late Store store;
@@ -253,6 +291,9 @@ void main() {
       var posted = 0;
       String? postedBody;
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/v1/nonce')) {
+          return _json(<String, Object?>{'ok': true, 'nonce': 'n1'});
+        }
         if (request.method == 'POST') {
           posted += 1;
           postedBody = request.body;
@@ -268,11 +309,17 @@ void main() {
 
       expect(await center.vote(announcement, <String>['o1']), isTrue);
       expect(posted, 1);
-      // 设备号与已提交的选项都要带出去 —— 服务端按 (poll_id, device_id) 去重。
+      // 设备号、指纹、票据、选项都要带出去 —— 服务端按指纹去重、按票据验来源。
       final body = jsonDecode(postedBody!) as Map<String, Object?>;
       expect(body['poll_id'], 'p1');
       expect(body['device_id'], center.deviceId);
       expect(body['options'], <String>['o1']);
+      expect(body['nonce'], 'n1', reason: '每次提交都必须现领一张票据');
+      if (center.deviceKey.isEmpty) {
+        expect(body.containsKey('device_key'), isFalse, reason: '取不到系统标识就不上报');
+      } else {
+        expect(body['device_key'], center.deviceKey);
+      }
 
       expect(center.hasVoted('p1'), isTrue);
       expect(center.votedOptions('p1'), <String>['o1']);
@@ -285,8 +332,15 @@ void main() {
     });
 
     test('投票失败不记「已投」，公告还留在队列里', () async {
+      var posted = 0;
       final client = MockClient((request) async {
-        if (request.method == 'POST') return _json(<String, Object?>{}, 500);
+        if (request.url.path.endsWith('/v1/nonce')) {
+          return _json(<String, Object?>{'ok': true, 'nonce': 'n1'});
+        }
+        if (request.method == 'POST') {
+          posted += 1;
+          return _json(<String, Object?>{}, 500);
+        }
         return _feed(<Map<String, Object?>>[
           <String, Object?>{'id': 'vote', 'title': '投票', 'poll': _poll()},
         ]);
@@ -295,8 +349,80 @@ void main() {
       final announcement = center.items.single;
 
       expect(await center.vote(announcement, <String>['o1']), isFalse);
+      expect(posted, 1, reason: '500 不是票据问题，不该无脑重试');
       expect(center.hasVoted('p1'), isFalse);
       expect(center.takeNextPopup()?.id, 'vote');
+      center.dispose();
+    });
+
+    test('票据被拒：重领一张再来一次就成功', () async {
+      var posts = 0;
+      var nonces = 0;
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/v1/nonce')) {
+          nonces += 1;
+          return _json(<String, Object?>{'ok': true, 'nonce': 'n$nonces'});
+        }
+        if (request.method == 'POST') {
+          posts += 1;
+          if (posts == 1) {
+            return _json(<String, Object?>{'ok': false, 'error': 'nonce_invalid'}, 403);
+          }
+          return _json(<String, Object?>{'ok': true});
+        }
+        return _feed(<Map<String, Object?>>[
+          <String, Object?>{'id': 'vote', 'title': '投票', 'poll': _poll()},
+        ]);
+      });
+      final center = await startedWith(buildCenter(client));
+
+      expect(await center.vote(center.items.single, <String>['o1']), isTrue);
+      expect(posts, 2, reason: '第一次死在票据上，必须重领重试');
+      expect(nonces, 2, reason: '重试要用新票据，不能拿旧的再撞一次');
+      expect(center.hasVoted('p1'), isTrue);
+      center.dispose();
+    });
+
+    test('票据连续被拒：只重试一次，不记「已投」', () async {
+      var posts = 0;
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/v1/nonce')) {
+          return _json(<String, Object?>{'ok': true, 'nonce': 'n'});
+        }
+        if (request.method == 'POST') {
+          posts += 1;
+          return _json(<String, Object?>{'ok': false, 'error': 'nonce_invalid'}, 403);
+        }
+        return _feed(<Map<String, Object?>>[
+          <String, Object?>{'id': 'vote', 'title': '投票', 'poll': _poll()},
+        ]);
+      });
+      final center = await startedWith(buildCenter(client));
+
+      expect(await center.vote(center.items.single, <String>['o1']), isFalse);
+      expect(posts, 2);
+      expect(center.hasVoted('p1'), isFalse);
+      center.dispose();
+    });
+
+    test('领不到票据就不提交：直接算失败，不发裸票', () async {
+      var posted = 0;
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/v1/nonce')) {
+          return _json(<String, Object?>{}, 503);
+        }
+        if (request.method == 'POST') {
+          posted += 1;
+          return _json(<String, Object?>{'ok': true});
+        }
+        return _feed(<Map<String, Object?>>[
+          <String, Object?>{'id': 'vote', 'title': '投票', 'poll': _poll()},
+        ]);
+      });
+      final center = await startedWith(buildCenter(client));
+
+      expect(await center.vote(center.items.single, <String>['o1']), isFalse);
+      expect(posted, 0);
       center.dispose();
     });
 

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'announcement.dart';
+import 'device_identity.dart';
 import 'store.dart';
 import 'update_check.dart';
 import 'vote.dart';
@@ -65,6 +66,10 @@ class AnnouncementCenter extends ChangeNotifier {
   final List<Announcement> _popupQueue = <Announcement>[];
 
   String _deviceId = '';
+
+  /// 系统设备标识的哈希（服务端的去重主键）。拿不到时为空串。
+  String _deviceKey = '';
+  Map<String, Object> _deviceInfo = const <String, Object>{};
   String _version = '';
   bool _loading = false;
   bool _failed = false;
@@ -95,6 +100,9 @@ class AnnouncementCenter extends ChangeNotifier {
   bool get failed => _failed;
 
   String get deviceId => _deviceId;
+
+  /// 上报给服务端的设备指纹（只读，供测试与诊断用）。
+  String get deviceKey => _deviceKey;
 
   /// 设置页入口右侧的角标用。
   int get unreadCount => _items.where((item) => !isDismissed(item.id)).length;
@@ -241,19 +249,33 @@ class AnnouncementCenter extends ChangeNotifier {
   Future<bool> vote(Announcement announcement, List<String> options) async {
     final poll = announcement.poll;
     if (poll == null || options.isEmpty || hasVoted(poll.id)) return false;
-    final accepted = await submitVote(
-      pollId: poll.id,
-      deviceId: _deviceId,
-      options: options,
-      client: _client,
-      baseUrl: _baseUrl,
-    );
-    if (!accepted) return false;
+    var status = await _castVote(poll.id, options);
+    if (status == VoteStatus.nonceInvalid) {
+      // 票据过期或换了网络出口：重领一张再来一次，别让用户看到一次假的「提交失败」。
+      status = await _castVote(poll.id, options);
+    }
+    if (status != VoteStatus.accepted) return false;
     _voted[poll.id] = List<String>.of(options);
     _popupQueue.removeWhere((item) => item.id == announcement.id);
     await _persist();
     _notify();
     return true;
+  }
+
+  /// 领一张新票据再提交。⚠️ 票据**每次现领**，不复用。
+  Future<VoteStatus> _castVote(String pollId, List<String> options) async {
+    final nonce = await fetchNonce(client: _client, baseUrl: _baseUrl);
+    if (nonce == null) return VoteStatus.failed;
+    return submitVote(
+      pollId: pollId,
+      deviceId: _deviceId,
+      deviceKey: _deviceKey,
+      nonce: nonce,
+      deviceInfo: _deviceInfo,
+      options: options,
+      client: _client,
+      baseUrl: _baseUrl,
+    );
   }
 
   /// 平台参数。只有安卓与 Windows 两条发行线，其余平台不带（等于不限平台）。
@@ -300,6 +322,10 @@ class AnnouncementCenter extends ChangeNotifier {
       _deviceId = newDeviceId();
       await _persist();
     }
+    // 设备指纹每次启动现取，不落盘：它是系统标识的哈希，存下来只会多一份可被改的副本。
+    final identity = await collectDeviceIdentity();
+    _deviceKey = identity.key;
+    _deviceInfo = identity.info;
   }
 
   /// 落盘。⚠️ 单独一个 `announcement_state.json`，**不进 `settings.json`** ——

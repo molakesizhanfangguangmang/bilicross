@@ -273,6 +273,37 @@ Future<AnnouncementFeed> fetchAnnouncements({
   }
 }
 
+/// 领一张一次性投票票据。任何异常都收敛成 null（调用方按提交失败处理）。
+///
+/// ⚠️ 必须在**每次提交前**现领：票据用即废、绑来源 IP、10 分钟过期，
+/// 缓存下来复用只会换来一个 403。
+Future<String?> fetchNonce({
+  http.Client? client,
+  String baseUrl = kAnnouncementsBaseUrl,
+  Duration timeout = kAnnouncementTimeout,
+}) async {
+  if (baseUrl.trim().isEmpty) return null;
+  final owned = client == null;
+  final agent = client ?? http.Client();
+  try {
+    final response = await agent
+        .get(
+          Uri.parse('${baseUrl.trim()}/v1/nonce'),
+          headers: const <String, String>{'Accept': 'application/json'},
+        )
+        .timeout(timeout);
+    if (response.statusCode != 200) return null;
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    if (decoded is! Map) return null;
+    final nonce = '${decoded['nonce'] ?? ''}'.trim();
+    return nonce.isEmpty ? null : nonce;
+  } catch (_) {
+    return null;
+  } finally {
+    if (owned) agent.close();
+  }
+}
+
 /// `startsAt` / `expiresAt` 允许 ISO 字符串或秒级整数（后端两种都收）。
 int? _toSeconds(Object? raw) {
   if (raw == null) return null;
