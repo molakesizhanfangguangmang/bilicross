@@ -7,6 +7,7 @@ import '../core/log_store.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
+import 'announcement_page.dart';
 import 'log_page.dart';
 import 'splash_card.dart';
 import 'widgets.dart';
@@ -140,6 +141,45 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
             const SizedBox(height: 12),
             AnimTuningCard(state: state),
           ],
+          const SizedBox(height: 12),
+          // 公告入口：2026-09-25 从设置主页挪来 —— 与日志 / 关于同类，
+          // 都是低频的「查看」入口。
+          // ⚠️ 单订阅公告中心而不是 AppState：公告中心是独立的 ChangeNotifier，
+          // 不走 AppState 的通知边界。角标是未读条数。
+          ListenableBuilder(
+            listenable: state.announcements,
+            builder: (context, _) {
+              final unread = state.announcements.unreadCount;
+              return Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  leading: const Icon(Icons.campaign_outlined),
+                  title: Text(l10n.tr('announcement.view')),
+                  subtitle: Text(
+                    l10n.tr('announcement.viewHint'),
+                    style: const TextStyle(fontSize: 12, color: kTextMuted),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (unread > 0) ...<Widget>[
+                        StateChip(text: '$unread', tone: 1),
+                        const SizedBox(width: 6),
+                      ],
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => AnnouncementPage(
+                        center: state.announcements,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 12),
           Card(
             child: ListTile(

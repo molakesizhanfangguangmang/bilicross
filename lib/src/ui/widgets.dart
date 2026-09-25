@@ -4,6 +4,32 @@ import '../core/models.dart';
 import '../app_state.dart';
 import './palette.dart';
 
+/// 「非卡片面」的兜底底色 —— `EmptyState` 占位框、任务页分组头这类
+/// **不是卡片**的面。
+///
+/// ⚠️ 卡片浓度（`cardTheme.color`）只作用于真卡片；这些面在默认态必须保持原样
+/// （占位框零填充、分组头用 `kSurfaceTint`），所以默认是 `null`＝「沿用各处原本的
+/// 默认外观」。只在「开了背景或卡片 < 100%」时才由 main.dart 塞进一个非空值。
+/// ⚠️ 这是**唯一来源**，别再在别处硬编码这些面的底色。
+class PanelFill extends ThemeExtension<PanelFill> {
+  const PanelFill(this.color);
+
+  final Color? color;
+
+  @override
+  PanelFill copyWith({Color? color}) => PanelFill(color ?? this.color);
+
+  @override
+  PanelFill lerp(covariant PanelFill? other, double t) {
+    if (other == null) return this;
+    return PanelFill(Color.lerp(color, other.color, t));
+  }
+}
+
+/// 取「非卡片面」的兜底底色；`null` ＝ 保持该处原本的默认外观。
+Color? panelColor(BuildContext context) =>
+    Theme.of(context).extension<PanelFill>()?.color;
+
 /// 手机端的宽度断点：窄于这个宽度按手机布局处理。
 ///
 /// ⚠️ 有些改动**只在手机端生效**（用户 2026-09-20 明确要求）—— 桌面窗口宽，
@@ -200,6 +226,7 @@ class EmptyState extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 240),
       decoration: BoxDecoration(
+        color: panelColor(context),
         border: Border.all(color: kBorder),
         borderRadius: BorderRadius.circular(8),
       ),

@@ -358,7 +358,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.languageZh': '简体中文',
     'settings.languageEn': 'English',
     'settings.advanced': 'Advanced',
-    'settings.advancedHint': 'Splash screen, logs and about',
+    'settings.advancedHint': 'Splash screen, announcements, logs and about',
 
     // Announcements (server-side, polls included)
     'announcement.view': 'Announcements',
@@ -478,6 +478,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
     // Backup & restore (Windows installer and portable editions)
     'settings.backup': 'Backup & restore',
+    'settings.backupSummary': 'Export or restore settings, account and tasks',
     'common.ok': 'OK',
     'backup.passphrase': 'Passphrase',
     'backup.passphraseAgain': 'Repeat passphrase',

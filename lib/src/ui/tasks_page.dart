@@ -627,7 +627,8 @@ class _GroupHeader extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         decoration: BoxDecoration(
-          color: kSurfaceTint,
+          // 默认沿用 kSurfaceTint；开了背景或卡片 < 100% 时换成卡片同源底色。
+          color: panelColor(context) ?? kSurfaceTint,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(

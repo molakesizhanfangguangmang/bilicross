@@ -290,6 +290,15 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       ),
       theme: ThemeData(
         colorScheme: scheme,
+        // 「非卡片面」（占位框 / 任务页分组头）的兜底底色：与卡片同源、同浓度。
+        // 默认（无背景 + 各滑杆都 100%）给 null → 各处维持原样，零回归。
+        extensions: <ThemeExtension<dynamic>>[
+          PanelFill(
+            (hasBackground || translucentUi)
+                ? scheme.surfaceContainerLow.withValues(alpha: uiOpacity)
+                : null,
+          ),
+        ],
         // 只有开了背景才把页面底改透明，让底下那层背景透上来。
         scaffoldBackgroundColor:
             hasBackground ? Colors.transparent : kSurfacePage,

@@ -344,7 +344,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.languageZh': '简体中文',
     'settings.languageEn': 'English',
     'settings.advanced': '高级设置',
-    'settings.advancedHint': '启动画面、日志与关于',
+    'settings.advancedHint': '启动画面、公告、日志与关于',
 
     // 公告（服务器下发，含投票）
     'announcement.view': '查看公告',
@@ -452,6 +452,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
     // 备份与恢复（Windows 的安装版与便携版）
     'settings.backup': '备份与恢复',
+    'settings.backupSummary': '导出与恢复配置、账号与任务',
     'common.ok': '确定',
     'backup.passphrase': '口令',
     'backup.passphraseAgain': '再输一遍',

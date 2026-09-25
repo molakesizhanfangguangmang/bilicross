@@ -10,7 +10,6 @@ import '../core/backup/backup_format.dart';
 import '../core/backup/backup_key_ring.dart';
 import '../core/backup/backup_service.dart';
 import '../i18n/app_localizations.dart';
-import 'widgets.dart';
 import './palette.dart';
 
 /// 「备份与恢复」卡片，只在 Windows 显示（安装版与便携版互相恢复）。
@@ -256,40 +255,39 @@ class _BackupCardState extends State<BackupCard> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return SectionCard(
-      title: l10n.tr('settings.backup'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.tr('backup.hint'),
-            style: const TextStyle(fontSize: 12, color: kTextMuted),
+    // ⚠️ 标题与卡片壳由外面的 `CollapsibleSection` 提供，这里只出内容，
+    // 别再加一层 `SectionCard`（会出现两个同名标题）。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          l10n.tr('backup.hint'),
+          style: const TextStyle(fontSize: 12, color: kTextMuted),
+        ),
+        const SizedBox(height: 10),
+        if (_busy)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _export,
+                icon: const Icon(Icons.ios_share_outlined),
+                label: Text(l10n.tr('backup.export')),
+              ),
+              OutlinedButton.icon(
+                onPressed: _restore,
+                icon: const Icon(Icons.settings_backup_restore),
+                label: Text(l10n.tr('backup.restore')),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          if (_busy)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: LinearProgressIndicator(),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _export,
-                  icon: const Icon(Icons.ios_share_outlined),
-                  label: Text(l10n.tr('backup.export')),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _restore,
-                  icon: const Icon(Icons.settings_backup_restore),
-                  label: Text(l10n.tr('backup.restore')),
-                ),
-              ],
-            ),
-        ],
-      ),
+      ],
     );
   }
 }

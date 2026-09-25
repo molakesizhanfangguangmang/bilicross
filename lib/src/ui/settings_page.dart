@@ -9,7 +9,6 @@ import '../core/background_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
-import 'announcement_page.dart';
 import 'background_card.dart';
 import 'backup_card.dart';
 import 'expand_page_route.dart';
@@ -492,56 +491,22 @@ class SettingsPageState extends State<SettingsPage> {
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
                     BackgroundCard(state: state),
-                    const SizedBox(height: 24),
-                    // 公告入口。默认不弹的那些（已读、投票已结束）都能在这里回看，
-                    // 列表本身也带手动刷新。角标是未读条数。
-                    // ⚠️ 单订阅公告中心而不是 AppState：公告的中心是独立的
-                    // ChangeNotifier，不走 AppState 的通知边界。
-                    ListenableBuilder(
-                      listenable: state.announcements,
-                      builder: (context, _) {
-                        final unread = state.announcements.unreadCount;
-                        return Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.campaign_outlined),
-                            title: Text(l10n.tr('announcement.view')),
-                            subtitle: Text(
-                              l10n.tr('announcement.viewHint'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: kTextMuted,
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                if (unread > 0) ...<Widget>[
-                                  StateChip(text: '$unread', tone: 1),
-                                  const SizedBox(width: 6),
-                                ],
-                                const Icon(Icons.chevron_right),
-                              ],
-                            ),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (context) => AnnouncementPage(
-                                  center: state.announcements,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               // 备份与恢复现在两端都有：
               // - Windows 侧原本是给「安装版 ↔ 便携版」互相迁移用的；
               // - 安卓侧同样需要（换机、重装、清数据都会丢配置与任务列表），
               //   导出落在下载目录里，跟视频放在一起。
-              BackupCard(state: state),
+              // ⚠️ 2026-09-25 起也收进折叠组：低频操作，与上面几组一致。
+              CollapsibleSection(
+                title: l10n.tr('settings.backup'),
+                summary: l10n.tr('settings.backupSummary'),
+                expanded: _expanded.contains('backup'),
+                onToggle: () => _toggle('backup'),
+                child: BackupCard(state: state),
+              ),
               const SizedBox(height: 12),
               // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
               // 放在主页会把常用设置挤下去。
