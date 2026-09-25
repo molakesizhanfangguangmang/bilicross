@@ -592,8 +592,20 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.platforms == 'windows-arm64'
     runs-on: windows-11-arm
     timeout-minutes: 60
+    # 本地编不出 arm64（宿主不是 arm64 时 Flutter 会静默回落 x64），只能靠这台 runner。
+    # 编完这里直接把包装到 Release 上，省掉「下 artifact 再手工上传」那一段。
+    # 其余 job 仍按工作流顶层的 contents: read。
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
+      # 最后一步靠 gh 上架。这里先探一下，省得编译 40 分钟才发现 runner 上没有它。
+      - name: Check gh CLI
+        shell: pwsh
+        run: |
+          gh --version
+          if ($LASTEXITCODE -ne 0) { throw 'runner 上没有 gh CLI，无法自动上架' }
 
       # 与另外两个 job 同一个来源：packaging/version.json。
       - name: Read version
@@ -762,3 +774,25 @@ jobs:
             BiliCross-windows-arm64-portable.zip
             BiliCross-windows-arm64-portable.zip.sha256
           if-no-files-found: error
+
+      # 版本号取自 packaging/version.json 的 base，tag 形如 v2.3.0。
+      # ⚠️ Release 必须先建好再触发本工作流，否则这里直接失败（不会静默产出一个没有资产的 Release）。
+      - name: Publish arm64 assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v$env:APP_VERSION_NAME"
+          $files = 'BiliCross-windows-arm64-setup.exe',
+                   'BiliCross-windows-arm64-setup.exe.sha256',
+                   'BiliCross-windows-arm64-portable.zip',
+                   'BiliCross-windows-arm64-portable.zip.sha256'
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { throw "缺少待上传的资产：$f" }
+          }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json
+          if (-not $release) { throw "找不到 $tag 对应的 Release，请先建好 Release 再触发云编译" }
+          gh release upload $tag @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传资产到 $tag 失败" }
+          Write-Host "已挂到 $tag："
+          gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[].name'
