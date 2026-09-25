@@ -575,7 +575,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _maybeShowRiskDialog(AppState state, AppLocalizations l10n) {
     // 公告弹窗正在走就先让路：这个判断每帧都做，公告关掉之后
     // [_driveAnnouncementPopups] 会回头再调一次这里，不会漏。
-    if (!state.riskControlHit || _riskDialogOpen || _announcementShowing) return;
+    if (!state.riskControlHit || _riskDialogOpen || _announcementShowing) {
+      return;
+    }
     _riskDialogOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
