@@ -94,6 +94,48 @@ void main() {
       expect(parseAnnouncements(''), isEmpty);
     });
 
+    test('图片字段：正文配图去空去重保序、选项图按空串兜底', () {
+      final list = parseAnnouncements(jsonEncode(<String, Object?>{
+        'announcements': <Object>[
+          <String, Object?>{
+            'id': 'img',
+            'title': '带图',
+            'images': <Object?>['/media/a.webp', '/media/a.webp', '  ', null, '/media/b.png'],
+            'poll': <String, Object?>{
+              'id': 'p-img',
+              'question': 'q',
+              'options': <Object>[
+                <String, Object?>{'id': 'o1', 'label': '甲', 'image': '/media/x.webp'},
+                <String, Object?>{'id': 'o2', 'label': '乙'},
+              ],
+            },
+          },
+        ],
+      }));
+      final a = list.single;
+      expect(a.images, <String>['/media/a.webp', '/media/b.png']);
+      expect(a.poll!.options[0].image, '/media/x.webp');
+      expect(a.poll!.options[1].image, isEmpty);
+
+      // 没给 images → 空列表而不是 null；给错类型也安全降级。
+      expect(Announcement.fromJson(<String, Object?>{'id': 'x'})!.images, isEmpty);
+      expect(Announcement.fromJson(<String, Object?>{'id': 'x', 'images': 'nope'})!.images, isEmpty);
+    });
+
+    test('announcementMediaUrl：相对路径拼域名、外链原样、坏输入回空串', () {
+      const base = 'https://bili.example.com';
+      expect(announcementMediaUrl('/media/a.webp', baseUrl: base),
+          'https://bili.example.com/media/a.webp');
+      expect(announcementMediaUrl('media/a.webp', baseUrl: base),
+          'https://bili.example.com/media/a.webp');
+      expect(announcementMediaUrl('https://cdn.example.com/x.png', baseUrl: base),
+          'https://cdn.example.com/x.png');
+      expect(announcementMediaUrl('  ', baseUrl: base), isEmpty);
+      // 域名带尾斜杠不产生双斜杠。
+      expect(announcementMediaUrl('/media/a.webp', baseUrl: '$base/'),
+          'https://bili.example.com/media/a.webp');
+    });
+
     test('poll 缺 id 或缺可选项 → 当作没有投票（渲染不出来的东西不进界面）', () {
       expect(AnnouncementPoll.fromJson(<String, Object?>{'options': <Object>[]}), isNull);
       expect(
@@ -546,6 +588,38 @@ void main() {
       await openAnnouncement(tester, center, gateAnnouncement(), review: true);
       expect(find.text('投完票才能关闭'), findsNothing);
       expect(closeButton(tester).onPressed, isNotNull);
+      center.dispose();
+    });
+
+    testWidgets('带图公告：图片加载失败时整块收起，不崩、正文和选项文字还在', (tester) async {
+      final center = idleCenter();
+      // 图片在测试环境必然加载失败（flutter_test 默认把所有 HTTP 打成 400），
+      // 走 errorBuilder 收起 —— 测的是「挂了不炸、正文不丢」。
+      final announcement = Announcement.fromJson(<String, Object?>{
+        'id': 'img',
+        'title': '带图公告',
+        'body': '正文文字',
+        'images': <Object>['/media/a.webp'],
+        'poll': <String, Object?>{
+          'id': 'p-img',
+          'question': '选一张',
+          'options': <Object>[
+            <String, Object?>{'id': 'o1', 'label': '甲', 'image': '/media/o1.webp'},
+            <String, Object?>{'id': 'o2', 'label': '乙'},
+          ],
+        },
+      })!;
+      await openAnnouncement(tester, center, announcement);
+      expect(tester.takeException(), isNull);
+      expect(find.text('带图公告'), findsOneWidget);
+      expect(find.text('正文文字'), findsOneWidget);
+
+      // 点开投票，选项图同样走失败收起，选项文字还在。
+      await tester.tap(find.text('去投票'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('甲'), findsOneWidget);
+      expect(find.text('乙'), findsOneWidget);
       center.dispose();
     });
 

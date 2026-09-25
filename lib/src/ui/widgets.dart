@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../i18n/app_localizations.dart';
+import '../core/announcement.dart';
 import '../core/models.dart';
 import '../app_state.dart';
 import './palette.dart';
@@ -285,16 +286,94 @@ class EmptyState extends StatelessWidget {
 
 /// 单选行。不使用 Radio/RadioListTile：其 groupValue/onChanged 在新版 Flutter 已废弃，
 /// 而 CI 的 analyze 会把弃用提示当作问题。
+/// 公告里的一张图。
+///
+/// ⚠️ 公告是**单向下发**的内容，图挂了一张不该在弹窗里留个红叉或撑出一片空白 ——
+/// 加载失败就整块收起。加载完成（或失败）时回调一次 [onSettled]，公告弹窗靠它
+/// 重算「正文到底要不要滑到底」（图片晚于正文到位，会改变可滚高度）。
+class AnnouncementImage extends StatefulWidget {
+  const AnnouncementImage({
+    required this.path,
+    this.maxHeight = 220,
+    this.radius = 8,
+    this.onSettled,
+    super.key,
+  });
+
+  final String path;
+  final double maxHeight;
+  final double radius;
+  final VoidCallback? onSettled;
+
+  @override
+  State<AnnouncementImage> createState() => _AnnouncementImageState();
+}
+
+class _AnnouncementImageState extends State<AnnouncementImage> {
+  bool _settled = false;
+
+  void _settle() {
+    if (_settled) return;
+    _settled = true;
+    final callback = widget.onSettled;
+    if (callback != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = announcementMediaUrl(widget.path);
+    if (url.isEmpty) return const SizedBox.shrink();
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: widget.maxHeight),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(widget.radius),
+        child: Image.network(
+          url,
+          width: double.infinity,
+          fit: BoxFit.contain,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) {
+              _settle();
+              return child;
+            }
+            return const SizedBox(
+              height: 120,
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            _settle();
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class ChoiceTile extends StatelessWidget {
   const ChoiceTile({
     required this.selected,
     required this.title,
     required this.onTap,
+    this.image = '',
     super.key,
   });
 
   final bool selected;
   final String title;
+
+  /// 选项配图（相对路径，空串＝纯文字）。放在文字上方。
+  final String image;
+
   final VoidCallback onTap;
 
   @override
@@ -304,16 +383,26 @@ class ChoiceTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-              size: 18,
-              color: selected ? Theme.of(context).colorScheme.primary : kTextFaint,
+            if (image.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 28, bottom: 8),
+                child: AnnouncementImage(path: image, maxHeight: 160),
+              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  size: 18,
+                  color: selected ? Theme.of(context).colorScheme.primary : kTextFaint,
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 13))),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 13))),
           ],
         ),
       ),

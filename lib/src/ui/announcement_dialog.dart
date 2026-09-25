@@ -166,7 +166,22 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
                     controller: _scroll,
                     child: SingleChildScrollView(
                       controller: _scroll,
-                      child: Text(_announcement.body),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          Text(_announcement.body),
+                          for (final path in _announcement.images)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: AnnouncementImage(
+                                path: path,
+                                maxHeight: 260,
+                                // 图片晚于正文到位，会改变可滚高度 → 重算「要不要滑到底」。
+                                onSettled: _measure,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -377,10 +392,25 @@ class _PollDialogState extends State<_PollDialog> {
                                 _selected.remove(option.id);
                               }
                             }),
-                            title: Text(
-                              option.label,
-                              style: const TextStyle(fontSize: 13),
-                            ),
+                            title: option.image.isEmpty
+                                ? Text(
+                                    option.label,
+                                    style: const TextStyle(fontSize: 13),
+                                  )
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      AnnouncementImage(
+                                        path: option.image,
+                                        maxHeight: 160,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        option.label,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
                             controlAffinity: ListTileControlAffinity.leading,
                             contentPadding: EdgeInsets.zero,
                             dense: true,
@@ -389,6 +419,7 @@ class _PollDialogState extends State<_PollDialog> {
                           ChoiceTile(
                             selected: _selected.contains(option.id),
                             title: option.label,
+                            image: option.image,
                             onTap: () => setState(() {
                               _selected
                                 ..clear()

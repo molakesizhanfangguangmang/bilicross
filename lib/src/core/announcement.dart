@@ -23,17 +23,28 @@ const String kDismissOnAction = 'onAction';
 
 /// 投票的一个选项。
 class AnnouncementOption {
-  const AnnouncementOption({required this.id, required this.label});
+  const AnnouncementOption({
+    required this.id,
+    required this.label,
+    this.image = '',
+  });
 
   final String id;
   final String label;
+
+  /// 选项配图，服务端下发的**相对路径**（`/media/xxx.webp`）；空串＝没配图。
+  final String image;
 
   static AnnouncementOption? fromJson(Object? raw) {
     if (raw is! Map) return null;
     final id = '${raw['id'] ?? ''}'.trim();
     if (id.isEmpty) return null;
     final label = '${raw['label'] ?? ''}'.trim();
-    return AnnouncementOption(id: id, label: label.isEmpty ? id : label);
+    return AnnouncementOption(
+      id: id,
+      label: label.isEmpty ? id : label,
+      image: '${raw['image'] ?? ''}'.trim(),
+    );
   }
 }
 
@@ -105,12 +116,16 @@ class Announcement {
     required this.maxVersion,
     required this.startsAt,
     required this.expiresAt,
+    this.images = const <String>[],
     this.poll,
   });
 
   final String id;
   final String title;
   final String body;
+
+  /// 正文配图（相对路径，最多 6 张，顺序即展示顺序）；空列表＝纯文字。
+  final List<String> images;
 
   /// false = 更新性公告：弹窗不给关闭按钮，只有「立即更新」一条路。
   final bool closable;
@@ -159,6 +174,7 @@ class Announcement {
       maxVersion: '${raw['maxVersion'] ?? ''}'.trim(),
       startsAt: _toSeconds(raw['startsAt']),
       expiresAt: _toSeconds(raw['expiresAt']),
+      images: _mediaList(raw['images']),
       poll: AnnouncementPoll.fromJson(raw['poll']),
     );
   }
@@ -323,4 +339,28 @@ int? _toSeconds(Object? raw) {
   final parsed = DateTime.tryParse(text.replaceAll('Z', '+00:00'));
   if (parsed == null) return null;
   return parsed.toUtc().millisecondsSinceEpoch ~/ 1000;
+}
+
+/// 解析服务端下发的图片路径列表：去空、去重、保序。
+List<String> _mediaList(Object? raw) {
+  if (raw is! List) return const <String>[];
+  final out = <String>[];
+  for (final item in raw) {
+    final text = item == null ? '' : '$item'.trim();
+    if (text.isNotEmpty && !out.contains(text)) out.add(text);
+  }
+  return out;
+}
+
+/// 把服务端下发的图片路径补成可加载的 URL。
+///
+/// ⚠️ 服务端存的是**相对路径**（`/media/xxx.webp`），好处是换域名时老公告里的图
+/// 依然能对上。这里只对 http(s) 开头的原样放行，其余一律拼到公告域名后面。
+String announcementMediaUrl(String path, {String baseUrl = kAnnouncementsBaseUrl}) {
+  final text = path.trim();
+  if (text.isEmpty) return '';
+  if (text.startsWith('http://') || text.startsWith('https://')) return text;
+  final base = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  if (base.isEmpty) return '';
+  return text.startsWith('/') ? '$base$text' : '$base/$text';
 }
