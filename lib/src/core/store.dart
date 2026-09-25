@@ -74,6 +74,8 @@ class Store {
   File get settingsFile => File('${root.path}${Platform.pathSeparator}settings.json');
   File get credentialFile => File('${root.path}${Platform.pathSeparator}credential.json');
   File get taskFile => File('${root.path}${Platform.pathSeparator}tasks.json');
+  File get announcementFile =>
+      File('${root.path}${Platform.pathSeparator}announcement_state.json');
   Directory get backupDir => Directory('${root.path}${Platform.pathSeparator}backup');
 
   Future<AppSettings> loadSettings() async {
@@ -120,6 +122,16 @@ class Store {
         {'tasks': tasks.map((task) => task.toJson()).toList()},
         keepBackups: 3,
       );
+
+  /// 公告状态：已读 id、设备标识、已投的票。
+  ///
+  /// ⚠️ 单独一个文件，**不能混进 `settings.json`**：混进去会连带进 `.bcbak`，
+  /// 还会被设置页的「有没有未保存的改动」当成设置内容（一关公告就提示未保存）。
+  Future<Map<String, dynamic>?> loadAnnouncementState() =>
+      _readJson(announcementFile);
+
+  Future<void> saveAnnouncementState(Map<String, dynamic> payload) =>
+      _writeAtomic(announcementFile, payload);
 
   Future<Map<String, dynamic>?> _readJson(File file) async {
     if (!await file.exists()) return null;

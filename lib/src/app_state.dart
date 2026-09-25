@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'core/abort.dart';
+import 'core/announcement_center.dart';
 import 'core/background_config.dart';
 import 'core/bili_api.dart';
 import 'core/downloader.dart';
@@ -108,6 +109,18 @@ class AppState extends ChangeNotifier {
   /// 当前语言的文案。任务消息、异常提示这些没有 BuildContext 的地方都从这里取，
   /// 所以换语言之后新产生的消息立刻是新语言；已经写进任务的历史消息不回译。
   AppLocalizations get l10n => AppLocalizations.fromCode(settings.localeCode);
+
+  /// 公告中心（拉取 / 弹窗队列 / 投票）。
+  ///
+  /// ⚠️ **不进 [shellView] / [stableView] 的快照，也不由 AppState 转发通知** ——
+  /// 它自己是 ChangeNotifier，谁关心谁直接订阅。公告一变就让外壳（含 ThemeData 与
+  /// 整列导航）重建一遍是没有理由的。
+  ///
+  /// 懒建：测试里不碰公告，就一个 socket、一个计时器都不会起。
+  AnnouncementCenter? _announcements;
+
+  AnnouncementCenter get announcements =>
+      _announcements ??= AnnouncementCenter(store: store);
 
   AccountState account = const AccountState.unknown();
   ParsedMedia? parsed;
@@ -1718,6 +1731,8 @@ class AppState extends ChangeNotifier {
       control.stop();
     }
     _controls.clear();
+    // 只关真的建过的那个 —— getter 会把「没人看过公告」也建出来，那没必要。
+    _announcements?.dispose();
     api.close();
     super.dispose();
   }

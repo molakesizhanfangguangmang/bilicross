@@ -346,6 +346,28 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.advanced': '高级设置',
     'settings.advancedHint': '启动画面、日志与关于',
 
+    // 公告（服务器下发，含投票）
+    'announcement.view': '查看公告',
+    'announcement.viewHint': '服务器下发的公告与投票，可手动刷新',
+    'announcement.title': '公告',
+    'announcement.refresh': '刷新',
+    'announcement.scrollToEnd': '滑到底以继续',
+    'announcement.vote': '去投票',
+    'announcement.updateNow': '立即更新',
+    'announcement.checking': '检查中…',
+    'announcement.submit': '提交',
+    'announcement.submitting': '提交中…',
+    'announcement.voteFailed': '提交失败，请稍后再试',
+    'announcement.refreshFailed': '刷新失败',
+    'announcement.emptyTitle': '暂无公告',
+    'announcement.emptyBody': '有新的公告或投票时会显示在这里。',
+    'announcement.unread': '未读',
+    'announcement.voted': '已投票',
+    'announcement.hasPoll': '投票进行中',
+    'announcement.pollClosed': '投票已结束',
+    'announcement.neverUpdated': '尚未获取',
+    'announcement.updatedAt': '更新于 {time}',
+
     // 启动画面
     'splash.title': '启动画面',
     'splash.enable': '显示启动画面',

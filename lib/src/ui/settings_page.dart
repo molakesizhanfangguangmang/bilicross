@@ -9,6 +9,7 @@ import '../core/background_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
 import 'advanced_page.dart';
+import 'announcement_page.dart';
 import 'background_card.dart';
 import 'backup_card.dart';
 import 'expand_page_route.dart';
@@ -491,6 +492,47 @@ class SettingsPageState extends State<SettingsPage> {
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
                     BackgroundCard(state: state),
+                    const SizedBox(height: 24),
+                    // 公告入口。默认不弹的那些（已读、投票已结束）都能在这里回看，
+                    // 列表本身也带手动刷新。角标是未读条数。
+                    // ⚠️ 单订阅公告中心而不是 AppState：公告的中心是独立的
+                    // ChangeNotifier，不走 AppState 的通知边界。
+                    ListenableBuilder(
+                      listenable: state.announcements,
+                      builder: (context, _) {
+                        final unread = state.announcements.unreadCount;
+                        return Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.campaign_outlined),
+                            title: Text(l10n.tr('announcement.view')),
+                            subtitle: Text(
+                              l10n.tr('announcement.viewHint'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: kTextMuted,
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                if (unread > 0) ...<Widget>[
+                                  StateChip(text: '$unread', tone: 1),
+                                  const SizedBox(width: 6),
+                                ],
+                                const Icon(Icons.chevron_right),
+                              ],
+                            ),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (context) => AnnouncementPage(
+                                  center: state.announcements,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

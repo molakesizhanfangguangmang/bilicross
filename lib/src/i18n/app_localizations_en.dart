@@ -360,6 +360,28 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.advanced': 'Advanced',
     'settings.advancedHint': 'Splash screen, logs and about',
 
+    // Announcements (server-side, polls included)
+    'announcement.view': 'Announcements',
+    'announcement.viewHint': 'Announcements and polls from the server; refresh manually',
+    'announcement.title': 'Announcements',
+    'announcement.refresh': 'Refresh',
+    'announcement.scrollToEnd': 'Scroll to the end to continue',
+    'announcement.vote': 'Vote',
+    'announcement.updateNow': 'Update now',
+    'announcement.checking': 'Checking…',
+    'announcement.submit': 'Submit',
+    'announcement.submitting': 'Submitting…',
+    'announcement.voteFailed': 'Submission failed. Please try again later.',
+    'announcement.refreshFailed': 'Refresh failed',
+    'announcement.emptyTitle': 'No announcements',
+    'announcement.emptyBody': 'New announcements and polls will show up here.',
+    'announcement.unread': 'Unread',
+    'announcement.voted': 'Voted',
+    'announcement.hasPoll': 'Poll open',
+    'announcement.pollClosed': 'Poll closed',
+    'announcement.neverUpdated': 'Not fetched yet',
+    'announcement.updatedAt': 'Updated at {time}',
+
     // Splash screen
     'splash.title': 'Splash screen',
     'splash.enable': 'Show splash screen',

@@ -19,6 +19,7 @@ import 'src/i18n/app_localizations_zh.dart';
 import 'src/platform/windows/desktop_shell.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
+import 'src/ui/announcement_dialog.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
 import 'src/ui/splash_screen.dart';
@@ -427,7 +428,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int index = 0;
 
   /// 设置页的 state，用来触发保存（顶部那个按钮在外壳里）。
@@ -440,8 +441,16 @@ class _AppShellState extends State<AppShell> {
   /// 设置页在导航里的序号（保存按钮只在这一页出现）。
   static const int _settingsIndex = 3;
 
+  /// 公告弹窗正在走（从取下一条到它被关掉为止）。
+  ///
+  /// 公告中心的通知推着我们再取一条，这个标记挡住重入 —— 否则拉取完成那一次
+  /// 通知会把同一个队列弹出好几层窗。
+  bool _announcementShowing = false;
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.state.announcements.removeListener(_onAnnouncementsChanged);
     _settingsCanSave.dispose();
     super.dispose();
   }
@@ -452,6 +461,11 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    // 公告弹窗由公告中心的通知驱动：拉回来一批、投完票出队、关掉一条，
+    // 都会走到这里再取下一条。放在 initState（早于 start() 的那次拉取）注册，
+    // 第一次拉取完成时通知才接得住。
+    widget.state.announcements.addListener(_onAnnouncementsChanged);
+    WidgetsBinding.instance.addObserver(this);
     // ⚠️ 这两次刷新**不能**在这里直接调 —— initState 跑在 build 期间
     // （element 正在 mount），而 `refreshAccount()` 在第一个 `await` 之前
     // 就会同步 `notifyListeners()`（空 Cookie 那条路是纯同步的），于是撞上
@@ -467,7 +481,45 @@ class _AppShellState extends State<AppShell> {
       // 队列要人点了任务页的「全部开始」才动，跟新入队的任务一个规矩。
       // （单个任务的「重试」「继续」仍是点了就跑。）
       _checkUpdateOnce();
+      // 公告：读盘（已读 / 已投 / 设备号）后立刻拉一次，回前台再补拉。
+      unawaited(widget.state.announcements.start());
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回前台立刻补拉一次 —— 用户 2026-09-25 定的语义：进应用时断网，
+    // 恢复联网的那一刻就要把公告拉下来。退到后台则停掉轮询与退避探针，
+    // 「失败后重试」的那条探针只在前台存在。
+    widget.state.announcements.setForeground(state == AppLifecycleState.resumed);
+  }
+
+  void _onAnnouncementsChanged() => unawaited(_driveAnnouncementPopups());
+
+  /// 公告弹窗的驱动：取下一条 → 弹 → 等它关 → 再取下一条。
+  ///
+  /// 串行而不是一次弹出全部：队列里可能有更新性公告，用户得先看到它。
+  Future<void> _driveAnnouncementPopups() async {
+    if (!mounted || _announcementShowing || _riskDialogOpen) return;
+    final center = widget.state.announcements;
+    _announcementShowing = true;
+    try {
+      while (mounted) {
+        final next = center.takeNextPopup();
+        if (next == null) break;
+        await showAnnouncementDialog(
+          context,
+          center: center,
+          announcement: next,
+        );
+      }
+    } finally {
+      _announcementShowing = false;
+    }
+    if (!mounted) return;
+    // 弹窗期间攒下的风控提示（下载撞 -352 不挑时候）现在补上；
+    // 反过来风控窗开着时上面那道 gate 会把公告留到这时候再弹。
+    _maybeShowRiskDialog(widget.state, AppLocalizations.of(context));
   }
 
   /// 启动后静默查一次更新：有新版弹说明弹窗，查不到提示一句，已是最新不出声。
@@ -512,7 +564,9 @@ class _AppShellState extends State<AppShell> {
   /// 风控 -352：弹一次窗，恢复完全手动 —— 不等冷却、不自动重试。
   /// 点「恢复」从停下的那一集接着走；点「先放着」只关窗，队列保持停手。
   void _maybeShowRiskDialog(AppState state, AppLocalizations l10n) {
-    if (!state.riskControlHit || _riskDialogOpen) return;
+    // 公告弹窗正在走就先让路：这个判断每帧都做，公告关掉之后
+    // [_driveAnnouncementPopups] 会回头再调一次这里，不会漏。
+    if (!state.riskControlHit || _riskDialogOpen || _announcementShowing) return;
     _riskDialogOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
@@ -544,6 +598,8 @@ class _AppShellState extends State<AppShell> {
       } else {
         state.dismissRiskControl();
       }
+      // 让路给风控窗的那批公告现在接上。
+      unawaited(_driveAnnouncementPopups());
     });
   }
 
