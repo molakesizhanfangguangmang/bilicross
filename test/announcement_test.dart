@@ -5,6 +5,8 @@ import 'package:bilicross/src/core/announcement.dart';
 import 'package:bilicross/src/core/announcement_center.dart';
 import 'package:bilicross/src/core/device_identity.dart';
 import 'package:bilicross/src/core/store.dart';
+import 'package:bilicross/src/ui/announcement_dialog.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -13,12 +15,14 @@ Map<String, Object?> _poll({
   String id = 'p1',
   bool multi = false,
   bool open = true,
+  bool requireVote = false,
 }) =>
     <String, Object?>{
       'id': id,
       'question': '选一个',
       'multi': multi,
       'open': open,
+      'requireVote': requireVote,
       'options': <Object>[
         <String, Object?>{'id': 'o1', 'label': '甲'},
         <String, Object?>{'id': 'o2', 'label': '乙'},
@@ -107,6 +111,19 @@ void main() {
         })?.open,
         isTrue,
       );
+    });
+
+    test('requireVote 只在显式 true 时生效：缺字段不能把用户锁在弹窗里', () {
+      final list = parseAnnouncements(jsonEncode(<String, Object?>{
+        'announcements': <Object>[
+          <String, Object?>{'id': 'a1', 'poll': _poll(requireVote: true)},
+          <String, Object?>{'id': 'a2', 'poll': _poll(id: 'p2')},
+          <String, Object?>{'id': 'a3', 'poll': _poll(id: 'p3', requireVote: false)},
+        ],
+      }));
+      expect(list[0].poll!.requireVote, isTrue);
+      expect(list[1].poll!.requireVote, isFalse);
+      expect(list[2].poll!.requireVote, isFalse);
     });
   });
 
@@ -464,6 +481,98 @@ void main() {
       await second.start();
       expect(second.deviceId, id);
       second.dispose();
+    });
+
+    /// 直接造一条公告：下面几条用例只看弹窗的门控，不需要真拉一次。
+    Announcement gateAnnouncement({bool open = true}) =>
+        Announcement.fromJson(<String, Object?>{
+          'id': 'gate',
+          'title': '投票',
+          'poll': _poll(open: open, requireVote: true),
+        })!;
+
+    /// ⚠️ 这里**不能**调 `center.start()`：`testWidgets` 的假时钟推不动 `Store` 的真实文件 I/O，
+    /// 一 await 就挂到 10 分钟超时（已踩过）。门控只看内存里的已读 / 已投状态，起不起得来无所谓。
+    Future<void> openAnnouncement(
+      WidgetTester tester,
+      AnnouncementCenter center,
+      Announcement announcement, {
+      bool review = false,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+        // ⚠️ 必须有 Scaffold：投票失败要弹 SnackBar，没有 Scaffold 时 ScaffoldMessenger 直接断言失败。
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showAnnouncementDialog(
+                context,
+                center: center,
+                announcement: announcement,
+                review: review,
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+    }
+
+    TextButton closeButton(WidgetTester tester) =>
+        tester.widget<TextButton>(find.widgetWithText(TextButton, '关闭'));
+
+    AnnouncementCenter idleCenter() =>
+        buildCenter(MockClient((_) async => _feed(const <Map<String, Object?>>[])));
+
+    testWidgets('requireVote：没投票不给关', (tester) async {
+      final center = idleCenter();
+      await openAnnouncement(tester, center, gateAnnouncement());
+      expect(find.text('投完票才能关闭'), findsOneWidget);
+      expect(closeButton(tester).onPressed, isNull, reason: '未投票时关闭按钮必须点不动');
+      center.dispose();
+    });
+
+    testWidgets('requireVote：投票已结束就不拦着关（否则死锁）', (tester) async {
+      final center = idleCenter();
+      await openAnnouncement(tester, center, gateAnnouncement(open: false));
+      expect(find.text('投完票才能关闭'), findsNothing);
+      expect(closeButton(tester).onPressed, isNotNull);
+      center.dispose();
+    });
+
+    testWidgets('requireVote：从设置页点开（review）恒可关', (tester) async {
+      final center = idleCenter();
+      await openAnnouncement(tester, center, gateAnnouncement(), review: true);
+      expect(find.text('投完票才能关闭'), findsNothing);
+      expect(closeButton(tester).onPressed, isNotNull);
+      center.dispose();
+    });
+
+    testWidgets('requireVote：提交连续失败到上限也要放行，别把用户锁死', (tester) async {
+      // 领不到票据 → 提交必失败，且这条路径不写盘。
+      final center = buildCenter(MockClient((_) async => _json(<String, Object?>{}, 500)));
+      await openAnnouncement(tester, center, gateAnnouncement());
+      expect(closeButton(tester).onPressed, isNull);
+
+      for (var i = 0; i < kMaxVoteFailures; i++) {
+        await tester.tap(find.text('去投票'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('甲'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('提交'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+      }
+      // 「提交失败」的 SnackBar 自带 2 秒计时器，跑完它再结束，别留下挂起的 Timer。
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(center.hasVoted('p1'), isFalse);
+      expect(find.text('投完票才能关闭'), findsNothing);
+      expect(closeButton(tester).onPressed, isNotNull, reason: '一直投不出去也要给一条路');
+      center.dispose();
     });
   });
 }

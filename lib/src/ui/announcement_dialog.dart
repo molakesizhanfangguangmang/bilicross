@@ -14,6 +14,11 @@ import 'widgets.dart';
 /// 「滑到底」的判定容差：正文滚到距底部 8px 以内就算读完。
 const double kAnnouncementBottomTolerance = 8;
 
+/// `poll.requireVote` 的公告：提交连续失败到这个次数就放行关闭。
+///
+/// ⚠️ 不能只做「投了才给关」——网络一直不通时用户会被永久锁在弹窗里，只能杀进程。
+const int kMaxVoteFailures = 2;
+
 /// 弹一条公告。[review] 为真表示用户是从设置页主动点开查看的 ——
 /// 那时不强制滑到底、不可关闭的公告也允许关（否则会被卡在设置页出不去）。
 Future<void> showAnnouncementDialog(
@@ -57,14 +62,27 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
   bool _needsScroll = false;
   bool _atBottom = true;
   bool _updating = false;
+  int _voteFailures = 0;
 
   Announcement get _announcement => widget.announcement;
+
+  /// `poll.requireVote` 并且还没投票：这时候不给关。
+  ///
+  /// ⚠️ 三种情况必须放行，否则是死锁：投票已结束（服务端不再收票）、本机已投过、
+  /// 提交连续失败到 [kMaxVoteFailures]。
+  bool get _voteGateOpen {
+    final poll = _announcement.poll;
+    if (poll == null || !poll.requireVote) return false;
+    if (_voteFailures >= kMaxVoteFailures) return false;
+    return poll.open && !widget.center.hasVoted(poll.id);
+  }
 
   /// 能不能关：不可关闭的公告只有「立即更新」一条路；
   /// 可关闭的还得先把长的正文滑到底。
   bool get _canClose {
     if (widget.review) return true;
     if (_announcement.forced) return false;
+    if (_voteGateOpen) return false;
     return !_needsScroll || _atBottom;
   }
 
@@ -160,6 +178,14 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
                       style: const TextStyle(fontSize: 12, color: kTextMuted),
                     ),
                   ),
+                if (!widget.review && _voteGateOpen)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      l10n.tr('announcement.voteToClose'),
+                      style: const TextStyle(fontSize: 12, color: kTextMuted),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -211,6 +237,10 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
       context,
       center: widget.center,
       announcement: _announcement,
+      onFailed: () {
+        if (!mounted) return;
+        setState(() => _voteFailures += 1);
+      },
     );
     if (!mounted || !voted) return;
     // 投完就算处理完了。⚠️ 但不可关闭的公告不在这里放行 —— 否则「投一票」
@@ -248,22 +278,34 @@ Future<bool> showPollDialog(
   BuildContext context, {
   required AnnouncementCenter center,
   required Announcement announcement,
+  VoidCallback? onFailed,
 }) async {
   final poll = announcement.poll;
   if (poll == null) return false;
   final voted = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _PollDialog(center: center, announcement: announcement),
+    builder: (_) => _PollDialog(
+      center: center,
+      announcement: announcement,
+      onFailed: onFailed,
+    ),
   );
   return voted ?? false;
 }
 
 class _PollDialog extends StatefulWidget {
-  const _PollDialog({required this.center, required this.announcement});
+  const _PollDialog({
+    required this.center,
+    required this.announcement,
+    this.onFailed,
+  });
 
   final AnnouncementCenter center;
   final Announcement announcement;
+
+  /// 每次提交失败回调一次，供上层判断「是不是该放行关闭了」。
+  final VoidCallback? onFailed;
 
   @override
   State<_PollDialog> createState() => _PollDialogState();
@@ -295,6 +337,7 @@ class _PollDialogState extends State<_PollDialog> {
           duration: const Duration(seconds: 2),
         ),
       );
+    widget.onFailed?.call();
   }
 
   @override

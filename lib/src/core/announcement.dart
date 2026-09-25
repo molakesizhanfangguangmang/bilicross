@@ -44,6 +44,7 @@ class AnnouncementPoll {
     required this.question,
     required this.multi,
     required this.open,
+    required this.requireVote,
     required this.options,
   });
 
@@ -55,6 +56,12 @@ class AnnouncementPoll {
 
   /// 服务端按 `startsAt` / `endsAt` 算好的开关；已结束的投票不弹。
   final bool open;
+
+  /// 未投票前不给关这条公告（服务端下发，默认 false）。
+  ///
+  /// ⚠️ 必须与 [Announcement.closable] **解耦**：`closable:false` 是「强制更新」语义，
+  /// 会连带 ⚠ 图标与「立即更新」按钮，不能拿来表达「不投不给关」。
+  final bool requireVote;
 
   final List<AnnouncementOption> options;
 
@@ -78,6 +85,7 @@ class AnnouncementPoll {
       multi: raw['multi'] == true,
       // 服务端会注入 `open`；字段缺失时按「开着」处理（老数据）。
       open: raw['open'] != false,
+      requireVote: raw['requireVote'] == true,
       options: options,
     );
   }

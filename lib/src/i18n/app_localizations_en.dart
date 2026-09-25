@@ -366,6 +366,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'announcement.title': 'Announcements',
     'announcement.refresh': 'Refresh',
     'announcement.scrollToEnd': 'Scroll to the end to continue',
+    'announcement.voteToClose': 'Vote to dismiss this announcement',
     'announcement.vote': 'Vote',
     'announcement.updateNow': 'Update now',
     'announcement.checking': 'Checking…',

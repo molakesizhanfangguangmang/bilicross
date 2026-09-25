@@ -352,6 +352,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'announcement.title': '公告',
     'announcement.refresh': '刷新',
     'announcement.scrollToEnd': '滑到底以继续',
+    'announcement.voteToClose': '投完票才能关闭',
     'announcement.vote': '去投票',
     'announcement.updateNow': '立即更新',
     'announcement.checking': '检查中…',
