@@ -126,10 +126,10 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
 
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
-    // 过冲幅度：距离越远、连点越快越大。单格基准约 0.14，两格约 0.24。
-    final overshoot = (0.10 + 0.07 * distance) * (fast ? 1.5 : 1.0);
-    // 衰减越快过冲越收在终点附近；连点快时稍慢，让回摆更明显。
-    final damping = fast ? 8.0 : 10.0;
+    // 过冲幅度：距离越远、连点越快越大。
+    final overshoot = (0.18 + 0.10 * distance) * (fast ? 1.5 : 1.0);
+    // 衰减越慢 q 弹越持久；连点快时更明显。
+    final damping = fast ? 6.0 : 8.0;
 
     _position = Tween(
       begin: start,
@@ -171,7 +171,7 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
                     children: [
                       Positioned(
                         left: centerX - _indicatorWidth / 2,
-                        top: 8,
+                        top: 14,
                         width: _indicatorWidth,
                         height: 32,
                         child: DecoratedBox(
