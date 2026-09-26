@@ -489,6 +489,31 @@ class SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ],
+                    if (Platform.isAndroid) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        l10n.tr('settings.navStyle'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<String>(
+                        segments: [
+                          for (final name in kNavStyles)
+                            ButtonSegment(
+                              value: name,
+                              label: Text(l10n.tr('settings.navStyle.$name')),
+                            ),
+                        ],
+                        selected: <String>{settings.navStyle},
+                        onSelectionChanged: (selection) {
+                          setState(() => settings.navStyle = selection.first);
+                          unawaited(state.saveSettings());
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。

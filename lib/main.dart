@@ -19,6 +19,7 @@ import 'src/i18n/app_localizations_zh.dart';
 import 'src/platform/windows/desktop_shell.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
+import 'src/ui/app_nav_bar.dart';
 import 'src/ui/announcement_dialog.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
@@ -694,10 +695,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           ),
           bottomNavigationBar: wide
               ? null
-              : NavigationBar(
+              : buildAppNavBar(
+                  style: state.settings.navStyle,
                   selectedIndex: index,
-                  onDestinationSelected: (value) => setState(() => index = value),
-                  destinations: _destinations(l10n),
+                  onSelect: (value) => setState(() => index = value),
+                  items: [
+                    for (final item in _destinations(l10n))
+                      NavItem(
+                        icon: (item.icon as Icon).icon ?? Icons.circle_outlined,
+                        label: item.label,
+                      ),
+                  ],
                 ),
         );
       },

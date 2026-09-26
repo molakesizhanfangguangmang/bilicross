@@ -957,6 +957,14 @@ const String kThemeDefault = 'teal';
 String normalizeThemeId(String? raw) =>
     raw != null && kThemeSeeds.containsKey(raw) ? raw : kThemeDefault;
 
+/// 底部导航的动画样式。默认 `standard` 沿用 M3 原样，零回归；
+/// `bounce` / `dock` 是新增的两套观感，仅安卓手机端生效。
+const String kNavStyleDefault = 'standard';
+const List<String> kNavStyles = <String>['standard', 'bounce', 'dock'];
+
+String normalizeNavStyle(String? raw) =>
+    raw != null && kNavStyles.contains(raw) ? raw : kNavStyleDefault;
+
 class AppSettings {
   AppSettings({
     this.downloadDir = '',
@@ -982,6 +990,7 @@ class AppSettings {
     this.animDurationMs = kAnimDefaultDurationMs,
     this.animCurve = kAnimDefaultCurve,
     this.animStyle = kAnimDefaultStyle,
+    this.navStyle = kNavStyleDefault,
     this.duplicateMode = kDuplicateDefault,
     this.parallelPreflight = false,
     this.themeId = kThemeDefault,
@@ -1043,6 +1052,9 @@ class AppSettings {
   /// 展开动画形式，取值见 [kAnimStyles]。
   String animStyle;
 
+  /// 底部导航动画样式，取值见 [kNavStyles]。
+  String navStyle;
+
   /// 同名文件处理：`skip` 跳过 / `overwrite` 覆盖 / `rename` 自动重命名。
   ///
   /// 批量下载几乎必然撞名，这个开关决定撞名时的行为；默认跳过最保守。
@@ -1092,6 +1104,7 @@ class AppSettings {
         'anim_duration_ms': animDurationMs,
         'anim_curve': animCurve,
         'anim_style': animStyle,
+        'nav_style': navStyle,
         'duplicate_mode': duplicateMode,
         'parallel_preflight': parallelPreflight,
         'theme_id': themeId,
@@ -1129,6 +1142,7 @@ class AppSettings {
         ),
         animCurve: normalizeAnimCurve(json['anim_curve'] as String?),
         animStyle: normalizeAnimStyle(json['anim_style'] as String?),
+        navStyle: normalizeNavStyle(json['nav_style'] as String?),
         duplicateMode: normalizeDuplicateMode(json['duplicate_mode'] as String?),
         parallelPreflight: json['parallel_preflight'] as bool? ?? false,
         themeId: normalizeThemeId(json['theme_id'] as String?),
