@@ -38,29 +38,35 @@ Widget buildAppNavBar({
   );
 }
 
-/// 阻尼振荡曲线：先到达峰值，再以指数衰减振荡，最终稳定到 1。
+/// 带阻尼的弹簧进度曲线。
 ///
-/// [bounces] 是「额外冲过终点」的次数；[damping] 越小衰减越慢、振荡越持久。
-/// 值域 [0, 1]。
-class _DampedOscillation extends Curve {
-  const _DampedOscillation({required this.bounces, required this.damping});
+/// 输出 = 线性主项 `t` + 指数衰减的正弦偏移，从 0 平滑起步、稳定到 1。
+/// 全程 C1 连续，没有分段衔接处的速度跳变。
+class _SpringCurve extends Curve {
+  const _SpringCurve({
+    required this.overshoot,
+    required this.damping,
+    required this.cycles,
+  });
 
-  final int bounces;
+  /// 冲过头的幅度（相对单格）。
+  final double overshoot;
+
+  /// 阻尼系数，越小衰减越慢、q 弹越久。
   final double damping;
+
+  /// 振荡的额外回摆次数。
+  final double cycles;
 
   @override
   double transformInternal(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
-    // 振荡总相位：第一次冲过去 + bounces 次额外回摆。
-    final cycles = bounces + 0.5;
+    // 正弦频率按「回摆次数」定；(1 - t) 保证终点精确回到 1、无跳变。
     final phase = 2 * math.pi * cycles * t;
     final envelope = math.exp(-damping * t);
-    // 振幅归一化：t=0 时为 0，终点收敛到 1。
-    final oscillation = math.sin(phase);
-    final amplitude = 1 / math.sin(2 * math.pi * cycles);
-    final raw = 1 + envelope * oscillation * amplitude;
-    return raw.clamp(0.0, 1.4);
+    final wobble = overshoot * envelope * math.sin(phase) * (1 - t);
+    return t + wobble;
   }
 }
 
@@ -87,12 +93,9 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
     duration: const Duration(milliseconds: 520),
   );
 
-  Animation<double>? _position;
+  late Animation<double> _position;
 
-  /// 动画起点（上一个停留的索引）。
   int _fromIndex = 0;
-
-  /// 最近一次点击时间，用于把连点折算成更强的 q 弹。
   DateTime _lastTap = DateTime.now();
 
   @override
@@ -117,33 +120,32 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
   }
 
   void _runTo(int target) {
-    final distance = (target - _fromIndex).abs().clamp(1, widget.items.length - 1);
+    final distance =
+        (target - _fromIndex).abs().clamp(1, widget.items.length - 1);
     final gap = DateTime.now().difference(_lastTap).inMilliseconds;
     _lastTap = DateTime.now();
-    // 连点（240ms 内）视为「很快」，多 q 弹一次、衰减更慢。
     final fast = gap > 0 && gap < 240;
-    final bounces = (distance + (fast ? 1 : 0)).clamp(1, 4);
-    final damping = fast ? 3.2 : 4.6;
 
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
-    final dir = end >= start ? 1.0 : -1.0;
-    final curve = _DampedOscillation(bounces: bounces, damping: damping);
-    // 峰值 = 终点 + 方向 * 过冲幅度；幅度随距离与速度放大。
-    final amplitude = 0.30 * distance * (fast ? 1.35 : 1.0);
-    final peak = end + dir * amplitude;
+    // 过冲幅度：距离越远、连点越快越大。
+    final overshoot = 0.32 * distance * (fast ? 1.4 : 1.0);
+    // 回摆次数：距离 + 连点加成；阻尼越小越持久。
+    final cycles = (distance + (fast ? 1.5 : 0.5)).toDouble();
+    final damping = fast ? 3.0 : 4.2;
 
-    _position = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: start, end: peak)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 34,
+    _position = Tween(
+      begin: start,
+      end: end,
+    ).chain(
+      CurveTween(
+        curve: _SpringCurve(
+          overshoot: overshoot,
+          damping: damping,
+          cycles: cycles,
+        ),
       ),
-      TweenSequenceItem(
-        tween: Tween(begin: peak, end: end).chain(CurveTween(curve: curve)),
-        weight: 66,
-      ),
-    ]).animate(_controller);
+    ).animate(_controller);
 
     _fromIndex = target;
     _controller.forward(from: 0);
@@ -165,9 +167,9 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
               final count = widget.items.length;
               final cellWidth = constraints.maxWidth / count;
               return AnimatedBuilder(
-                animation: _position ?? const AlwaysStoppedAnimation(0.0),
+                animation: _position,
                 builder: (context, _) {
-                  final p = _position!.value;
+                  final p = _position.value;
                   final centerX = p * cellWidth + cellWidth / 2;
                   return Stack(
                     children: [
@@ -226,7 +228,8 @@ class _NavCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
