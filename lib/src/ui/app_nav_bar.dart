@@ -38,35 +38,33 @@ Widget buildAppNavBar({
   );
 }
 
-/// 带阻尼的弹簧进度曲线。
+/// 弹性进度曲线（对齐 Flutter `Curves.elasticOut` 的形态）。
 ///
-/// 输出 = 线性主项 `t` + 指数衰减的正弦偏移，从 0 平滑起步、稳定到 1。
-/// 全程 C1 连续，没有分段衔接处的速度跳变。
+/// 前半段快速逼近终点，只在**终点附近**冲过头并快速衰减回弹；
+/// 中途不回退，所以跨格不会出现「没到就折返」的粘滞感。
 class _SpringCurve extends Curve {
   const _SpringCurve({
     required this.overshoot,
     required this.damping,
-    required this.cycles,
   });
 
-  /// 冲过头的幅度（相对单格）。
+  /// 冲过头的幅度（相对整段位移的比例）。
   final double overshoot;
 
-  /// 阻尼系数，越小衰减越慢、q 弹越久。
+  /// 阻尼系数：越大过冲越窄、越只发生在终点附近。
   final double damping;
-
-  /// 振荡的额外回摆次数。
-  final double cycles;
 
   @override
   double transformInternal(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
-    // 正弦频率按「回摆次数」定；(1 - t) 保证终点精确回到 1、无跳变。
-    final phase = 2 * math.pi * cycles * t;
-    final envelope = math.exp(-damping * t);
-    final wobble = overshoot * envelope * math.sin(phase) * (1 - t);
-    return t + wobble;
+    // 与 Curves.elasticOut 同构：主项 + 指数衰减正弦过冲。
+    // phase 在终点处让 sin=0，且衰减极快，保证只终点附近过冲、中途单调。
+    final phase = math.pi * 2 * (t - 1);
+    final decay = math.pow(2, -damping * t).toDouble();
+    final oscillation = math.sin(phase);
+    final base = 1 + overshoot * oscillation * decay;
+    return base.clamp(0.0, 1.0 + overshoot);
   }
 }
 
@@ -128,11 +126,10 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
 
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
-    // 过冲幅度：距离越远、连点越快越大。
-    final overshoot = 0.32 * distance * (fast ? 1.4 : 1.0);
-    // 回摆次数：距离 + 连点加成；阻尼越小越持久。
-    final cycles = (distance + (fast ? 1.5 : 0.5)).toDouble();
-    final damping = fast ? 3.0 : 4.2;
+    // 过冲幅度：距离越远、连点越快越大。单格基准约 0.14，两格约 0.24。
+    final overshoot = (0.10 + 0.07 * distance) * (fast ? 1.5 : 1.0);
+    // 衰减越快过冲越收在终点附近；连点快时稍慢，让回摆更明显。
+    final damping = fast ? 8.0 : 10.0;
 
     _position = Tween(
       begin: start,
@@ -142,7 +139,6 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
         curve: _SpringCurve(
           overshoot: overshoot,
           damping: damping,
-          cycles: cycles,
         ),
       ),
     ).animate(_controller);
