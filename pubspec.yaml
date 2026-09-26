@@ -1,7 +1,7 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 2.3.1+49
+version: 2.3.2+51
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -17,6 +17,7 @@ dependencies:
   file_picker: ^13.1.0
   http: ^1.6.0
   package_info_plus: ^10.2.1
+  permission_handler: ^12.0.1
   # 投票去重用的设备指纹（ANDROID_ID / Windows deviceId），只用哈希上报。
   # 之所以引插件而不是自写平台通道：自定义通道要落在 MainActivity.kt 上，
   # 那正是壳补丁（FLAG_SECURE）与壳自检闸门改的文件，而 android/ 不入库、

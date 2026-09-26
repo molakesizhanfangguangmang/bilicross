@@ -288,6 +288,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.groupInterface': '界面与语言',
     'settings.downloadDir': '下载目录',
     'settings.chooseDir': '选择目录',
+    'settings.storageDenied': '需要「所有文件访问」权限才能使用自定义下载目录，请在系统设置中开启。',
     'settings.quality': '默认画质',
     'settings.audio': '默认音质',
     'settings.parallelTasks': '并发任务',

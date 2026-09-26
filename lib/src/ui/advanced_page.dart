@@ -8,6 +8,7 @@ import '../i18n/app_localizations.dart';
 import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
 import 'announcement_page.dart';
+import 'expand_page_route.dart';
 import 'log_page.dart';
 import 'splash_card.dart';
 import 'widgets.dart';
@@ -29,6 +30,9 @@ class AdvancedSettingsPage extends StatefulWidget {
 }
 
 class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
+  final GlobalKey _announcementKey = GlobalKey();
+  final GlobalKey _logsKey = GlobalKey();
+
   late final TextEditingController _proxy =
       TextEditingController(text: widget.state.settings.proxy);
   late final TextEditingController _userAgent =
@@ -151,6 +155,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
             builder: (context, _) {
               final unread = state.announcements.unreadCount;
               return Card(
+                key: _announcementKey,
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   leading: const Icon(Icons.campaign_outlined),
@@ -170,7 +175,14 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                     ],
                   ),
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
+                    ExpandPageRoute<void>(
+                      sourceRect:
+                          globalRectOf(_announcementKey.currentContext!),
+                      duration: Duration(
+                        milliseconds: state.settings.animDurationMs,
+                      ),
+                      curveName: state.settings.animCurve,
+                      style: state.settings.animStyle,
                       builder: (context) => AnnouncementPage(
                         center: state.announcements,
                       ),
@@ -182,6 +194,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
           ),
           const SizedBox(height: 12),
           Card(
+            key: _logsKey,
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
               leading: const Icon(Icons.receipt_long_outlined),
@@ -194,7 +207,13 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
+                ExpandPageRoute<void>(
+                  sourceRect: globalRectOf(_logsKey.currentContext!),
+                  duration: Duration(
+                    milliseconds: state.settings.animDurationMs,
+                  ),
+                  curveName: state.settings.animCurve,
+                  style: state.settings.animStyle,
                   builder: (context) => LogPage(state: state),
                 ),
               ),

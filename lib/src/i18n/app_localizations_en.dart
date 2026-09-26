@@ -295,6 +295,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.groupInterface': 'Interface and language',
     'settings.downloadDir': 'Download folder',
     'settings.chooseDir': 'Choose folder',
+    'settings.storageDenied': 'Custom download folders require the "All files access" permission. Enable it in system settings.',
     'settings.quality': 'Default video quality',
     'settings.audio': 'Default audio quality',
     'settings.parallelTasks': 'Parallel tasks',

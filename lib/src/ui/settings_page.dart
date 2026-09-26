@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../app_state.dart';
 import '../core/background_config.dart';
@@ -559,6 +561,22 @@ class SettingsPageState extends State<SettingsPage> {
       };
 
   Future<void> _pickDirectory() async {
+    // 安卓：改到任意目录前先确保有「所有文件访问」权限；没有就跳系统设置页。
+    if (Platform.isAndroid) {
+      final status = await Permission.manageExternalStorage.status;
+      if (!status.isGranted) {
+        final opened = await Permission.manageExternalStorage.request();
+        if (!opened.isGranted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context).tr('settings.storageDenied')),
+            ),
+          );
+          return;
+        }
+      }
+    }
     final path = await FilePicker.getDirectoryPath();
     if (path == null || path.isEmpty) return;
     _dir.text = path;

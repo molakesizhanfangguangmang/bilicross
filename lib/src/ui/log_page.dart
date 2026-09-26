@@ -9,6 +9,7 @@ import '../app_state.dart';
 import '../core/diagnostic.dart';
 import '../core/log_store.dart';
 import '../i18n/app_localizations.dart';
+import 'widgets.dart';
 
 /// 运行日志页。看解析走了哪条通道、为什么回退、下载与合并的细节。
 ///
@@ -164,43 +165,50 @@ class _LogPageState extends State<LogPage> {
           final entries = store.entries;
           return Column(
             children: [
-              SwitchListTile(
-                value: store.verbose,
-                secondary: const Icon(Icons.bug_report_outlined),
-                title: Text(l10n.tr('logs.verbose')),
-                subtitle: Text(
-                  store.filePath == null
-                      ? l10n.tr('logs.verboseNoFile')
-                      : l10n.tr('logs.verboseWithFile', {'path': '${store.filePath}'}),
-                  style: const TextStyle(fontSize: 12),
+              PanelBox(
+                radius: 0,
+                child: SwitchListTile(
+                  value: store.verbose,
+                  secondary: const Icon(Icons.bug_report_outlined),
+                  title: Text(l10n.tr('logs.verbose')),
+                  subtitle: Text(
+                    store.filePath == null
+                        ? l10n.tr('logs.verboseNoFile')
+                        : l10n.tr('logs.verboseWithFile', {'path': '${store.filePath}'}),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onChanged: (value) {
+                    store.verbose = value;
+                    store.add(
+                      l10n.tr('logs.section'),
+                      value ? l10n.tr('logs.verboseOn') : l10n.tr('logs.verboseOff'),
+                    );
+                  },
                 ),
-                onChanged: (value) {
-                  store.verbose = value;
-                  store.add(
-                    l10n.tr('logs.section'),
-                    value ? l10n.tr('logs.verboseOn') : l10n.tr('logs.verboseOff'),
-                  );
-                },
               ),
               const Divider(height: 1),
               Expanded(
-                child: entries.isEmpty
-                    ? Center(child: Text(l10n.tr('logs.empty')))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) => Padding(
+                child: PanelBox(
+                  radius: 8,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: entries.isEmpty
+                      ? Center(child: Text(l10n.tr('logs.empty')))
+                      : ListView.builder(
                           padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: SelectableText(
-                            entries[index].line,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                              height: 1.35,
+                          itemCount: entries.length,
+                          itemBuilder: (context, index) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: SelectableText(
+                              entries[index].line,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                ),
               ),
             ],
           );

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/abort.dart';
 import 'core/announcement_center.dart';
@@ -51,7 +52,7 @@ class AppState extends ChangeNotifier {
     final settings = await store.loadSettings();
     final l10n = AppLocalizations.fromCode(settings.localeCode);
     if (settings.downloadDir.trim().isEmpty) {
-      settings.downloadDir = '${store.root.path}${Platform.pathSeparator}downloads';
+      settings.downloadDir = await _defaultDownloadDir(store.root);
     }
     final credentials = await store.loadCredentials();
     final tasks = await store.loadTasks();
@@ -247,8 +248,7 @@ class AppState extends ChangeNotifier {
   Future<void> reloadAfterRestore() async {
     final restored = await store.loadSettings();
     if (restored.downloadDir.trim().isEmpty) {
-      restored.downloadDir =
-          '${store.root.path}${Platform.pathSeparator}downloads';
+      restored.downloadDir = await _defaultDownloadDir(store.root);
     }
     settings = restored;
     persistedSettingsJson = jsonEncode(settings.toJson());
@@ -1798,4 +1798,22 @@ class _StateView extends ChangeNotifier {
     _state.removeListener(_onChanged);
     super.dispose();
   }
+}
+
+/// 未设置下载目录时的默认落点。
+///
+/// 安卓用系统 Download 目录（无需任何权限即可写，属媒体集合目录）；取不到时
+/// 回退到 App 私有数据目录下的 `downloads`。其它平台沿用旧的私有目录规则。
+Future<String> _defaultDownloadDir(Directory appRoot) async {
+  if (Platform.isAndroid) {
+    try {
+      final downloads = await getDownloadsDirectory();
+      if (downloads != null && downloads.path.trim().isNotEmpty) {
+        return downloads.path;
+      }
+    } catch (_) {
+      // 取不到系统 Download 就回退私有目录。
+    }
+  }
+  return '${appRoot.path}${Platform.pathSeparator}downloads';
 }

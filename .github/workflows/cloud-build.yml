@@ -158,6 +158,13 @@ jobs:
                   text,
                   count=1,
               )
+          if 'android.permission.MANAGE_EXTERNAL_STORAGE' not in text:
+              text = re.sub(
+                  r'(<manifest[^>]*>)',
+                  r'\1\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>',
+                  text,
+                  count=1,
+              )
           if '<queries>' not in text:
               queries = (
                   '\n    <queries>\n'
@@ -170,7 +177,7 @@ jobs:
               text = text.replace('<application', queries + '    <application', 1)
           manifest.write_text(text)
           written = manifest.read_text()
-          for needle in ('android.permission.INTERNET', '<queries>'):
+          for needle in ('android.permission.INTERNET', 'android.permission.MANAGE_EXTERNAL_STORAGE', '<queries>'):
               if needle not in written:
                   raise SystemExit(f'Failed to inject {needle}')
           print('Android manifest patched')

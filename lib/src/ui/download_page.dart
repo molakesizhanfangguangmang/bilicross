@@ -178,7 +178,10 @@ class _DownloadPageState extends State<DownloadPage> {
     await state.parseAddress(state.addressInput, pageOverride: picked.page);
   }
 
-  Future<void> _parse(AppState state, String value) async {    _videoIndex = null;
+  Future<void> _parse(AppState state, String value) async {
+    // 解析后收键盘：软键盘还挡着下面，点「立即开始下载」前先收掉。
+    FocusManager.instance.primaryFocus?.unfocus();
+    _videoIndex = null;
     _audioIndex = null;
     final target = BiliUrl.parse(value);
     // 空间链接不是「一个视频」，没有单集可解析 —— 弹窗列出该 UP 的合集与系列，
