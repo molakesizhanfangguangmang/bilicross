@@ -46,6 +46,7 @@ class _SpringCurve extends Curve {
   const _SpringCurve({
     required this.overshoot,
     required this.damping,
+    required this.period,
   });
 
   /// 冲过头的幅度（相对整段位移的比例）。
@@ -54,13 +55,16 @@ class _SpringCurve extends Curve {
   /// 阻尼系数：越大过冲越窄、越只发生在终点附近。
   final double damping;
 
+  /// 振荡周期系数：越大在相同时间里回摆次数越多。
+  final double period;
+
   @override
   double transformInternal(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
     // 与 Curves.elasticOut 同构：主项 + 指数衰减正弦过冲。
     // phase 在终点处让 sin=0，且衰减极快，保证只终点附近过冲、中途单调。
-    final phase = math.pi * 2 * (t - 1);
+    final phase = math.pi * 2 * (t - 1) * period;
     final decay = math.pow(2, -damping * t).toDouble();
     final oscillation = math.sin(phase);
     final base = 1 + overshoot * oscillation * decay;
@@ -127,9 +131,11 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
     // 过冲幅度：距离越远、连点越快越大。
-    final overshoot = (0.18 + 0.10 * distance) * (fast ? 1.5 : 1.0);
-    // 衰减越慢 q 弹越持久；连点快时更明显。
-    final damping = fast ? 6.0 : 8.0;
+    final overshoot = (0.24 + 0.12 * distance) * (fast ? 1.5 : 1.0);
+    // 衰减：适中，既有多余回摆又不拖沓。
+    final damping = fast ? 7.0 : 9.0;
+    // 振荡周期：连点快、距离远时更高频，同样时间内弹更多次。
+    final period = (2.0 + 0.5 * distance) * (fast ? 1.3 : 1.0);
 
     _position = Tween(
       begin: start,
@@ -139,6 +145,7 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
         curve: _SpringCurve(
           overshoot: overshoot,
           damping: damping,
+          period: period,
         ),
       ),
     ).animate(_controller);
