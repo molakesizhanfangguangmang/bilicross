@@ -101,7 +101,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'about.openRelease': '前往 Release 页面',
 
     // 账号与授权
-    'account.title': '账号与授权',
     'account.cookieMissing': '未配置',
     'account.cookieComplete': '字段齐全',
     'account.cookieIncomplete': '字段不全',
@@ -141,7 +140,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'vip.general': '大会员',
 
     // 解析页
-    'download.title': '新建下载',
     'download.addressHint': '视频、番剧或分 P 地址',
     'download.parse': '解析',
     'download.waiting': '等待解析',
@@ -153,7 +151,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'download.pageClear': '清空',
     'download.pagePreview': '只看这一 P',
     'download.pageEnqueue': '加入任务（{count} P）',
-    'download.pickPage': '选集（共 {count} P）',
     'download.pickPageTitle': '选择要下载的分 P',
     'download.part': '分 P',
     'download.duration': '时长',
@@ -194,7 +191,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'tasks.clearAllDone': '任务列表已清空',
     'tasks.clearAllDoneWithFiles': '任务列表已清空，并删除 {count} 个残留文件',
     'tasks.groupProgress': '{done}/{total}',
-    'tasks.title': '下载任务',
     'tasks.emptyTitle': '暂无任务',
     'tasks.emptyHint': '队列会区分等待、下载、合并、完成与失败状态。'
         '中断的任务在下次启动时按断点续传继续。',
@@ -287,7 +283,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'quality.unknownBitrate': '未知码率',
 
     // 设置
-    'settings.title': '设置',
     'settings.download': '下载',
     'settings.groupBehavior': '下载行为',
     'settings.groupInterface': '界面与语言',
@@ -421,6 +416,10 @@ class AppLocalizationsZh extends AppLocalizations {
     'logs.verboseOn': '已打开详细日志（凭据一律掩码）',
     'logs.verboseOff': '已关闭详细日志',
     'logs.section': '日志',
+    'logs.exportDiagnostic': '导出诊断包',
+    'logs.exportDone': '已导出诊断包：{path}',
+    'logs.exportFailed': '导出诊断包失败：{error}',
+    'logs.noDownloadDir': '下载目录还没设置，先去设置页选一个。',
 
     // 网页登录
     'webLogin.title': '网页登录',

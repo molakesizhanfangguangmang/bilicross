@@ -103,7 +103,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'about.openRelease': 'Open release page',
 
     // Account and authorization
-    'account.title': 'Account & authorization',
     'account.cookieMissing': 'Not set',
     'account.cookieComplete': 'Complete',
     'account.cookieIncomplete': 'Incomplete',
@@ -146,7 +145,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'vip.general': 'Member',
 
     // Parse page
-    'download.title': 'New download',
     'download.addressHint': 'Video, bangumi or part URL',
     'download.parse': 'Parse',
     'download.waiting': 'Waiting for parse',
@@ -159,7 +157,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'download.pageClear': 'Clear',
     'download.pagePreview': 'Preview this part',
     'download.pageEnqueue': 'Add {count} parts',
-    'download.pickPage': 'Pick a part ({count} total)',
     'download.pickPageTitle': 'Choose which part to download',
     'download.part': 'Part',
     'download.duration': 'Duration',
@@ -200,7 +197,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'tasks.clearAllDone': 'Task list cleared',
     'tasks.clearAllDoneWithFiles': 'Task list cleared; {count} leftover files removed',
     'tasks.groupProgress': '{done}/{total}',
-    'tasks.title': 'Downloads',
     'tasks.emptyTitle': 'No tasks',
     'tasks.emptyHint': 'The queue tracks pending, downloading, muxing, done and '
         'failed states. Interrupted tasks resume from their breakpoint on the next launch.',
@@ -294,7 +290,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'quality.unknownBitrate': 'Unknown bitrate',
 
     // Settings
-    'settings.title': 'Settings',
     'settings.download': 'Download',
     'settings.groupBehavior': 'Download behaviour',
     'settings.groupInterface': 'Interface and language',
@@ -443,6 +438,10 @@ class AppLocalizationsEn extends AppLocalizations {
     'logs.verboseOn': 'Verbose logging on (credentials always masked)',
     'logs.verboseOff': 'Verbose logging off',
     'logs.section': 'Log',
+    'logs.exportDiagnostic': 'Export diagnostic bundle',
+    'logs.exportDone': 'Diagnostic bundle exported: {path}',
+    'logs.exportFailed': 'Failed to export diagnostic bundle: {error}',
+    'logs.noDownloadDir': 'Download directory is not set; pick one in Settings first.',
 
     // Web login
     'webLogin.title': 'Web login',

@@ -67,11 +67,15 @@ class ReleaseAsset {
     required this.name,
     required this.downloadUrl,
     this.sizeBytes = 0,
+    this.sha256 = '',
   });
 
   final String name;
   final String downloadUrl;
   final int sizeBytes;
+
+  /// 该产物的 SHA-256。GitHub 的产物接口带 `digest` 字段时才有值。
+  final String sha256;
 
   /// 下载体积的展示文本；大小为 0 时返回空串。
   String get readableSize {
@@ -82,6 +86,19 @@ class ReleaseAsset {
   }
 
   bool get isChecksum => name.toLowerCase().endsWith('.sha256');
+}
+
+/// 把 GitHub 产物接口里的 `digest` 字段规整成纯十六进制，认不出返回空串。
+///
+/// 接口可能返回 `sha256:<hex>` 也可能直接给 `<hex>`，这里两种都接得住；
+/// 只要拿不到 64 位十六进制就当没有，不硬凑。
+String normalizeChecksum(Object? raw) {
+  if (raw is! String) return '';
+  var value = raw.trim();
+  final cut = value.lastIndexOf(':');
+  if (cut >= 0) value = value.substring(cut + 1).trim();
+  if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value)) return '';
+  return value.toLowerCase();
 }
 
 /// 版本号只比数字段：去掉 `v` 前缀，丢掉 `+构建号` 与 `-预发布` 后缀。
@@ -149,11 +166,13 @@ List<ReleaseAsset> readReleaseAssets(Object? payload) {
     if (name is! String || url is! String) continue;
     if (name.trim().isEmpty || url.trim().isEmpty) continue;
     final size = item['size'];
+    final digest = item['digest'];
     assets.add(
       ReleaseAsset(
         name: name.trim(),
         downloadUrl: url.trim(),
         sizeBytes: size is num ? size.toInt() : 0,
+        sha256: normalizeChecksum(digest),
       ),
     );
   }

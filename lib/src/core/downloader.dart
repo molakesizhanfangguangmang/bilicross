@@ -363,7 +363,16 @@ class StreamDownloader {
         try {
           await for (final chunk in response.stream.timeout(idleTimeout)) {
             control.throwIfAborted();
-            sink.add(chunk);
+            try {
+              sink.add(chunk);
+            } catch (error) {
+              LogStore.instance.add(
+                '下载',
+                '写分片失败（${fileSystemErrorText(error)}）',
+                detail: true,
+              );
+              rethrow;
+            }
             current += chunk.length;
             final now = DateTime.now();
             if (now.difference(lastReport).inMilliseconds >= 200) {
@@ -492,7 +501,16 @@ class StreamDownloader {
     try {
       await for (final chunk in response.stream.timeout(idleTimeout)) {
         control.throwIfAborted();
-        sink.add(chunk);
+        try {
+          sink.add(chunk);
+        } catch (error) {
+          LogStore.instance.add(
+            '下载',
+            '写下载文件失败（${fileSystemErrorText(error)}）',
+            detail: true,
+          );
+          rethrow;
+        }
         received += chunk.length;
         final now = DateTime.now();
         if (now.difference(lastReport).inMilliseconds >= 200) {
@@ -579,6 +597,20 @@ List<String> artifactPaths(String targetPath) {
     '$targetPath.part',
     for (var index = 0; index < 16; index++) '$targetPath.part$index',
   ];
+}
+
+/// 把文件系统异常压成不含路径的日志文本。
+///
+/// 下载写到下载目录时最可能撞到的就是「权限拒绝 / 存储根目录不可写」，
+/// 这里只保留异常类型与系统错误码，不把目标绝对路径带进日志。
+String fileSystemErrorText(Object error) {
+  final parts = <String>[error.runtimeType.toString()];
+  if (error is FileSystemException) {
+    if (error.message.isNotEmpty) parts.add(error.message);
+    final os = error.osError;
+    if (os != null) parts.add('osError=${os.errorCode} ${os.message}');
+  }
+  return parts.join(' | ');
 }
 
 /// 删掉某个目标文件的全部痕迹，返回删掉的文件数。

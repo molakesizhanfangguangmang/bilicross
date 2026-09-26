@@ -49,6 +49,33 @@ void main() {
     expect(readLatestRelease(<String, Object?>{'tag_name': '  '}), isNull);
   });
 
+  test('产物 digest 归一化成小写十六进制', () {
+    expect(normalizeChecksum(null), '');
+    expect(normalizeChecksum('nope'), '');
+    expect(
+      normalizeChecksum('sha256:0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'),
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
+    expect(
+      normalizeChecksum('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
+  });
+
+  test('产物列表带上 digest 作为 sha256', () {
+    final assets = readReleaseAssets(<String, Object?>{
+      'assets': <Object?>[
+        <String, Object?>{
+          'name': 'BiliCross-1.0.0-android-arm64.apk',
+          'browser_download_url': 'https://example.com/a.apk',
+          'size': 123,
+          'digest': 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        },
+      ],
+    });
+    expect(assets.single.sha256, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
+  });
+
   test('有新版时给出确认框要用的信息', () {
     final result = resultFromRelease(<String, Object?>{'tag_name': '1.0.2'}, '1.0.1');
     expect(result.outcome, UpdateOutcome.available);

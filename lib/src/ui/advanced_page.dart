@@ -195,7 +195,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (context) => const LogPage(),
+                  builder: (context) => LogPage(state: state),
                 ),
               ),
             ),

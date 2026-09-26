@@ -1346,14 +1346,42 @@ class AppState extends ChangeNotifier {
     _controls[task.id] = control;
     try {
       final dir = Directory(settings.downloadDir);
+      LogStore.instance.add(
+        '任务',
+        '${task.title}：下载目录 ${settings.downloadDir}（存在：${dir.existsSync()}）',
+      );
       if (!dir.existsSync()) {
-        await dir.create(recursive: true);
+        try {
+          await dir.create(recursive: true);
+          LogStore.instance.add('任务', '${task.title}：已创建下载目录 ${dir.path}');
+        } on FileSystemException catch (error) {
+          LogStore.instance.add(
+            '任务',
+            '${task.title}：创建下载目录失败 ${dir.path}（'
+            '${error.osError?.errorCode} ${error.osError?.message}）',
+          );
+          rethrow;
+        }
       }
       // 合集任务的产物与分片都放在合集子目录（outputPath 的父目录）里；
       // 不建这个子目录的话分片会散落在下载根目录，跟产物对不上。
       final outDir = Directory(File(task.outputPath).parent.path);
+      LogStore.instance.add(
+        '任务',
+        '${task.title}：目标 ${task.outputPath}',
+      );
       if (!outDir.existsSync()) {
-        await outDir.create(recursive: true);
+        try {
+          await outDir.create(recursive: true);
+          LogStore.instance.add('任务', '${task.title}：已创建目标目录 ${outDir.path}');
+        } on FileSystemException catch (error) {
+          LogStore.instance.add(
+            '任务',
+            '${task.title}：创建目标目录失败 ${outDir.path}（'
+            '${error.osError?.errorCode} ${error.osError?.message}）',
+          );
+          rethrow;
+        }
       }
       if ((task.videoQualityId != 0 && task.videoUrl.isEmpty) ||
           (task.audioQualityId != 0 && task.audioUrl.isEmpty)) {

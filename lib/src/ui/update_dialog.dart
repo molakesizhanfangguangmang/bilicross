@@ -13,19 +13,28 @@ Future<void> showUpdateAvailableDialog(
   required UpdateCheckResult result,
   required String? downloadUrl,
 }) async {
+  final sha256 = _pickChecksum(result.assets, downloadUrl);
   await showDialog<void>(
     context: context,
     barrierColor: Colors.black54,
-    builder: (dialogContext) =>
-        _UpdateAvailableDialog(result: result, downloadUrl: downloadUrl),
+    builder: (dialogContext) => _UpdateAvailableDialog(
+      result: result,
+      downloadUrl: downloadUrl,
+      sha256: sha256,
+    ),
   );
 }
 
 class _UpdateAvailableDialog extends StatefulWidget {
-  const _UpdateAvailableDialog({required this.result, required this.downloadUrl});
+  const _UpdateAvailableDialog({
+    required this.result,
+    required this.downloadUrl,
+    required this.sha256,
+  });
 
   final UpdateCheckResult result;
   final String? downloadUrl;
+  final String sha256;
 
   @override
   State<_UpdateAvailableDialog> createState() => _UpdateAvailableDialogState();
@@ -96,6 +105,17 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
                   ),
                 ),
               ),
+            if (widget.sha256.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: SelectableText(
+                  'SHA-256  ${widget.sha256}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Row(
@@ -126,6 +146,19 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
       ),
     );
   }
+}
+
+/// 挑出下载目标对应的 SHA-256。
+///
+/// [downloadUrl] 为空（没匹配到产物）时不展示；有目标时用产物接口直接带的
+/// `digest`，拿不到就给空串（弹窗因此不显示这一行）。
+String _pickChecksum(List<ReleaseAsset> assets, String? downloadUrl) {
+  if (downloadUrl == null || downloadUrl.isEmpty) return '';
+  final target = assets.firstWhere(
+    (asset) => asset.downloadUrl == downloadUrl,
+    orElse: () => ReleaseAsset(name: '', downloadUrl: downloadUrl),
+  );
+  return target.sha256;
 }
 
 /// 说明区域：可滚轮滚动，也可用鼠标拖动滑块。
