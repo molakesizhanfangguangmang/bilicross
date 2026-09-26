@@ -334,6 +334,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'theme.violet': 'Violet',
     'theme.graphite': 'Graphite',
     'settings.navStyle': 'Bottom navigation animation',
+    'settings.navStyleHint': 'Selected indicator has a spring bounce',
     'settings.navStyle.standard': 'Standard',
     'settings.navStyle.q1': 'Spring · Light',
     'settings.navStyle.q2': 'Spring · Medium',

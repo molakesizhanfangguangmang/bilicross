@@ -322,6 +322,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'theme.violet': '黛紫',
     'theme.graphite': '石墨',
     'settings.navStyle': '底部导航动画',
+    'settings.navStyleHint': '选中指示块带 Q 弹回弹效果',
     'settings.navStyle.standard': '标准',
     'settings.navStyle.q1': 'Q 弹·轻',
     'settings.navStyle.q2': 'Q 弹·中',

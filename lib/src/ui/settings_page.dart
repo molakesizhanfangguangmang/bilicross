@@ -491,25 +491,14 @@ class SettingsPageState extends State<SettingsPage> {
                     ],
                     if (Platform.isAndroid) ...[
                       const SizedBox(height: 16),
-                      Text(
-                        l10n.tr('settings.navStyle'),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SegmentedButton<String>(
-                        segments: [
-                          for (final name in kNavStyles)
-                            ButtonSegment(
-                              value: name,
-                              label: Text(l10n.tr('settings.navStyle.$name')),
-                            ),
-                        ],
-                        selected: <String>{settings.navStyle},
-                        onSelectionChanged: (selection) {
-                          setState(() => settings.navStyle = selection.first);
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n.tr('settings.navStyle')),
+                        subtitle: Text(l10n.tr('settings.navStyleHint')),
+                        value: settings.navStyle != 'standard',
+                        onChanged: (value) {
+                          setState(() =>
+                              settings.navStyle = value ? 'q3' : 'standard');
                           unawaited(state.saveSettings());
                         },
                       ),
