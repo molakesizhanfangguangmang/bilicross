@@ -10,22 +10,28 @@ class NavItem {
   final String label;
 }
 
-/// 底部导航。按 [style] 二选一：
+/// 底部导航。按 [style] 四选一：
 ///
 /// - `standard`：Material 3 [NavigationBar]，默认观感（零回归）。
-/// - `q`：自绘底栏，选中指示块在 tab 间弹性滑动，到位后阻尼振荡 q 弹几次再停；
-///   振荡次数与强度随「目标距离」「点按速度」变大。
+/// - `q1` / `q2` / `q3`：自绘底栏，选中指示块弹性滑动、到位后阻尼振荡，
+///   三档强度递增。
 Widget buildAppNavBar({
   required String style,
   required int selectedIndex,
   required List<NavItem> items,
   required ValueChanged<int> onSelect,
 }) {
-  if (style == 'q') {
+  if (style == 'q1' || style == 'q2' || style == 'q3') {
+    final intensity = switch (style) {
+      'q1' => 1,
+      'q2' => 2,
+      _ => 3,
+    };
     return _QBounceNavBar(
       selectedIndex: selectedIndex,
       items: items,
       onSelect: onSelect,
+      intensity: intensity,
     );
   }
   return NavigationBar(
@@ -78,11 +84,13 @@ class _QBounceNavBar extends StatefulWidget {
     required this.selectedIndex,
     required this.items,
     required this.onSelect,
+    required this.intensity,
   });
 
   final int selectedIndex;
   final List<NavItem> items;
   final ValueChanged<int> onSelect;
+  final int intensity;
 
   @override
   State<_QBounceNavBar> createState() => _QBounceNavBarState();
@@ -130,12 +138,27 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
 
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
-    // 过冲幅度：距离越远、连点越快越大。
-    final overshoot = (0.24 + 0.12 * distance) * (fast ? 1.5 : 1.0);
-    // 衰减：适中，既有多余回摆又不拖沓。
-    final damping = fast ? 7.0 : 9.0;
-    // 振荡周期：连点快、距离远时更高频，同样时间内弹更多次。
-    final period = (2.0 + 0.5 * distance) * (fast ? 1.3 : 1.0);
+    // 三档基础过冲幅度：轻/中/重。
+    final baseOvershoot = switch (widget.intensity) {
+      1 => 0.16,
+      2 => 0.28,
+      _ => 0.42,
+    };
+    // 距离越远、连点越快越强。
+    final overshoot =
+        baseOvershoot * (1 + 0.25 * distance) * (fast ? 1.4 : 1.0);
+    // 衰减：档越高回摆越明显（衰减稍慢），但都保持不拖沓。
+    final damping = switch (widget.intensity) {
+      1 => 10.0,
+      2 => 8.5,
+      _ => 7.0,
+    };
+    // 振荡速度：整体放慢。档越高回摆次数略多。
+    final period = switch (widget.intensity) {
+      1 => 1.6,
+      2 => 2.0,
+      _ => 2.4,
+    };
 
     _position = Tween(
       begin: start,

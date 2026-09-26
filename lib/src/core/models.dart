@@ -958,9 +958,9 @@ String normalizeThemeId(String? raw) =>
     raw != null && kThemeSeeds.containsKey(raw) ? raw : kThemeDefault;
 
 /// 底部导航的动画样式。默认 `standard` 沿用 M3 原样，零回归；
-/// `q` 是弹性指示块（阻尼振荡，冲过头后 q 弹几次再停），仅安卓手机端生效。
+/// `q1`/`q2`/`q3` 是弹性指示块（阻尼振荡）三档强度，仅安卓手机端生效。
 const String kNavStyleDefault = 'standard';
-const List<String> kNavStyles = <String>['standard', 'q'];
+const List<String> kNavStyles = <String>['standard', 'q1', 'q2', 'q3'];
 
 String normalizeNavStyle(String? raw) =>
     raw != null && kNavStyles.contains(raw) ? raw : kNavStyleDefault;
