@@ -339,6 +339,7 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.navStyle.q1': 'Spring · Light',
     'settings.navStyle.q2': 'Spring · Medium',
     'settings.navStyle.q3': 'Spring · Strong',
+    'settings.navStyle.q4': 'Spring · Fast',
     'settings.network': 'Network',
     'settings.proxy': 'Proxy',
     'settings.uaHint': 'Leave empty to use the built-in short string Mozilla/5.0',

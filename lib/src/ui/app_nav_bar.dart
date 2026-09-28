@@ -10,44 +10,113 @@ class NavItem {
   final String label;
 }
 
-/// 底部导航。按 [style] 四选一：
+/// 底部导航：悬浮胶囊 + 弹性指示块。
 ///
-/// - `standard`：Material 3 [NavigationBar]，默认观感（零回归）。
-/// - `q1` / `q2` / `q3`：自绘底栏，选中指示块弹性滑动、到位后阻尼振荡，
-///   三档强度递增。
+/// 胶囊四周留白、浮在页面之上。指示块弹性滑动，**可越出胶囊边缘**
+/// （左右最多 [NavBouncePreset.wall]，上下按撞击深度鼓出），
+/// 撞到限位时按 [NavBouncePreset.squash] 压扁再弹回。
+/// 幅度被限位截住时改用更高频率体现力度，所以「弹得猛」不会因为限位变软。
+///
+/// ⚠️ 指示块会越出胶囊，**外层不能裁剪**，且要预留上下余量（见 [_bleed]）。
 Widget buildAppNavBar({
   required String style,
   required int selectedIndex,
   required List<NavItem> items,
   required ValueChanged<int> onSelect,
 }) {
-  if (style == 'q1' || style == 'q2' || style == 'q3') {
-    final intensity = switch (style) {
-      'q1' => 1,
-      'q2' => 2,
-      _ => 3,
-    };
-    return _QBounceNavBar(
-      selectedIndex: selectedIndex,
-      items: items,
-      onSelect: onSelect,
-      intensity: intensity,
-    );
-  }
-  return NavigationBar(
+  return _CapsuleNavBar(
     selectedIndex: selectedIndex,
-    onDestinationSelected: onSelect,
-    destinations: [
-      for (final item in items)
-        NavigationDestination(icon: Icon(item.icon), label: item.label),
-    ],
+    items: items,
+    onSelect: onSelect,
+    preset: NavBouncePreset.of(style),
   );
 }
 
-/// 弹性进度曲线（对齐 Flutter `Curves.elasticOut` 的形态）。
-///
-/// 前半段快速逼近终点，只在**终点附近**冲过头并快速衰减回弹；
-/// 中途不回退，所以跨格不会出现「没到就折返」的粘滞感。
+/// 指示块动画预设。
+class NavBouncePreset {
+  const NavBouncePreset({
+    required this.overshootBase,
+    required this.damping,
+    required this.period,
+    required this.squash,
+    required this.wall,
+    required this.bleed,
+  });
+
+  /// 基础过冲幅度，单位是「格宽的比例」。
+  final double overshootBase;
+
+  /// 阻尼：越小回摆越持久。
+  final double damping;
+
+  /// 振荡频率系数：越大同样时间内回摆次数越多。
+  final double period;
+
+  /// 撞墙时的压扁强度（0 = 不压扁）。
+  final double squash;
+
+  /// 左右允许越出胶囊内边缘的最大比例，相对指示块宽度。
+  final double wall;
+
+  /// 上下允许鼓出胶囊的强度（0 = 不鼓出）。
+  final double bleed;
+
+  /// 左右越界上限：指示块宽度的 3/7。
+  static const double maxWall = 3 / 7;
+
+  /// 关：不过冲、不压扁、不越界，平滑直滑。
+  static const NavBouncePreset off = NavBouncePreset(
+    overshootBase: 0,
+    damping: 12,
+    period: 1,
+    squash: 0,
+    wall: 0,
+    bleed: 0,
+  );
+
+  /// 强度由设置里的档位决定：standard / q1 / q2 / q3 / q4。
+  static NavBouncePreset of(String style) => switch (style) {
+        // 轻弹：不越界、不压扁。
+        'q1' => const NavBouncePreset(
+            overshootBase: 0.16,
+            damping: 10,
+            period: 1.6,
+            squash: 0,
+            wall: 0,
+            bleed: 0,
+          ),
+        // 弹墙：越界到上限，轻微压扁 + 轻微鼓出。
+        'q2' => const NavBouncePreset(
+            overshootBase: 0.30,
+            damping: 8.5,
+            period: 2.0,
+            squash: 0.12,
+            wall: maxWall,
+            bleed: 0.4,
+          ),
+        // 弹墙·强：幅度更大、频率更高、压扁与鼓出都更明显。
+        'q3' => const NavBouncePreset(
+            overshootBase: 0.48,
+            damping: 7.0,
+            period: 2.4,
+            squash: 0.22,
+            wall: maxWall,
+            bleed: 0.7,
+          ),
+        // 弹墙·频：幅度与 q3 相同，靠更高频率体现力度。
+        'q4' => const NavBouncePreset(
+            overshootBase: 0.48,
+            damping: 6.2,
+            period: 3.6,
+            squash: 0.22,
+            wall: maxWall,
+            bleed: 0.7,
+          ),
+        _ => off,
+      };
+}
+
+/// 弹性进度曲线：前半段快速逼近终点，只在终点附近过冲并衰减回摆。
 class _SpringCurve extends Curve {
   const _SpringCurve({
     required this.overshoot,
@@ -55,49 +124,55 @@ class _SpringCurve extends Curve {
     required this.period,
   });
 
-  /// 冲过头的幅度（相对整段位移的比例）。
   final double overshoot;
-
-  /// 阻尼系数：越大过冲越窄、越只发生在终点附近。
   final double damping;
-
-  /// 振荡周期系数：越大在相同时间里回摆次数越多。
   final double period;
 
   @override
   double transformInternal(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
-    // 与 Curves.elasticOut 同构：主项 + 指数衰减正弦过冲。
-    // phase 在终点处让 sin=0，且衰减极快，保证只终点附近过冲、中途单调。
     final phase = math.pi * 2 * (t - 1) * period;
     final decay = math.pow(2, -damping * t).toDouble();
-    final oscillation = math.sin(phase);
-    final base = 1 + overshoot * oscillation * decay;
+    final base = 1 + overshoot * math.sin(phase) * decay;
     return base.clamp(0.0, 1.0 + overshoot);
   }
 }
 
-/// 弹性指示块底栏：外观对齐 M3 底栏，只把指示块换成自绘的阻尼振荡滑动。
-class _QBounceNavBar extends StatefulWidget {
-  const _QBounceNavBar({
+class _CapsuleNavBar extends StatefulWidget {
+  const _CapsuleNavBar({
     required this.selectedIndex,
     required this.items,
     required this.onSelect,
-    required this.intensity,
+    required this.preset,
   });
 
   final int selectedIndex;
   final List<NavItem> items;
   final ValueChanged<int> onSelect;
-  final int intensity;
+  final NavBouncePreset preset;
 
   @override
-  State<_QBounceNavBar> createState() => _QBounceNavBarState();
+  State<_CapsuleNavBar> createState() => _CapsuleNavBarState();
 }
 
-class _QBounceNavBarState extends State<_QBounceNavBar>
+class _CapsuleNavBarState extends State<_CapsuleNavBar>
     with SingleTickerProviderStateMixin {
+  /// 胶囊高度；圆角取一半即胶囊形。
+  static const double _capsuleHeight = 64;
+
+  /// 指示块相对胶囊的内边距（上下各留这么多）。
+  static const double _indicatorInset = 8;
+
+  /// 胶囊左右留白。
+  static const double _sideMargin = 14;
+
+  /// 胶囊悬空高度（距屏幕底边）。
+  static const double _bottomGap = 10;
+
+  /// 指示块鼓出胶囊时，给外层预留的额外高度。
+  static const double _bleedRoom = 14;
+
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 520),
@@ -108,6 +183,9 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
   int _fromIndex = 0;
   DateTime _lastTap = DateTime.now();
 
+  double _cellWidth = 0;
+  double _indicatorWidth = 0;
+
   @override
   void initState() {
     super.initState();
@@ -116,7 +194,7 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
   }
 
   @override
-  void didUpdateWidget(_QBounceNavBar oldWidget) {
+  void didUpdateWidget(_CapsuleNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedIndex != widget.selectedIndex) {
       _runTo(widget.selectedIndex);
@@ -130,6 +208,7 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
   }
 
   void _runTo(int target) {
+    final preset = widget.preset;
     final distance =
         (target - _fromIndex).abs().clamp(1, widget.items.length - 1);
     final gap = DateTime.now().difference(_lastTap).inMilliseconds;
@@ -138,117 +217,199 @@ class _QBounceNavBarState extends State<_QBounceNavBar>
 
     final start = _fromIndex.toDouble();
     final end = target.toDouble();
-    // 三档基础过冲幅度：轻/中/重。
-    final baseOvershoot = switch (widget.intensity) {
-      1 => 0.16,
-      2 => 0.28,
-      _ => 0.42,
-    };
-    // 距离越远、连点越快越强。
-    final overshoot =
-        baseOvershoot * (1 + 0.25 * distance) * (fast ? 1.4 : 1.0);
-    // 衰减：档越高回摆越明显（衰减稍慢），但都保持不拖沓。
-    final damping = switch (widget.intensity) {
-      1 => 10.0,
-      2 => 8.5,
-      _ => 7.0,
-    };
-    // 振荡速度：整体放慢。档越高回摆次数略多。
-    final period = switch (widget.intensity) {
-      1 => 1.6,
-      2 => 2.0,
-      _ => 2.4,
-    };
 
-    _position = Tween(
-      begin: start,
-      end: end,
-    ).chain(
-      CurveTween(
-        curve: _SpringCurve(
-          overshoot: overshoot,
-          damping: damping,
-          period: period,
-        ),
-      ),
-    ).animate(_controller);
+    var period = preset.period;
+    var overshoot =
+        preset.overshootBase * (1 + 0.25 * distance) * (fast ? 1.4 : 1.0);
+
+    // 撞到左右限位时：截断幅度，并用更高频率补回力度。
+    final room = _roomFor(target);
+    if (room != null && _cellWidth > 0 && overshoot * _cellWidth > room) {
+      final ratio = overshoot * _cellWidth / math.max(room, 1);
+      overshoot = room / _cellWidth;
+      period *= 1 + (ratio - 1).clamp(0.0, 1.5) * 0.6;
+    }
+
+    if (preset.overshootBase <= 0 || overshoot <= 0) {
+      _position = Tween(begin: start, end: end)
+          .chain(CurveTween(curve: Curves.easeOutCubic))
+          .animate(_controller);
+    } else {
+      _position = Tween(begin: start, end: end)
+          .chain(
+            CurveTween(
+              curve: _SpringCurve(
+                overshoot: overshoot,
+                damping: preset.damping,
+                period: period,
+              ),
+            ),
+          )
+          .animate(_controller);
+    }
 
     _fromIndex = target;
     _controller.forward(from: 0);
+  }
+
+  /// 目标格允许中心越出的像素数；中间格返回 null（不限）。
+  double? _roomFor(int target) {
+    if (_cellWidth <= 0 || _indicatorWidth <= 0) return null;
+    final half = _indicatorWidth / 2;
+    final slack = widget.preset.wall * _indicatorWidth;
+    if (target <= 0) {
+      return math.max(_cellWidth / 2 - (half - slack), 0);
+    }
+    if (target >= widget.items.length - 1) {
+      final totalWidth = _cellWidth * widget.items.length;
+      final cellCenter = totalWidth - _cellWidth / 2;
+      return math.max((totalWidth - half + slack) - cellCenter, 0);
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final barTheme = Theme.of(context).navigationBarTheme;
-    final background = barTheme.backgroundColor ?? scheme.surfaceContainer;
-    return Material(
-      color: background,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 80,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final count = widget.items.length;
-              final cellWidth = constraints.maxWidth / count;
-              return AnimatedBuilder(
-                animation: _position,
-                builder: (context, _) {
-                  final p = _position.value;
-                  final centerX = p * cellWidth + cellWidth / 2;
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: centerX - _indicatorWidth / 2,
-                        top: 14,
-                        width: _indicatorWidth,
-                        height: 32,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: scheme.primary,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          for (var i = 0; i < count; i++)
-                            Expanded(
-                              child: _NavCell(
-                                icon: widget.items[i].icon,
-                                label: widget.items[i].label,
-                                selected: i == widget.selectedIndex,
-                                onTap: () => widget.onSelect(i),
+    // 跟随「上下栏不透明度」：主题色带 alpha 时胶囊跟着透。
+    final capsuleColor =
+        barTheme.backgroundColor ?? scheme.surfaceContainerHigh;
+    final indicatorHeight = _capsuleHeight - _indicatorInset * 2;
+    final radius = _capsuleHeight / 2;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        // 留出上下余量，指示块鼓出胶囊时不被父级裁掉。
+        margin: const EdgeInsets.only(
+          left: _sideMargin,
+          right: _sideMargin,
+          bottom: _bottomGap - _bleedRoom,
+        ),
+        padding: const EdgeInsets.symmetric(vertical: _bleedRoom),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            // 胶囊本体：不裁切，指示块可以越出去。
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: capsuleColor,
+                  borderRadius: BorderRadius.circular(radius),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            SizedBox(
+              height: _capsuleHeight,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final count = widget.items.length;
+                  final cellWidth = constraints.maxWidth / count;
+                  final indicatorWidth = math.min(64.0, cellWidth * 0.74);
+                  _cellWidth = cellWidth;
+                  _indicatorWidth = indicatorWidth;
+
+                  return AnimatedBuilder(
+                    animation: _position,
+                    builder: (context, _) {
+                      final raw = _position.value;
+                      final half = indicatorWidth / 2;
+                      final slack = widget.preset.wall * indicatorWidth;
+                      final rawCenter = raw * cellWidth + cellWidth / 2;
+
+                      // 左右撞墙：中心不越出「内边缘再外扩 slack」。
+                      final minCenter = half - slack;
+                      final maxCenter =
+                          constraints.maxWidth - half + slack;
+                      final center =
+                          rawCenter.clamp(minCenter, maxCenter).toDouble();
+                      final hit = (rawCenter - center).abs();
+
+                      final squash = widget.preset.squash;
+                      final depth = squash <= 0 || half <= 0
+                          ? 0.0
+                          : (hit / half).clamp(0.0, 1.0) * squash;
+                      // 撞墙时上下鼓出：横向压扁的形变由纵向补偿。
+                      final bulge = depth * widget.preset.bleed;
+                      final align = rawCenter > center
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft;
+
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: <Widget>[
+                          Positioned(
+                            left: center - half,
+                            top: 0,
+                            bottom: 0,
+                            width: indicatorWidth,
+                            child: Align(
+                              alignment: align,
+                              child: Transform.scale(
+                                scaleX: 1 - depth,
+                                scaleY: 1 + bulge,
+                                child: AnimatedContainer(
+                                  duration: Duration.zero,
+                                  height: indicatorHeight,
+                                  decoration: BoxDecoration(
+                                    color: scheme.primary,
+                                    borderRadius: BorderRadius.circular(
+                                      indicatorHeight / 2,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
+                          ),
+                          Row(
+                            children: <Widget>[
+                              for (var i = 0; i < count; i++)
+                                Expanded(
+                                  child: _NavCell(
+                                    icon: widget.items[i].icon,
+                                    label: widget.items[i].label,
+                                    // 图标颜色跟着指示块位置走：滑到哪哪变白，
+                                    // 中途不跳色。
+                                    onIndicator: (raw - i).abs() < 0.5,
+                                    onTap: () => widget.onSelect(i),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   );
                 },
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
-
-  static const double _indicatorWidth = 64;
 }
 
 class _NavCell extends StatelessWidget {
   const _NavCell({
     required this.icon,
     required this.label,
-    required this.selected,
+    required this.onIndicator,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
-  final bool selected;
+  final bool onIndicator;
   final VoidCallback onTap;
 
   @override
@@ -259,19 +420,19 @@ class _NavCell extends StatelessWidget {
       onTap: onTap,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+        children: <Widget>[
           Icon(
             icon,
             size: 24,
-            color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+            color: onIndicator ? scheme.onPrimary : scheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: onIndicator ? FontWeight.w600 : FontWeight.w400,
+              color: onIndicator ? scheme.primary : scheme.onSurfaceVariant,
             ),
           ),
         ],

@@ -327,6 +327,7 @@ class AppLocalizationsZh extends AppLocalizations {
     'settings.navStyle.q1': 'Q 弹·轻',
     'settings.navStyle.q2': 'Q 弹·中',
     'settings.navStyle.q3': 'Q 弹·重',
+    'settings.navStyle.q4': 'Q 弹·高频',
     'settings.network': '网络',
     'settings.proxy': '代理',
     'settings.uaHint': '留空使用内置短串 Mozilla/5.0',
