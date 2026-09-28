@@ -15,9 +15,8 @@ class NavItem {
 /// 胶囊四周留白、浮在页面之上。指示块弹性滑动，**可越出胶囊边缘**
 /// （左右最多 [NavBouncePreset.wall]，上下按撞击深度鼓出），
 /// 撞到限位时按 [NavBouncePreset.squash] 压扁再弹回。
-/// 幅度被限位截住时改用更高频率体现力度，所以「弹得猛」不会因为限位变软。
 ///
-/// ⚠️ 指示块会越出胶囊，**外层不能裁剪**，且要预留上下余量（见 [_bleed]）。
+/// ⚠️ 指示块会越出胶囊，**外层不能裁剪**，且要预留上下余量（见 `_bleedRoom`）。
 Widget buildAppNavBar({
   required String style,
   required int selectedIndex,
@@ -33,23 +32,26 @@ Widget buildAppNavBar({
 }
 
 /// 指示块动画预设。
+///
+/// 两个维度**完全解耦**：
+/// - [overshoot] 决定冲出去多远（「轻 / 重」）；
+/// - [period] 决定 t∈[0,1] 内回摆几次（「低频 / 高频」）。
+///
+/// 所以四档可以覆盖 2×2：利落（轻+快）、柔和（轻+慢）、
+/// Q 弹（重+快）、慵懒（重+慢）。
 class NavBouncePreset {
   const NavBouncePreset({
-    required this.overshootBase,
-    required this.damping,
+    required this.overshoot,
     required this.period,
     required this.squash,
     required this.wall,
     required this.bleed,
   });
 
-  /// 基础过冲幅度，单位是「格宽的比例」。
-  final double overshootBase;
+  /// 目标过冲量：冲过终点多远，单位是「格宽的比例」。
+  final double overshoot;
 
-  /// 阻尼：越小回摆越持久。
-  final double damping;
-
-  /// 振荡频率系数：越大同样时间内回摆次数越多。
+  /// 振荡频率：动画时长内回摆的完整周期数。
   final double period;
 
   /// 撞墙时的压扁强度（0 = 不压扁）。
@@ -58,7 +60,7 @@ class NavBouncePreset {
   /// 左右允许越出胶囊内边缘的最大比例，相对指示块宽度。
   final double wall;
 
-  /// 撞墙时纵向最多鼓出的比例（相对指示块高度的一半，0 = 不鼓出）。
+  /// 撞墙时纵向最多鼓出的比例（0 = 不鼓出）。
   final double bleed;
 
   /// 左右越界上限：指示块宽度的 3/7。
@@ -66,8 +68,7 @@ class NavBouncePreset {
 
   /// 关：不过冲、不压扁、不越界，平滑直滑。
   static const NavBouncePreset off = NavBouncePreset(
-    overshootBase: 0,
-    damping: 12,
+    overshoot: 0,
     period: 1,
     squash: 0,
     wall: 0,
@@ -76,38 +77,34 @@ class NavBouncePreset {
 
   /// 强度由设置里的档位决定：standard / q1 / q2 / q3 / q4。
   static NavBouncePreset of(String style) => switch (style) {
-        // 轻弹：不越界、不压扁。
+        // 利落：轻幅度 + 高频。冲得少、颤得快，干脆。
         'q1' => const NavBouncePreset(
-            overshootBase: 0.16,
-            damping: 10,
-            period: 1.6,
-            squash: 0,
-            wall: 0,
-            bleed: 0,
-          ),
-        // 弹墙：越界到上限，轻微压扁 + 轻微鼓出。
-        'q2' => const NavBouncePreset(
-            overshootBase: 0.30,
-            damping: 8.5,
-            period: 2.0,
-            squash: 0.12,
-            wall: maxWall,
+            overshoot: 0.10,
+            period: 2.4,
+            squash: 0.10,
+            wall: maxWall * 0.5,
             bleed: 0.5,
           ),
-        // 弹墙·强：幅度更大、频率更高、压扁与鼓出都更明显。
+        // 柔和：轻幅度 + 低频。轻轻晃一下。
+        'q2' => const NavBouncePreset(
+            overshoot: 0.10,
+            period: 1.3,
+            squash: 0.10,
+            wall: maxWall * 0.5,
+            bleed: 0.5,
+          ),
+        // Q 弹（默认）：重幅度 + 高频。抖得猛，最「Q」。
         'q3' => const NavBouncePreset(
-            overshootBase: 0.48,
-            damping: 7.0,
+            overshoot: 0.28,
             period: 2.4,
             squash: 0.22,
             wall: maxWall,
             bleed: 0.85,
           ),
-        // 弹墙·频：幅度与 q3 相同，靠更高频率体现力度。
+        // 慵懒：重幅度 + 低频。大而慢的回摆。
         'q4' => const NavBouncePreset(
-            overshootBase: 0.48,
-            damping: 6.2,
-            period: 3.6,
+            overshoot: 0.28,
+            period: 1.3,
             squash: 0.22,
             wall: maxWall,
             bleed: 0.85,
@@ -116,26 +113,36 @@ class NavBouncePreset {
       };
 }
 
-/// 弹性进度曲线：前半段快速逼近终点，只在终点附近过冲并衰减回摆。
+/// 欠阻尼弹簧阶跃响应，[0,1] 上的缓动曲线。
+///
+/// 形式 `y(t) = 1 - e^(-k·ω·t)·(cos(ω·t) + k·sin(ω·t))`，
+/// 其中 `k = -ln(overshoot)/π`，`ω = 2π·period`。
+///
+/// 这个形式的两个参数**互不干扰**：
+/// - `k` 只决定峰值高度（首次峰值恰为 `1 + overshoot`）；
+/// - `ω` 只决定振荡快慢。
+///
+/// 并且严格 `y(0)=0`、`y(1)≈1`：起步单调向前，只在终点附近过冲回摆。
 class _SpringCurve extends Curve {
-  const _SpringCurve({
-    required this.overshoot,
-    required this.damping,
-    required this.period,
-  });
+  const _SpringCurve({required this.overshoot, required this.period});
 
+  /// 目标过冲量（>0）。
   final double overshoot;
-  final double damping;
+
+  /// 振荡频率（周期数）。
   final double period;
 
   @override
   double transformInternal(double t) {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
-    final phase = math.pi * 2 * (t - 1) * period;
-    final decay = math.pow(2, -damping * t).toDouble();
-    final base = 1 + overshoot * math.sin(phase) * decay;
-    return base.clamp(0.0, 1.0 + overshoot);
+    final target = overshoot.clamp(0.01, 0.8);
+    final k = -math.log(target) / math.pi;
+    final omega = math.pi * 2 * period;
+    final decay = math.exp(-k * omega * t);
+    final value =
+        1 - decay * (math.cos(omega * t) + k * math.sin(omega * t));
+    return value.clamp(0.0, 1.0 + target);
   }
 }
 
@@ -161,11 +168,16 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
   /// 胶囊高度；圆角取一半即胶囊形。
   static const double _capsuleHeight = 72;
 
-  /// 指示块高度：只包住图标。垂直居中于胶囊，与图标中心对齐。
+  /// 指示块高度：只包住图标。
   static const double _pillHeight = 36;
 
-  /// 图标上边距：让图标中心落在胶囊中心（即指示块中心）。
-  static const double _iconTop = 24;
+  /// 指示块顶部位置。**不垂直居中** —— 整体略偏上，
+  /// 给下方文字腾出净空。
+  static const double _pillTop = 12;
+
+  /// 图标顶部位置：让图标在指示块内垂直居中。
+  /// `_pillTop + (_pillHeight - 24) / 2 = 12 + 6 = 18`。
+  static const double _iconTop = 18;
 
   /// 胶囊左右留白。
   static const double _sideMargin = 14;
@@ -178,7 +190,7 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
 
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    duration: const Duration(milliseconds: 560),
   );
 
   late Animation<double> _position;
@@ -212,8 +224,6 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
 
   void _runTo(int target) {
     final preset = widget.preset;
-    final distance =
-        (target - _fromIndex).abs().clamp(1, widget.items.length - 1);
     final gap = DateTime.now().difference(_lastTap).inMilliseconds;
     _lastTap = DateTime.now();
     final fast = gap > 0 && gap < 240;
@@ -222,8 +232,7 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
     final end = target.toDouble();
 
     var period = preset.period;
-    var overshoot =
-        preset.overshootBase * (1 + 0.25 * distance) * (fast ? 1.4 : 1.0);
+    var overshoot = preset.overshoot * (fast ? 1.35 : 1.0);
 
     // 撞到左右限位时：截断幅度，并用更高频率补回力度。
     final room = _roomFor(target);
@@ -233,7 +242,7 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
       period *= 1 + (ratio - 1).clamp(0.0, 1.5) * 0.6;
     }
 
-    if (preset.overshootBase <= 0 || overshoot <= 0) {
+    if (preset.overshoot <= 0 || overshoot <= 0) {
       _position = Tween(begin: start, end: end)
           .chain(CurveTween(curve: Curves.easeOutCubic))
           .animate(_controller);
@@ -241,11 +250,7 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
       _position = Tween(begin: start, end: end)
           .chain(
             CurveTween(
-              curve: _SpringCurve(
-                overshoot: overshoot,
-                damping: preset.damping,
-                period: period,
-              ),
+              curve: _SpringCurve(overshoot: overshoot, period: period),
             ),
           )
           .animate(_controller);
@@ -318,44 +323,42 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
                   builder: (context, constraints) {
                     final count = widget.items.length;
                     final cellWidth = constraints.maxWidth / count;
-                    final indicatorWidth = math.min(64.0, cellWidth * 0.74);
+                    final indicatorWidth = math.min(60.0, cellWidth * 0.72);
                     _cellWidth = cellWidth;
                     _indicatorWidth = indicatorWidth;
 
                     return AnimatedBuilder(
                       animation: _position,
                       builder: (context, _) {
-                      final raw = _position.value;
-                      final half = indicatorWidth / 2;
-                      final slack = widget.preset.wall * indicatorWidth;
-                      final rawCenter = raw * cellWidth + cellWidth / 2;
+                        final raw = _position.value;
+                        final half = indicatorWidth / 2;
+                        final slack = widget.preset.wall * indicatorWidth;
+                        final rawCenter = raw * cellWidth + cellWidth / 2;
 
-                      // 左右撞墙：中心不越出「内边缘再外扩 slack」。
-                      final minCenter = half - slack;
-                      final maxCenter =
-                          constraints.maxWidth - half + slack;
-                      final center =
-                          rawCenter.clamp(minCenter, maxCenter).toDouble();
-                      final hit = (rawCenter - center).abs();
+                        // 左右撞墙：中心不越出「内边缘再外扩 slack」。
+                        final minCenter = half - slack;
+                        final maxCenter =
+                            constraints.maxWidth - half + slack;
+                        final center =
+                            rawCenter.clamp(minCenter, maxCenter).toDouble();
+                        final hit = (rawCenter - center).abs();
 
-                      final squash = widget.preset.squash;
-                      final depth = squash <= 0 || half <= 0
-                          ? 0.0
-                          : (hit / half).clamp(0.0, 1.0) * squash;
-                      // 撞墙时上下鼓出：横向压扁的形变由纵向补偿。
-                      final bulge = depth * widget.preset.bleed;
-                      final align = rawCenter > center
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft;
+                        final squash = widget.preset.squash;
+                        final depth = squash <= 0 || half <= 0
+                            ? 0.0
+                            : (hit / half).clamp(0.0, 1.0) * squash;
+                        // 撞墙时纵向鼓出：横向压扁由纵向补偿。
+                        final bulge = depth * widget.preset.bleed;
+                        final align = rawCenter > center
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft;
 
-                        // 指示块垂直居中于胶囊，中心与图标中心对齐。
-                        final pillTop = (_capsuleHeight - _pillHeight) / 2;
                         return Stack(
                           clipBehavior: Clip.none,
                           children: <Widget>[
                             Positioned(
                               left: center - half,
-                              top: pillTop,
+                              top: _pillTop,
                               width: indicatorWidth,
                               height: _pillHeight,
                               child: Align(
@@ -436,7 +439,9 @@ class _NavCell extends StatelessWidget {
             size: 24,
             color: onIndicator ? scheme.onPrimary : scheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 2),
+          // 间距 8 = 指示块比图标多探出的 6px + 2px 呼吸，
+          // 文字落在指示块下沿之外，不被盖住。
+          const SizedBox(height: 8),
           Text(
             label,
             style: TextStyle(
