@@ -7,6 +7,7 @@ import '../core/distribution.dart';
 import '../core/release_target.dart';
 import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
+import 'feedback_dialog.dart';
 import 'update_dialog.dart';
 import './palette.dart';
 
@@ -215,14 +216,28 @@ class _AppAboutDialogState extends State<AppAboutDialog> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text(
-                    _versionLine(l10n),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: kTextFaint,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () {
+                          showDialog<void>(
+                            context: context,
+                            builder: (dialogContext) => const FeedbackDialog(),
+                          );
+                        },
+                        child: Text(
+                          l10n.tr('about.feedback'),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        _versionLine(l10n),
+                        style: const TextStyle(fontSize: 12, color: kTextFaint),
+                      ),
+                    ],
                   ),
                 ],
               ),

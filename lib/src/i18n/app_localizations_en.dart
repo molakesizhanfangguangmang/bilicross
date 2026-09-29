@@ -101,6 +101,19 @@ class AppLocalizationsEn extends AppLocalizations {
     'about.updateFound': 'Version {version} available',
     'about.download': 'Download',
     'about.openRelease': 'Open release page',
+    'about.feedback': 'Feedback',
+
+    // User feedback
+    'feedback.title': 'Feedback',
+    'feedback.body': 'Your suggestion',
+    'feedback.bodyHint': 'Suggestions, issues, or quality you want',
+    'feedback.contact': 'Contact (optional)',
+    'feedback.contactHint': 'QQ / email for follow-up',
+    'feedback.submit': 'Submit',
+    'feedback.cancel': 'Cancel',
+    'feedback.sent': 'Received, thank you',
+    'feedback.failed': 'Submission failed, please retry later',
+    'feedback.empty': 'Please enter your suggestion first',
 
     // Account and authorization
     'account.cookieMissing': 'Not set',
@@ -334,7 +347,6 @@ class AppLocalizationsEn extends AppLocalizations {
     'theme.violet': 'Violet',
     'theme.graphite': 'Graphite',
     'settings.navStyle': 'Bottom navigation animation',
-    'settings.navStyleHint': 'Selected indicator has a spring bounce',
     'settings.navStyle.standard': 'Standard',
     'settings.navStyle.q1': 'Crisp',
     'settings.navStyle.q2': 'Soft',
@@ -365,7 +377,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
     // Announcements (server-side, polls included)
     'announcement.view': 'Announcements',
-    'announcement.viewHint': 'Announcements and polls from the server; refresh manually',
     'announcement.title': 'Announcements',
     'announcement.refresh': 'Refresh',
     'announcement.scrollToEnd': 'Scroll to the end to continue',

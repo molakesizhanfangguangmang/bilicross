@@ -99,6 +99,19 @@ class AppLocalizationsZh extends AppLocalizations {
     'about.updateFound': '检测到新版本 {version}',
     'about.download': '下载',
     'about.openRelease': '前往 Release 页面',
+    'about.feedback': '反馈建议',
+
+    // 用户建议反馈
+    'feedback.title': '反馈建议',
+    'feedback.body': '建议内容',
+    'feedback.bodyHint': '想提的建议、遇到的问题或想要的画质',
+    'feedback.contact': '联系方式（选填）',
+    'feedback.contactHint': 'QQ / 邮箱，方便回访',
+    'feedback.submit': '提交',
+    'feedback.cancel': '取消',
+    'feedback.sent': '已收到，谢谢',
+    'feedback.failed': '提交失败，请稍后重试',
+    'feedback.empty': '请先填写建议内容',
 
     // 账号与授权
     'account.cookieMissing': '未配置',
@@ -322,7 +335,6 @@ class AppLocalizationsZh extends AppLocalizations {
     'theme.violet': '黛紫',
     'theme.graphite': '石墨',
     'settings.navStyle': '底部导航动画',
-    'settings.navStyleHint': '选中指示块带 Q 弹回弹效果',
     'settings.navStyle.standard': '标准',
     'settings.navStyle.q1': '利落',
     'settings.navStyle.q2': '柔和',
@@ -351,7 +363,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
     // 公告（服务器下发，含投票）
     'announcement.view': '查看公告',
-    'announcement.viewHint': '服务器下发的公告与投票，可手动刷新',
     'announcement.title': '公告',
     'announcement.refresh': '刷新',
     'announcement.scrollToEnd': '滑到底以继续',

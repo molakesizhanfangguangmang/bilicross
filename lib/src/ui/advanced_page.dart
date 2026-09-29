@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../core/log_store.dart';
 import '../i18n/app_localizations.dart';
-import 'about_dialog.dart';
 import 'anim_tuning_card.dart';
 import 'announcement_page.dart';
 import 'expand_page_route.dart';
@@ -160,10 +159,6 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   leading: const Icon(Icons.campaign_outlined),
                   title: Text(l10n.tr('announcement.view')),
-                  subtitle: Text(
-                    l10n.tr('announcement.viewHint'),
-                    style: const TextStyle(fontSize: 12, color: kTextMuted),
-                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
@@ -217,19 +212,6 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
                   builder: (context) => LogPage(state: state),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: Text(l10n.tr('settings.about')),
-              subtitle: Text(
-                l10n.tr('settings.aboutHint'),
-                style: const TextStyle(fontSize: 12, color: kTextMuted),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => showAppAboutDialog(context),
             ),
           ),
         ],

@@ -10,6 +10,7 @@ import '../app_state.dart';
 import '../core/background_config.dart';
 import '../core/models.dart';
 import '../i18n/app_localizations.dart';
+import 'about_dialog.dart';
 import 'advanced_page.dart';
 import 'background_card.dart';
 import 'backup_card.dart';
@@ -491,16 +492,28 @@ class SettingsPageState extends State<SettingsPage> {
                     ],
                     if (Platform.isAndroid) ...[
                       const SizedBox(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(l10n.tr('settings.navStyle')),
-                        subtitle: Text(l10n.tr('settings.navStyleHint')),
-                        value: settings.navStyle != 'standard',
-                        onChanged: (value) {
-                          setState(() =>
-                              settings.navStyle = value ? 'q3' : 'standard');
-                          unawaited(state.saveSettings());
-                        },
+                      Text(
+                        l10n.tr('settings.navStyle'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final name in kNavStyles)
+                            ChoiceChip(
+                              label: Text(l10n.tr('settings.navStyle.$name')),
+                              selected: settings.navStyle == name,
+                              onSelected: (_) {
+                                setState(() => settings.navStyle = name);
+                                unawaited(state.saveSettings());
+                              },
+                            ),
+                        ],
                       ),
                     ],
                     const SizedBox(height: 24),
@@ -556,6 +569,20 @@ class SettingsPageState extends State<SettingsPage> {
                       ),
                     );
                   },
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 关于从高级设置页挪回主页：入口更直接，和「高级设置」平级。
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(l10n.tr('settings.about')),
+                  subtitle: Text(
+                    l10n.tr('settings.aboutHint'),
+                    style: const TextStyle(fontSize: 12, color: kTextMuted),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showAppAboutDialog(context),
                 ),
               ),
             ],
