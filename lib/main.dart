@@ -468,6 +468,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// 风控提示是否已经弹出（避免每帧重复弹）。
   bool _riskDialogOpen = false;
 
+  /// 更新弹窗是否正在显示。更新优先：它显示时公告让路。
+  bool _updateShowing = false;
+
   @override
   void initState() {
     super.initState();
@@ -490,10 +493,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       // 启动不自动开跑：上次中断的任务会带着分片回到「等待」，
       // 队列要人点了任务页的「全部开始」才动，跟新入队的任务一个规矩。
       // （单个任务的「重试」「继续」仍是点了就跑。）
-      _checkUpdateOnce();
-      // 公告：读盘（已读 / 已投 / 设备号）后立刻拉一次，回前台再补拉。
-      unawaited(widget.state.announcements.start());
+      // 更新优先：先等更新检查（含弹窗）走完，再启动公告拉取与弹窗。
+      unawaited(_checkUpdateOnceThenAnnouncements());
     });
+  }
+
+  /// 更新优先的启动顺序：先检查更新，更新弹窗处理完再启动公告。
+  Future<void> _checkUpdateOnceThenAnnouncements() async {
+    await _checkUpdateOnce();
+    if (!mounted) return;
+    unawaited(widget.state.announcements.start());
   }
 
   @override
@@ -510,7 +519,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   ///
   /// 串行而不是一次弹出全部：队列里可能有更新性公告，用户得先看到它。
   Future<void> _driveAnnouncementPopups() async {
-    if (!mounted || _announcementShowing || _riskDialogOpen) return;
+    if (!mounted || _announcementShowing || _riskDialogOpen || _updateShowing) {
+      return;
+    }
     final center = widget.state.announcements;
     _announcementShowing = true;
     try {
@@ -544,12 +555,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final result = await checkForUpdate();
     if (!mounted) return;
     // Android 的 apk 由 CI 按 ABI 出包，当前只发 arm64；能装上就说明是这一种。
-    await handleUpdateResult(
-      context,
-      result,
-      notifyWhenUpToDate: false,
-      androidAbi: Platform.isAndroid ? 'arm64-v8a' : null,
-    );
+    _updateShowing = result.outcome == UpdateOutcome.available;
+    try {
+      await handleUpdateResult(
+        context,
+        result,
+        notifyWhenUpToDate: false,
+        androidAbi: Platform.isAndroid ? 'arm64-v8a' : null,
+      );
+    } finally {
+      _updateShowing = false;
+    }
   }
 
   List<NavigationDestination> _destinations(AppLocalizations l10n) => [
@@ -697,6 +713,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               ? null
               : buildAppNavBar(
                   style: state.settings.navStyle,
+                  frosted: state.settings.frostedGlass,
                   selectedIndex: index,
                   onSelect: (value) => setState(() => index = value),
                   items: [

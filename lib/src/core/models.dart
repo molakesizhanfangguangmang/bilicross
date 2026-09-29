@@ -998,6 +998,7 @@ class AppSettings {
     this.uiOpacity = kUiDefaultOpacity,
     this.barOpacity = kBarDefaultOpacity,
     this.backgroundFit = kBackgroundFitDefault,
+    this.frostedGlass = false,
   });
 
   String downloadDir;
@@ -1080,6 +1081,9 @@ class AppSettings {
   /// 背景铺满方式，取值见 [kBackgroundFits]。
   String backgroundFit;
 
+  /// 底栏磨砂玻璃（Beta）。默认关。
+  bool frostedGlass;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -1112,6 +1116,7 @@ class AppSettings {
         'ui_opacity': uiOpacity,
         'bar_opacity': barOpacity,
         'background_fit': backgroundFit,
+        'frosted_glass': frostedGlass,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -1157,6 +1162,7 @@ class AppSettings {
           (json['bar_opacity'] as num?)?.toDouble() ?? kBarDefaultOpacity,
         ),
         backgroundFit: normalizeBackgroundFit(json['background_fit'] as String?),
+        frostedGlass: json['frosted_glass'] as bool? ?? false,
       );
 }
 

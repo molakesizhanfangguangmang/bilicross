@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../core/announcement.dart';
 import '../core/announcement_center.dart';
-import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
-import 'about_dialog.dart';
 import 'palette.dart';
 import 'widgets.dart';
 
@@ -29,8 +26,7 @@ Future<void> showAnnouncementDialog(
 }) {
   return showDialog<void>(
     context: context,
-    // 两种公告都不给「点外面关掉」这条路：可关闭的走底部按钮，
-    // 不可关闭的只能点「立即更新」。
+    // 可关闭的走底部按钮；不可关闭的配合投票 / 必读内容使用。
     barrierDismissible: false,
     builder: (_) => _AnnouncementDialog(
       center: center,
@@ -61,7 +57,6 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
   /// 正文是不是长到需要滚动。要在首帧布局之后才算得出来。
   bool _needsScroll = false;
   bool _atBottom = true;
-  bool _updating = false;
   int _voteFailures = 0;
 
   Announcement get _announcement => widget.announcement;
@@ -77,7 +72,7 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
     return poll.open && !widget.center.hasVoted(poll.id);
   }
 
-  /// 能不能关：不可关闭的公告只有「立即更新」一条路；
+  /// 能不能关：不可关闭的公告（必读 / 投票未完成）不给关；
   /// 可关闭的还得先把长的正文滑到底。
   bool get _canClose {
     if (widget.review) return true;
@@ -207,9 +202,7 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
                   children: <Widget>[
                     if (pollOpen) ...<Widget>[
                       FilledButton(
-                        onPressed: _updating
-                            ? null
-                            : () => unawaited(_openPoll()),
+                        onPressed: () => unawaited(_openPoll()),
                         child: Text(
                           _announcement.actionLabel.isEmpty
                               ? l10n.tr('announcement.vote')
@@ -223,18 +216,6 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
                         onPressed:
                             _canClose ? () => Navigator.of(context).pop() : null,
                         child: Text(l10n.tr('common.close')),
-                      ),
-                    ],
-                    if (_announcement.forced) ...<Widget>[
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed:
-                            _updating ? null : () => unawaited(_runUpdate()),
-                        child: Text(
-                          _updating
-                              ? l10n.tr('announcement.checking')
-                              : l10n.tr('announcement.updateNow'),
-                        ),
                       ),
                     ],
                   ],
@@ -258,33 +239,8 @@ class _AnnouncementDialogState extends State<_AnnouncementDialog> {
       },
     );
     if (!mounted || !voted) return;
-    // 投完就算处理完了。⚠️ 但不可关闭的公告不在这里放行 —— 否则「投一票」
-    // 就能绕过强制更新。
-    if (!_announcement.forced) Navigator.of(context).pop();
-  }
-
-  /// 「立即更新」：复用现有的更新检查流程（关于页的「检测更新」走的是同一套）。
-  ///
-  /// ⚠️ 内测构建会在这个方法体开头被注入一段分支（见
-  /// `scripts/inject-internal-build.js`）：内测包不做更新检查，只提示一句再放行。
-  Future<void> _runUpdate() async {
-    setState(() => _updating = true);
-    final result = await checkForUpdate();
-    if (!mounted) return;
-    setState(() => _updating = false);
-    await handleUpdateResult(
-      context,
-      result,
-      notifyWhenUpToDate: true,
-      androidAbi: Platform.isAndroid ? 'arm64-v8a' : null,
-    );
-    if (!mounted) return;
-    // ⚠️ 远端没有更新的版本时必须放行关闭：这条公告不可关闭，可本机已经没东西可装了，
-    // 不放行就是把用户永久锁在弹窗里（只能杀进程）。
-    if (result.outcome != UpdateOutcome.available) {
-      await widget.center.dismiss(_announcement, force: true);
-      if (mounted) Navigator.of(context).pop();
-    }
+    // 投完就算处理完了，直接放行关闭（「投完票才能关」由 _voteGateOpen 兜住）。
+    Navigator.of(context).pop();
   }
 }
 

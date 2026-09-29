@@ -5,16 +5,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-http.Response _release(String tag, {String? url, int status = 200}) {
-  final body = jsonEncode(<String, Object?>{
-    'tag_name': tag,
-    'html_url': ?url,
-    'name': tag,
-  });
-  return http.Response(body, status, headers: <String, String>{
-    'content-type': 'application/json; charset=utf-8',
-  });
+http.Response _update(Object? update, {int status = 200}) {
+  return http.Response(
+    jsonEncode(<String, Object?>{'ok': true, 'update': update}),
+    status,
+    headers: <String, String>{
+      'content-type': 'application/json; charset=utf-8',
+    },
+  );
 }
+
+Map<String, Object?> _config({
+  String version = '1.0.2',
+  String notes = '',
+  String androidUrl = '',
+  String windowsSetupUrl = '',
+  String windowsPortableUrl = '',
+  String minVersion = '',
+}) =>
+    <String, Object?>{
+      'version': version,
+      'notes': notes,
+      'androidUrl': androidUrl,
+      'windowsSetupUrl': windowsSetupUrl,
+      'windowsPortableUrl': windowsPortableUrl,
+      'minVersion': minVersion,
+    };
 
 void main() {
   test('版本号解析：去前缀，丢构建号与预发布后缀', () {
@@ -35,18 +51,6 @@ void main() {
     expect(isRemoteNewer('v1.0.0', '1.0.1'), isFalse);
     expect(isRemoteNewer('unknown', '1.0.1'), isFalse);
     expect(isRemoteNewer('v1.0.1', ''), isFalse);
-  });
-
-  test('Release 响应取 version 与页面地址', () {
-    final parsed = readLatestRelease(<String, Object?>{
-      'tag_name': 'v1.0.2',
-      'html_url': 'https://example.com/rel',
-    });
-    expect(parsed?['version'], 'v1.0.2');
-    expect(parsed?['url'], 'https://example.com/rel');
-    expect(readLatestRelease(null), isNull);
-    expect(readLatestRelease(<String, Object?>{'name': 'v1'}), isNull);
-    expect(readLatestRelease(<String, Object?>{'tag_name': '  '}), isNull);
   });
 
   test('产物 digest 归一化成小写十六进制', () {
@@ -73,49 +77,84 @@ void main() {
         },
       ],
     });
-    expect(assets.single.sha256, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
+    expect(
+      assets.single.sha256,
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    );
   });
 
-  test('有新版时给出确认框要用的信息', () {
-    final result = resultFromRelease(<String, Object?>{'tag_name': '1.0.2'}, '1.0.1');
-    expect(result.outcome, UpdateOutcome.available);
-    expect(result.latestLabel, 'v1.0.2');
-    expect(result.releaseUrl, kReleaseListUrl);
+  test('更新配置折算成检查结果：新版、已最新、坏响应', () {
+    final newer = resultFromUpdateConfig(
+      <String, Object?>{'update': _config(version: '1.0.2')},
+      '1.0.1',
+    );
+    expect(newer.outcome, UpdateOutcome.available);
+    expect(newer.latestLabel, 'v1.0.2');
 
-    final same = resultFromRelease(<String, Object?>{'tag_name': 'v1.0.1'}, '1.0.1');
+    final same = resultFromUpdateConfig(
+      <String, Object?>{'update': _config(version: '1.0.1')},
+      '1.0.1',
+    );
     expect(same.outcome, UpdateOutcome.upToDate);
 
-    final broken = resultFromRelease(<String, Object?>{}, '1.0.1');
+    final broken = resultFromUpdateConfig(<String, Object?>{}, '1.0.1');
     expect(broken.outcome, UpdateOutcome.failed);
   });
 
-  test('网络层：有新版的响应', () async {
+  test('低于 minVersion 时强制更新', () {
+    final forced = resultFromUpdateConfig(
+      <String, Object?>{
+        'update': _config(version: '2.3.4', minVersion: '2.3.4'),
+      },
+      '2.3.3',
+    );
+    expect(forced.outcome, UpdateOutcome.available);
+    expect(forced.forceUpdate, isTrue);
+
+    final optional = resultFromUpdateConfig(
+      <String, Object?>{
+        'update': _config(version: '2.3.4', minVersion: '2.3.4'),
+      },
+      '2.3.4',
+    );
+    expect(optional.forceUpdate, isFalse);
+  });
+
+  test('网络层：从服务端拿到新版', () async {
     final client = MockClient((request) async {
-      expect(request.headers['User-Agent'], 'Yigui/1.0.1');
-      expect(request.url.host, 'api.github.com');
-      return _release('v1.0.2', url: 'https://example.com/v1.0.2');
+      expect(request.url.host, 'bili.culture-see.de5.net');
+      expect(request.url.path, '/v1/update');
+      return _update(
+        _config(version: '1.0.2', androidUrl: 'https://example.com/a.apk'),
+      );
     });
     final result = await checkForUpdate(client: client, currentVersion: '1.0.1');
     expect(result.outcome, UpdateOutcome.available);
-    expect(result.latestVersion, 'v1.0.2');
-    expect(result.releaseUrl, 'https://example.com/v1.0.2');
+    expect(result.latestVersion, '1.0.2');
+    expect(result.assets.single.downloadUrl, 'https://example.com/a.apk');
     expect(result.currentVersion, '1.0.1');
   });
 
   test('网络层：已是最新', () async {
-    final client = MockClient((request) async => _release('v1.0.1'));
+    final client = MockClient(
+      (request) async => _update(_config(version: '1.0.1')),
+    );
     final result = await checkForUpdate(client: client, currentVersion: '1.0.1');
     expect(result.outcome, UpdateOutcome.upToDate);
   });
 
   test('网络层：接口出错或连不上都算检测失败', () async {
-    final server = MockClient((request) async => _release('v1.0.2', status: 500));
+    final server = MockClient(
+      (request) async => _update(_config(), status: 500),
+    );
     expect(
       (await checkForUpdate(client: server, currentVersion: '1.0.1')).outcome,
       UpdateOutcome.failed,
     );
 
-    final down = MockClient((request) async => throw const SocketFailure());
+    final down = MockClient(
+      (request) async => throw const SocketFailure(),
+    );
     expect(
       (await checkForUpdate(client: down, currentVersion: '1.0.1')).outcome,
       UpdateOutcome.failed,
@@ -132,7 +171,7 @@ void main() {
     var called = false;
     final client = MockClient((request) async {
       called = true;
-      return _release('v1.0.2');
+      return _update(_config());
     });
     final result = await checkForUpdate(client: client, currentVersion: '');
     expect(called, isFalse);

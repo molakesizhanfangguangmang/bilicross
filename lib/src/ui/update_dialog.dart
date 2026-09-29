@@ -12,15 +12,18 @@ Future<void> showUpdateAvailableDialog(
   BuildContext context, {
   required UpdateCheckResult result,
   required String? downloadUrl,
+  required bool forceUpdate,
 }) async {
   final sha256 = _pickChecksum(result.assets, downloadUrl);
   await showDialog<void>(
     context: context,
+    barrierDismissible: !forceUpdate,
     barrierColor: Colors.black54,
     builder: (dialogContext) => _UpdateAvailableDialog(
       result: result,
       downloadUrl: downloadUrl,
       sha256: sha256,
+      forceUpdate: forceUpdate,
     ),
   );
 }
@@ -30,11 +33,13 @@ class _UpdateAvailableDialog extends StatefulWidget {
     required this.result,
     required this.downloadUrl,
     required this.sha256,
+    required this.forceUpdate,
   });
 
   final UpdateCheckResult result;
   final String? downloadUrl;
   final String sha256;
+  final bool forceUpdate;
 
   @override
   State<_UpdateAvailableDialog> createState() => _UpdateAvailableDialogState();
@@ -58,90 +63,101 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
         widget.downloadUrl != null && widget.downloadUrl!.isNotEmpty;
     final target = direct ? widget.downloadUrl! : result.releaseUrl;
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: l10n.tr('common.close'),
-                iconSize: 18,
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                l10n.tr('about.updateFound', {
-                  'version': result.latestLabel,
-                }),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            if (result.notes.isNotEmpty)
-              Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                  child: Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxHeight: 320),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: _ScrollableNotes(
-                      controller: _notesController,
-                      notes: result.notes,
-                    ),
-                  ),
-                ),
-              ),
-            if (widget.sha256.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: SelectableText(
-                  'SHA-256  ${widget.sha256}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  TextButton(
+    return PopScope(
+      canPop: !widget.forceUpdate,
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (!widget.forceUpdate)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: l10n.tr('common.close'),
+                    iconSize: 18,
                     onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.tr('common.cancel')),
+                    icon: const Icon(Icons.close),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      // 弹窗关掉后再开浏览器，避免在 dialogContext 上起副作用。
-                      openExternalUrl(context, target);
-                    },
-                    child: Text(
-                      direct
-                          ? l10n.tr('about.download')
-                          : l10n.tr('about.openRelease'),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  l10n.tr('about.updateFound', {
+                    'version': result.latestLabel,
+                  }),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (result.notes.isNotEmpty)
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                    child: Container(
+                      width: double.infinity,
+                      constraints: const BoxConstraints(maxHeight: 320),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _ScrollableNotes(
+                        controller: _notesController,
+                        notes: result.notes,
+                      ),
                     ),
                   ),
-                ],
+                ),
+              if (widget.sha256.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: SelectableText(
+                    'SHA-256  ${widget.sha256}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    if (!widget.forceUpdate) ...<Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(l10n.tr('common.cancel')),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    FilledButton(
+                      onPressed: () {
+                        // 强制更新时不要关掉弹窗：用户跳去浏览器装包后回来，
+                        // 若还没装上，弹窗得还在，否则「不可关闭」就失效了。
+                        if (!widget.forceUpdate) {
+                          Navigator.of(context).pop();
+                        }
+                        // 普通更新在 dialogContext 上起副作用不干净，先关再开；
+                        // 强制更新这里保留弹窗，直接在当前 context 上开浏览器。
+                        openExternalUrl(context, target);
+                      },
+                      child: Text(
+                        direct
+                            ? l10n.tr('about.download')
+                            : l10n.tr('about.openRelease'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

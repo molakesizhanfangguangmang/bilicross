@@ -139,6 +139,20 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
           ),
           const SizedBox(height: 16),
           SplashCard(state: state),
+          const SizedBox(height: 12),
+          SectionCard(
+            title: l10n.tr('settings.frostedGlass'),
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.tr('settings.frostedGlass')),
+              subtitle: Text(l10n.tr('settings.frostedGlassHint')),
+              value: state.settings.frostedGlass,
+              onChanged: (value) {
+                setState(() => state.settings.frostedGlass = value);
+                unawaited(state.saveSettings());
+              },
+            ),
+          ),
           // 动画调节：长按设置页的「高级设置」入口解锁后才出现，解锁不可逆。
           if (state.settings.animTuningUnlocked) ...<Widget>[
             const SizedBox(height: 12),

@@ -9,9 +9,9 @@ const String kProjectUrl = 'https://github.com/molakesizhanfangguangmang/bilicro
 /// 没有可用直链时的兜底地址（Release 列表页）。
 const String kReleaseListUrl = '$kProjectUrl/releases';
 
-/// GitHub 的「最新正式版」接口，预发布版不会出现在这里。
-const String kLatestReleaseApi =
-    'https://api.github.com/repos/molakesizhanfangguangmang/bilicross/releases/latest';
+/// 更新配置接口：由服务端手动维护版本号、更新说明与下载直链，
+/// 下载仍指向 GitHub Release 资产。
+const String kUpdateConfigApi = 'https://bili.culture-see.de5.net/v1/update';
 
 const Duration kUpdateCheckTimeout = Duration(seconds: 8);
 
@@ -34,6 +34,8 @@ class UpdateCheckResult {
     this.releaseUrl = kReleaseListUrl,
     this.notes = '',
     this.assets = const <ReleaseAsset>[],
+    this.minVersion = '',
+    this.forceUpdate = false,
   });
 
   final UpdateOutcome outcome;
@@ -51,6 +53,12 @@ class UpdateCheckResult {
 
   /// 该 Release 附带的产物列表，用于按平台挑下载直链。
   final List<ReleaseAsset> assets;
+
+  /// 低于该版本时不可关闭（服务端下发，空串＝不强制）。
+  final String minVersion;
+
+  /// 本次更新是否不可关闭（由 [minVersion] 与当前版本比较得出）。
+  final bool forceUpdate;
 
   /// 展示用的远端版本号，保证带 `v` 前缀。
   String get latestLabel {
@@ -206,6 +214,94 @@ UpdateCheckResult resultFromRelease(Object? payload, String currentVersion) {
   );
 }
 
+/// 服务端下发的更新配置。字段白名单由服务端保证，这里按字符串收下，
+/// 认不出或缺失就回落到「没有更新」。
+class UpdateConfig {
+  const UpdateConfig({
+    required this.version,
+    required this.notes,
+    required this.androidUrl,
+    required this.windowsSetupUrl,
+    required this.windowsPortableUrl,
+    required this.minVersion,
+  });
+
+  final String version;
+  final String notes;
+  final String androidUrl;
+  final String windowsSetupUrl;
+  final String windowsPortableUrl;
+  final String minVersion;
+
+  static UpdateConfig? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final version = '${raw['version'] ?? ''}'.trim();
+    if (version.isEmpty) return null;
+    return UpdateConfig(
+      version: version,
+      notes: '${raw['notes'] ?? ''}'.trim(),
+      androidUrl: '${raw['androidUrl'] ?? ''}'.trim(),
+      windowsSetupUrl: '${raw['windowsSetupUrl'] ?? ''}'.trim(),
+      windowsPortableUrl: '${raw['windowsPortableUrl'] ?? ''}'.trim(),
+      minVersion: '${raw['minVersion'] ?? ''}'.trim(),
+    );
+  }
+}
+
+/// 把服务端的更新配置折算成检查结果（纯函数，便于离线自测）。
+UpdateCheckResult resultFromUpdateConfig(Object? payload, String currentVersion) {
+  if (payload is! Map) {
+    return UpdateCheckResult(
+      outcome: UpdateOutcome.failed,
+      currentVersion: currentVersion,
+    );
+  }
+  final config = UpdateConfig.fromJson(payload['update']);
+  if (config == null) {
+    return UpdateCheckResult(
+      outcome: UpdateOutcome.failed,
+      currentVersion: currentVersion,
+    );
+  }
+  final latest = config.version;
+  if (!isRemoteNewer(latest, currentVersion)) {
+    return UpdateCheckResult(
+      outcome: UpdateOutcome.upToDate,
+      currentVersion: currentVersion,
+      latestVersion: latest,
+    );
+  }
+  final minVersion = config.minVersion;
+  final forceUpdate = minVersion.isNotEmpty && isRemoteNewer(minVersion, currentVersion);
+  final assets = <ReleaseAsset>[
+    if (config.androidUrl.isNotEmpty)
+      ReleaseAsset(
+        name: 'BiliCross-$latest-android-arm64.apk',
+        downloadUrl: config.androidUrl,
+      ),
+    if (config.windowsSetupUrl.isNotEmpty)
+      ReleaseAsset(
+        name: 'BiliCross-$latest-windows-x64-setup.exe',
+        downloadUrl: config.windowsSetupUrl,
+      ),
+    if (config.windowsPortableUrl.isNotEmpty)
+      ReleaseAsset(
+        name: 'BiliCross-$latest-windows-x64-portable.zip',
+        downloadUrl: config.windowsPortableUrl,
+      ),
+  ];
+  return UpdateCheckResult(
+    outcome: UpdateOutcome.available,
+    currentVersion: currentVersion,
+    latestVersion: latest,
+    releaseUrl: kReleaseListUrl,
+    notes: config.notes,
+    assets: assets,
+    minVersion: minVersion,
+    forceUpdate: forceUpdate,
+  );
+}
+
 /// 本机安装包的版本号。读不出来返回空串，调用方按「检测失败」处理。
 Future<String> readCurrentVersion() async {
   try {
@@ -227,7 +323,8 @@ Future<String> readPackageName() async {
   }
 }
 
-/// 查一次最新正式版。任何异常都收敛成 [UpdateOutcome.failed]，不往外抛。
+/// 查一次最新正式版（从服务端更新配置）。任何异常都收敛成
+/// [UpdateOutcome.failed]，不往外抛。
 Future<UpdateCheckResult> checkForUpdate({
   http.Client? client,
   String? currentVersion,
@@ -241,9 +338,9 @@ Future<UpdateCheckResult> checkForUpdate({
   try {
     final response = await agent
         .get(
-          Uri.parse(kLatestReleaseApi),
+          Uri.parse(kUpdateConfigApi),
           headers: <String, String>{
-            'Accept': 'application/vnd.github+json',
+            'Accept': 'application/json',
             'User-Agent': 'Yigui/$local',
           },
         )
@@ -254,7 +351,7 @@ Future<UpdateCheckResult> checkForUpdate({
         currentVersion: local,
       );
     }
-    return resultFromRelease(
+    return resultFromUpdateConfig(
       jsonDecode(utf8.decode(response.bodyBytes)),
       local,
     );

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -22,12 +23,14 @@ Widget buildAppNavBar({
   required int selectedIndex,
   required List<NavItem> items,
   required ValueChanged<int> onSelect,
+  required bool frosted,
 }) {
   return _CapsuleNavBar(
     selectedIndex: selectedIndex,
     items: items,
     onSelect: onSelect,
     preset: NavBouncePreset.of(style),
+    frosted: frosted,
   );
 }
 
@@ -152,12 +155,14 @@ class _CapsuleNavBar extends StatefulWidget {
     required this.items,
     required this.onSelect,
     required this.preset,
+    required this.frosted,
   });
 
   final int selectedIndex;
   final List<NavItem> items;
   final ValueChanged<int> onSelect;
   final NavBouncePreset preset;
+  final bool frosted;
 
   @override
   State<_CapsuleNavBar> createState() => _CapsuleNavBarState();
@@ -280,9 +285,11 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final barTheme = Theme.of(context).navigationBarTheme;
-    // 跟随「上下栏不透明度」：主题色带 alpha 时胶囊跟着透。
-    final capsuleColor =
-        barTheme.backgroundColor ?? scheme.surfaceContainerHigh;
+    // 磨砂玻璃开时固定半透明，不受「上下栏不透明度」滑杆影响；
+    // 关时回到原来的主题色（跟滑杆走）。
+    final capsuleColor = widget.frosted
+        ? scheme.surfaceContainerHigh.withValues(alpha: 0.28)
+        : (barTheme.backgroundColor ?? scheme.surfaceContainerHigh);
     final radius = _capsuleHeight / 2;
 
     return SafeArea(
@@ -302,22 +309,47 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
             child: Stack(
               clipBehavior: Clip.none,
               children: <Widget>[
-                // 胶囊本体：不裁切，指示块可以越出去。
+                // 胶囊本体：磨砂玻璃开关决定是否用背景模糊。
+                // ⚠️ ClipRRect 只裁胶囊自己，不裁 Stack 里的指示块。
                 Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: capsuleColor,
-                      borderRadius: BorderRadius.circular(radius),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.10),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
+                  child: widget.frosted
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(radius),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: capsuleColor,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                  width: 1,
+                                ),
+                                boxShadow: <BoxShadow>[
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.12),
+                                    blurRadius: 22,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        )
+                      : DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: capsuleColor,
+                            borderRadius: BorderRadius.circular(radius),
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.10),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: const SizedBox.expand(),
                         ),
-                      ],
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
                 ),
                 LayoutBuilder(
                   builder: (context, constraints) {

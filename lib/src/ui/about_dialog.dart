@@ -42,6 +42,7 @@ Future<void> handleUpdateResult(
       context,
       result: result,
       downloadUrl: _pickDownloadUrl(result.assets, androidAbi: androidAbi),
+      forceUpdate: result.forceUpdate,
     );
     return;
   }
