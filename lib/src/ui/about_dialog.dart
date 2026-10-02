@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/distribution.dart';
+import '../core/device_identity.dart';
 import '../core/release_target.dart';
 import '../core/update_check.dart';
 import '../i18n/app_localizations.dart';
@@ -16,7 +17,10 @@ const String kAppIconAsset = 'assets/branding/app_icon.png';
 
 /// 打开关于弹窗。用户在里面点了「检测更新」就返回那次结果，
 /// 由调用方（页面自己有稳定的 context）去弹确认框或底部的提示。
-Future<void> showAppAboutDialog(BuildContext context) async {
+Future<void> showAppAboutDialog(
+  BuildContext context, {
+  String downloadDir = '',
+}) async {
   final result = await showDialog<UpdateCheckResult>(
     context: context,
     barrierColor: Colors.black54,
@@ -24,7 +28,12 @@ Future<void> showAppAboutDialog(BuildContext context) async {
   );
   if (result == null) return;
   if (!context.mounted) return;
-  await handleUpdateResult(context, result, notifyWhenUpToDate: true);
+  await handleUpdateResult(
+    context,
+    result,
+    notifyWhenUpToDate: true,
+    downloadDir: downloadDir,
+  );
 }
 
 /// 更新检查结果的统一出口：有新版弹说明弹窗，其余在底部给一句话。
@@ -36,13 +45,18 @@ Future<void> handleUpdateResult(
   UpdateCheckResult result, {
   required bool notifyWhenUpToDate,
   String? androidAbi,
+  String downloadDir = '',
 }) async {
   if (result.outcome == UpdateOutcome.available) {
+    final identity = await collectDeviceIdentity();
+    if (!context.mounted) return;
     await showUpdateAvailableDialog(
       context,
       result: result,
       downloadUrl: _pickDownloadUrl(result.assets, androidAbi: androidAbi),
       forceUpdate: result.forceUpdate,
+      deviceKey: identity.key,
+      downloadDir: downloadDir,
     );
     return;
   }

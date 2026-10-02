@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/update_check.dart';
+import '../core/update_download.dart';
 import '../i18n/app_localizations.dart';
 import 'about_dialog.dart' show openExternalUrl;
 import 'release_notes_view.dart';
@@ -13,6 +14,8 @@ Future<void> showUpdateAvailableDialog(
   required UpdateCheckResult result,
   required String? downloadUrl,
   required bool forceUpdate,
+  String deviceKey = '',
+  String downloadDir = '',
 }) async {
   final sha256 = _pickChecksum(result.assets, downloadUrl);
   await showDialog<void>(
@@ -24,6 +27,8 @@ Future<void> showUpdateAvailableDialog(
       downloadUrl: downloadUrl,
       sha256: sha256,
       forceUpdate: forceUpdate,
+      deviceKey: deviceKey,
+      downloadDir: downloadDir,
     ),
   );
 }
@@ -34,12 +39,16 @@ class _UpdateAvailableDialog extends StatefulWidget {
     required this.downloadUrl,
     required this.sha256,
     required this.forceUpdate,
+    required this.deviceKey,
+    required this.downloadDir,
   });
 
   final UpdateCheckResult result;
   final String? downloadUrl;
   final String sha256;
   final bool forceUpdate;
+  final String deviceKey;
+  final String downloadDir;
 
   @override
   State<_UpdateAvailableDialog> createState() => _UpdateAvailableDialogState();
@@ -48,10 +57,14 @@ class _UpdateAvailableDialog extends StatefulWidget {
 class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
   /// 显式持有 controller：RawScrollbar 要靠它接管拖动。
   final ScrollController _notesController = ScrollController();
+  final TextEditingController _tokenController = TextEditingController();
+  bool _downloading = false;
+  double? _progress;
 
   @override
   void dispose() {
     _notesController.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 
@@ -62,6 +75,7 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
     final direct =
         widget.downloadUrl != null && widget.downloadUrl!.isNotEmpty;
     final target = direct ? widget.downloadUrl! : result.releaseUrl;
+    final internal = result.rollout && result.file.isNotEmpty;
 
     return PopScope(
       canPop: !widget.forceUpdate,
@@ -124,6 +138,19 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
                     ),
                   ),
                 ),
+              if (internal && result.tokenRequired)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: TextField(
+                    controller: _tokenController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: l10n.tr('about.downloadToken'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 child: Row(
@@ -137,30 +164,100 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> {
                       const SizedBox(width: 8),
                     ],
                     FilledButton(
-                      onPressed: () {
-                        // 强制更新时不要关掉弹窗：用户跳去浏览器装包后回来，
-                        // 若还没装上，弹窗得还在，否则「不可关闭」就失效了。
-                        if (!widget.forceUpdate) {
-                          Navigator.of(context).pop();
-                        }
-                        // 普通更新在 dialogContext 上起副作用不干净，先关再开；
-                        // 强制更新这里保留弹窗，直接在当前 context 上开浏览器。
-                        openExternalUrl(context, target);
-                      },
+                      onPressed: _downloading
+                          ? null
+                          : () => internal
+                              ? _downloadInternal(context)
+                              : _openExternal(context, target),
                       child: Text(
-                        direct
+                        _downloading
+                            ? l10n.tr('about.downloading')
+                            : (internal
+                                ? l10n.tr('about.download')
+                                : (direct
                             ? l10n.tr('about.download')
-                            : l10n.tr('about.openRelease'),
+                                    : l10n.tr('about.openRelease'))),
                       ),
                     ),
                   ],
                 ),
               ),
+              if (_progress != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: LinearProgressIndicator(value: _progress),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _openExternal(BuildContext context, String target) {
+    if (!widget.forceUpdate) {
+      Navigator.of(context).pop();
+    }
+    openExternalUrl(context, target);
+  }
+
+  Future<void> _downloadInternal(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    if (widget.result.tokenRequired && _tokenController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.tr('about.downloadTokenEmpty'))),
+        );
+      return;
+    }
+    setState(() {
+      _downloading = true;
+      _progress = null;
+    });
+    final (status, path) = await downloadRolloutApk(
+      deviceKey: widget.deviceKey,
+      token: _tokenController.text.trim(),
+      targetDir: widget.downloadDir,
+      onProgress: (received, total) {
+        if (!mounted || total <= 0) return;
+        setState(() {
+          _progress = (received / total).clamp(0.0, 1.0);
+        });
+      },
+    );
+    if (!mounted) return;
+    setState(() => _downloading = false);
+    switch (status) {
+      case RolloutDownloadStatus.done:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                l10n.tr('about.downloadDone', {'path': path ?? ''}),
+              ),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        if (!widget.forceUpdate && mounted) {
+          Navigator.of(context).pop();
+        }
+        break;
+      case RolloutDownloadStatus.badToken:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text(l10n.tr('about.downloadTokenWrong'))),
+          );
+        break;
+      default:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text(l10n.tr('about.downloadFailed'))),
+          );
+    }
   }
 }
 

@@ -102,6 +102,12 @@ class AppLocalizationsEn extends AppLocalizations {
     'about.download': 'Download',
     'about.openRelease': 'Open release page',
     'about.feedback': 'Feedback',
+    'about.downloadToken': 'Download token (from beta invite)',
+    'about.downloadTokenEmpty': 'Enter the download token',
+    'about.downloadTokenWrong': 'Incorrect download token',
+    'about.downloading': 'Downloading…',
+    'about.downloadFailed': 'Download failed',
+    'about.downloadDone': 'Beta package saved to {path}. Install it manually.',
 
     // User feedback
     'feedback.title': 'Feedback',
@@ -343,6 +349,8 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.advancedAutoSave': 'Changes on this page are saved when you leave it.',
     'settings.frostedGlass': 'Frosted glass (Beta)',
     'settings.frostedGlassHint': 'Background blur on the bottom navigation bar, Android phone only',
+    'settings.frostedGroup': 'Frosted glass',
+    'settings.frostedOff': 'Off',
     'theme.teal': 'Teal',
     'theme.indigo': 'Indigo',
     'theme.ochre': 'Ochre',
@@ -354,6 +362,12 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.navStyle.q2': 'Soft',
     'settings.navStyle.q3': 'Springy',
     'settings.navStyle.q4': 'Lazy',
+    'settings.nativeLandscape': 'Native landscape mode',
+    'settings.nativeLandscapeHint':
+        'Use desktop-style side navigation in landscape; when off, landscape uses the bottom bar',
+    'settings.cardFrosted': 'Frosted cards (Beta)',
+    'settings.cardFrostedHint':
+        'Card blur over the background; without a background image it falls back to card blur',
     'settings.network': 'Network',
     'settings.proxy': 'Proxy',
     'settings.uaHint': 'Leave empty to use the built-in short string Mozilla/5.0',

@@ -24,6 +24,7 @@ Widget buildAppNavBar({
   required List<NavItem> items,
   required ValueChanged<int> onSelect,
   required bool frosted,
+  required double barOpacity,
 }) {
   return _CapsuleNavBar(
     selectedIndex: selectedIndex,
@@ -31,6 +32,7 @@ Widget buildAppNavBar({
     onSelect: onSelect,
     preset: NavBouncePreset.of(style),
     frosted: frosted,
+    barOpacity: barOpacity,
   );
 }
 
@@ -156,6 +158,7 @@ class _CapsuleNavBar extends StatefulWidget {
     required this.onSelect,
     required this.preset,
     required this.frosted,
+    required this.barOpacity,
   });
 
   final int selectedIndex;
@@ -163,6 +166,7 @@ class _CapsuleNavBar extends StatefulWidget {
   final ValueChanged<int> onSelect;
   final NavBouncePreset preset;
   final bool frosted;
+  final double barOpacity;
 
   @override
   State<_CapsuleNavBar> createState() => _CapsuleNavBarState();
@@ -285,10 +289,9 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final barTheme = Theme.of(context).navigationBarTheme;
-    // 磨砂玻璃开时固定半透明，不受「上下栏不透明度」滑杆影响；
-    // 关时回到原来的主题色（跟滑杆走）。
+    // 磨砂玻璃开时按「上下栏不透明度」滑杆算浓度；关时回到原来的主题色。
     final capsuleColor = widget.frosted
-        ? scheme.surfaceContainerHigh.withValues(alpha: 0.28)
+        ? scheme.surfaceContainerHigh.withValues(alpha: widget.barOpacity)
         : (barTheme.backgroundColor ?? scheme.surfaceContainerHigh);
     final radius = _capsuleHeight / 2;
 
@@ -315,24 +318,26 @@ class _CapsuleNavBarState extends State<_CapsuleNavBar>
                   child: widget.frosted
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(radius),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: capsuleColor,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.18),
-                                  width: 1,
-                                ),
-                                boxShadow: <BoxShadow>[
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.12),
-                                    blurRadius: 22,
-                                    offset: const Offset(0, 8),
+                          child: RepaintBoundary(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: capsuleColor,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                    width: 1,
                                   ),
-                                ],
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.12),
+                                      blurRadius: 22,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: const SizedBox.expand(),
                               ),
-                              child: const SizedBox.expand(),
                             ),
                           ),
                         )

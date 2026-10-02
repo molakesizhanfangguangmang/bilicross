@@ -56,6 +56,7 @@ class AnnouncementPoll {
     required this.multi,
     required this.open,
     required this.requireVote,
+    required this.voted,
     required this.options,
   });
 
@@ -73,6 +74,12 @@ class AnnouncementPoll {
   /// ⚠️ 必须与 [Announcement.closable] **解耦**：`closable:false` 是「强制更新」语义，
   /// 会连带 ⚠ 图标与「立即更新」按钮，不能拿来表达「不投不给关」。
   final bool requireVote;
+
+  /// 服务端按本机 `device_key` 回填的「是否已投」。缺字段按 false。
+  ///
+  /// 内测 / 正式是并列安装、各自数据目录，本地那份 `voted` 不共享；
+  /// 只有服务端回填，才能让换包 / 重装后仍认得「这台机器投过没」。
+  final bool voted;
 
   final List<AnnouncementOption> options;
 
@@ -97,6 +104,7 @@ class AnnouncementPoll {
       // 服务端会注入 `open`；字段缺失时按「开着」处理（老数据）。
       open: raw['open'] != false,
       requireVote: raw['requireVote'] == true,
+      voted: raw['voted'] == true,
       options: options,
     );
   }
@@ -268,6 +276,8 @@ int compareVersionKey(List<int> left, List<int> right) {
 Future<AnnouncementFeed> fetchAnnouncements({
   required String version,
   required String platform,
+  String deviceKey = '',
+  String deviceId = '',
   http.Client? client,
   String baseUrl = kAnnouncementsBaseUrl,
   Duration timeout = kAnnouncementTimeout,
@@ -280,6 +290,8 @@ Future<AnnouncementFeed> fetchAnnouncements({
       queryParameters: <String, String>{
         if (version.isNotEmpty) 'ver': version,
         if (platform.isNotEmpty) 'platform': platform,
+        if (deviceKey.isNotEmpty) 'deviceKey': deviceKey,
+        if (deviceId.isNotEmpty) 'deviceId': deviceId,
       },
     );
     final response = await agent

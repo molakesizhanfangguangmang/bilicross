@@ -27,10 +27,14 @@ class AnnouncementCenter extends ChangeNotifier {
     String? baseUrl,
     String? version,
     String? platform,
+    String? deviceKey,
+    String? deviceId,
   })  : _client = client,
         _baseUrl = baseUrl ?? kAnnouncementsBaseUrl,
         _versionOverride = version,
-        _platformOverride = platform;
+        _platformOverride = platform,
+        _deviceKeyOverride = deviceKey,
+        _deviceIdOverride = deviceId;
 
   /// 前台轮询间隔。
   static const Duration pollInterval = Duration(minutes: 30);
@@ -51,6 +55,8 @@ class AnnouncementCenter extends ChangeNotifier {
   final String _baseUrl;
   final String? _versionOverride;
   final String? _platformOverride;
+  final String? _deviceKeyOverride;
+  final String? _deviceIdOverride;
 
   List<Announcement> _items = const <Announcement>[];
 
@@ -103,6 +109,9 @@ class AnnouncementCenter extends ChangeNotifier {
 
   /// 上报给服务端的设备指纹（只读，供测试与诊断用）。
   String get deviceKey => _deviceKey;
+
+  /// 设备画像（型号 / 品牌 / ABI 等），供设备登记上报复用。
+  Map<String, Object> get deviceInfo => _deviceInfo;
 
   /// 设置页入口右侧的角标用。
   int get unreadCount => _items.where((item) => !isDismissed(item.id)).length;
@@ -163,6 +172,8 @@ class AnnouncementCenter extends ChangeNotifier {
     final feed = await fetchAnnouncements(
       version: await _currentVersion(),
       platform: platform,
+      deviceKey: _deviceKey,
+      deviceId: _deviceId,
       client: _client,
       baseUrl: _baseUrl,
     );
@@ -188,10 +199,27 @@ class AnnouncementCenter extends ChangeNotifier {
           ),
         )
         .toList();
+    _absorbServerVoted(_items);
     _rebuildPopupQueue();
     await _persist();
     _notify();
     return true;
+  }
+
+  /// 服务端回填的「已投」写进本地记忆，并据此落盘。
+  ///
+  /// ⚠️ 只补、不删：服务端这次没回 `voted` 的（例如拉取时还没拿到设备指纹，
+  /// 或旧服务端不认这个字段），不能把本地已有的记录抹掉。
+  void _absorbServerVoted(List<Announcement> items) {
+    var changed = false;
+    for (final item in items) {
+      final poll = item.poll;
+      if (poll == null || !poll.voted || hasVoted(poll.id)) continue;
+      _voted[poll.id] = const <String>[];
+      changed = true;
+    }
+    if (!changed) return;
+    _persist();
   }
 
   /// 退避重试：只在失败态排一次，成功就取消。
@@ -300,6 +328,8 @@ class AnnouncementCenter extends ChangeNotifier {
 
   Future<void> _load() async {
     final json = await store.loadAnnouncementState();
+    if (_deviceIdOverride != null) _deviceId = _deviceIdOverride.trim();
+    if (_deviceKeyOverride != null) _deviceKey = _deviceKeyOverride.trim();
     if (json != null) {
       final dismissed = json['dismissed'];
       if (dismissed is List) {
@@ -325,7 +355,7 @@ class AnnouncementCenter extends ChangeNotifier {
     }
     // 设备指纹每次启动现取，不落盘：它是系统标识的哈希，存下来只会多一份可被改的副本。
     final identity = await collectDeviceIdentity();
-    _deviceKey = identity.key;
+    if (_deviceKeyOverride == null) _deviceKey = identity.key;
     _deviceInfo = identity.info;
   }
 

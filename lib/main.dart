@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 // `CupertinoPageTransitionsBuilder` 只在 cupertino 库里，material 不导出它。
 import 'package:flutter/cupertino.dart' as cupertino;
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
 import 'src/core/background_config.dart';
+import 'src/core/device_register.dart';
 import 'src/core/distribution.dart';
 import 'src/core/log_store.dart';
 import 'src/core/splash_config.dart';
@@ -298,6 +300,9 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
             (hasBackground || translucentUi)
                 ? scheme.surfaceContainerLow.withValues(alpha: uiOpacity)
                 : null,
+            cardFrostMode: state.settings.cardFrostMode,
+            hasBackground: hasBackground,
+            uiOpacity: uiOpacity,
           ),
         ],
         // 只有开了背景才把页面底改透明，让底下那层背景透上来。
@@ -308,7 +313,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 回落到 M3 默认（`surface` / `surfaceContainer` / `surfaceContainerLow`），
         // 与旧版完全一致。`palette.dart` 一个字都不改。
         // 顶栏 / 底栏 / 宽屏侧栏跟「上下栏」滑杆，卡片跟「卡片」滑杆，互不牵连。
-        appBarTheme: translucentBar
+        appBarTheme: translucentBar || state.settings.frostedGlass
             ? AppBarTheme(
                 backgroundColor: scheme.surface.withValues(alpha: barOpacity),
                 // M3 的滚动态会再盖一层 surfaceTint，把透明效果吃掉。
@@ -318,7 +323,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
         // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: translucentBar
+          backgroundColor: translucentBar || state.settings.frostedGlass
               ? scheme.surfaceContainer.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
@@ -339,7 +344,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         ),
         // 宽屏走 NavigationRail，配色要与底部导航保持一致，否则两端观感不同。
         navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: translucentBar
+          backgroundColor: translucentBar || state.settings.frostedGlass
               ? scheme.surface.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
@@ -462,6 +467,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.state.announcements.removeListener(_onAnnouncementsChanged);
     _settingsCanSave.dispose();
+    _deviceRegistrar?.dispose();
     super.dispose();
   }
 
@@ -470,6 +476,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   /// 更新弹窗是否正在显示。更新优先：它显示时公告让路。
   bool _updateShowing = false;
+
+  /// 内测设备登记：仅内测包使用，首次上报 + 启动刷新，失败每分钟重试。
+  DeviceRegistrar? _deviceRegistrar;
 
   @override
   void initState() {
@@ -502,7 +511,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _checkUpdateOnceThenAnnouncements() async {
     await _checkUpdateOnce();
     if (!mounted) return;
-    unawaited(widget.state.announcements.start());
+    await widget.state.announcements.start();
+    if (!mounted) return;
+    await _registerDeviceIfInternal();
+  }
+
+  Future<void> _registerDeviceIfInternal() async {
+    if (!mounted) return;
+    final pkg = await readPackageName();
+    if (!mounted || !pkg.endsWith('.test')) return;
+    final center = widget.state.announcements;
+    // 公告中心 start() 之后才有 deviceId / deviceKey / deviceInfo。
+    _deviceRegistrar = DeviceRegistrar(
+      deviceId: center.deviceId,
+      deviceKey: center.deviceKey,
+      deviceInfo: center.deviceInfo,
+      pkg: pkg,
+    );
+    unawaited(_deviceRegistrar!.report());
   }
 
   @override
@@ -511,6 +537,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // 恢复联网的那一刻就要把公告拉下来。退到后台则停掉轮询与退避探针，
     // 「失败后重试」的那条探针只在前台存在。
     widget.state.announcements.setForeground(state == AppLifecycleState.resumed);
+    // 内测设备登记：切回前台也刷新一次最近时间 / IP，不能只等冷启动。
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_registerDeviceIfInternal());
+    }
   }
 
   void _onAnnouncementsChanged() => unawaited(_driveAnnouncementPopups());
@@ -562,6 +592,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         result,
         notifyWhenUpToDate: false,
         androidAbi: Platform.isAndroid ? 'arm64-v8a' : null,
+        downloadDir: widget.state.settings.downloadDir,
       );
     } finally {
       _updateShowing = false;
@@ -586,6 +617,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           label: l10n.tr('nav.settings'),
         ),
       ];
+
+  Widget _frostedRail(bool frosted, Widget rail) {
+    if (!frosted) return rail;
+    return ClipRect(
+      child: RepaintBoundary(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: rail,
+        ),
+      ),
+    );
+  }
 
   /// 风控 -352：弹一次窗，恢复完全手动 —— 不等冷却、不自动重试。
   /// 点「恢复」从停下的那一集接着走；点「先放着」只关窗，队列保持停手。
@@ -651,13 +694,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // 只会让每次通知都把壳（含 ThemeData 与整列导航）重建两遍。
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 760;
+        // Windows 桌面没有横竖屏概念，宽屏恒走侧边导航；移动端横屏是否走
+        // 侧边导航由「原生横屏」开关决定，关掉后横屏也退回底部导航。
+        final wide = constraints.maxWidth >= 760 &&
+            (!Platform.isAndroid || state.settings.nativeLandscape);
+        final barOpacity = clampBarOpacity(state.settings.barOpacity);
+        final frostedBar = state.settings.frostedGlass;
         return Scaffold(
           appBar: AppBar(
             // ⚠️ 标题显示**当前页名**，不再是应用名 ——
             // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
             // 手机上两条标题栏叠着，白占一整行。
             title: Text(_destinations(l10n)[index].label),
+            // 磨砂玻璃：给顶栏加背景模糊，浓度跟「上下栏不透明度」滑杆走。
+            flexibleSpace: frostedBar
+                ? ClipRect(
+                    child: RepaintBoundary(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  )
+                : null,
             actions: [
               // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。
               if (index == _settingsIndex)
@@ -693,18 +752,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           body: Row(
             children: [
               if (wide)
-                NavigationRail(
-                  selectedIndex: index,
-                  labelType: NavigationRailLabelType.all,
-                  onDestinationSelected: (value) => setState(() => index = value),
-                  destinations: _destinations(l10n)
-                      .map(
-                        (item) => NavigationRailDestination(
-                          icon: item.icon,
-                          label: Text(item.label),
-                        ),
-                      )
-                      .toList(),
+                _frostedRail(
+                  frostedBar,
+                  NavigationRail(
+                    selectedIndex: index,
+                    labelType: NavigationRailLabelType.all,
+                    onDestinationSelected: (value) =>
+                        setState(() => index = value),
+                    destinations: _destinations(l10n)
+                        .map(
+                          (item) => NavigationRailDestination(
+                            icon: item.icon,
+                            label: Text(item.label),
+                          ),
+                        )
+                        .toList(),
+                  ),
                 ),
               Expanded(child: pages[index]),
             ],
@@ -713,7 +776,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               ? null
               : buildAppNavBar(
                   style: state.settings.navStyle,
-                  frosted: state.settings.frostedGlass,
+                  frosted: frostedBar,
+                  barOpacity: barOpacity,
                   selectedIndex: index,
                   onSelect: (value) => setState(() => index = value),
                   items: [

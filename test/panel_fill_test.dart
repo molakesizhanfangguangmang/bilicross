@@ -1,4 +1,5 @@
 import 'package:bilicross/src/ui/widgets.dart';
+import 'package:bilicross/src/core/models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   ThemeData withFill(Color? fill) => ThemeData(
         extensions: <ThemeExtension<dynamic>>[PanelFill(fill)],
+      );
+
+  ThemeData withFrost() => ThemeData(
+        extensions: <ThemeExtension<dynamic>>[
+          const PanelFill(null, cardFrostMode: kCardFrosted),
+        ],
       );
 
   Future<void> pumpEmpty(WidgetTester tester, ThemeData theme) {
@@ -106,5 +113,42 @@ void main() {
     const fill = Color(0xff123456);
     expect(const PanelFill(fill).lerp(null, 0.5).color, fill);
     expect(const PanelFill(null).lerp(const PanelFill(fill), 1).color, fill);
+  });
+
+  testWidgets('磨砂开启时 EmptyState 套背景模糊', (tester) async {
+    await pumpEmpty(tester, withFrost());
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('磨砂开启时 CollapsibleSection 套背景模糊', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: withFrost(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: CollapsibleSection(
+              title: 't',
+              summary: 's',
+              expanded: true,
+              onToggle: () {},
+              child: const SizedBox(height: 20),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('磨砂开启时 FrostCard 套背景模糊', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: withFrost(),
+        home: const Scaffold(
+          body: FrostCard(child: SizedBox(height: 20)),
+        ),
+      ),
+    );
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 }

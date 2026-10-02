@@ -512,10 +512,56 @@ class SettingsPageState extends State<SettingsPage> {
                                 setState(() => settings.navStyle = name);
                                 unawaited(state.saveSettings());
                               },
-                            ),
+                          ),
                         ],
                       ),
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n.tr('settings.nativeLandscape')),
+                        subtitle: Text(l10n.tr('settings.nativeLandscapeHint')),
+                        value: settings.nativeLandscape,
+                        onChanged: (value) {
+                          setState(() => settings.nativeLandscape = value);
+                          unawaited(state.saveSettings());
+                        },
+                      ),
                     ],
+                    const SizedBox(height: 16),
+                    CollapsibleSection(
+                      title: l10n.tr('settings.frostedGroup'),
+                      summary: _frostedSummary(l10n, settings),
+                      expanded: _expanded.contains('frosted'),
+                      onToggle: () => _toggle('frosted'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(l10n.tr('settings.frostedGlass')),
+                            subtitle: Text(l10n.tr('settings.frostedGlassHint')),
+                            value: settings.frostedGlass,
+                            onChanged: (value) {
+                              setState(() => settings.frostedGlass = value);
+                              unawaited(state.saveSettings());
+                            },
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(l10n.tr('settings.cardFrosted')),
+                            subtitle: Text(l10n.tr('settings.cardFrostedHint')),
+                            value: settings.cardFrostMode == kCardFrosted,
+                            onChanged: (value) {
+                              setState(() {
+                                settings.cardFrostMode =
+                                    value ? kCardFrosted : kCardFrostOff;
+                              });
+                              unawaited(state.saveSettings());
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 24),
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
@@ -539,7 +585,7 @@ class SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 12),
               // 高级设置收进独立页面：启动画面、详细日志、关于都是低频项，
               // 放在主页会把常用设置挤下去。
-              Card(
+              FrostCard(
                 key: _advancedKey,
                 child: ListTile(
                   leading: const Icon(Icons.tune),
@@ -573,7 +619,7 @@ class SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               // 关于从高级设置页挪回主页：入口更直接，和「高级设置」平级。
-              Card(
+              FrostCard(
                 child: ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: Text(l10n.tr('settings.about')),
@@ -582,7 +628,10 @@ class SettingsPageState extends State<SettingsPage> {
                     style: const TextStyle(fontSize: 12, color: kTextMuted),
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showAppAboutDialog(context),
+                  onTap: () => showAppAboutDialog(
+                    context,
+                    downloadDir: widget.state.settings.downloadDir,
+                  ),
                 ),
               ),
             ],
@@ -600,6 +649,15 @@ class SettingsPageState extends State<SettingsPage> {
         kLocaleEnUS => l10n.tr('settings.languageEn'),
         _ => code,
       };
+
+  String _frostedSummary(AppLocalizations l10n, AppSettings settings) {
+    final bits = <String>[
+      if (settings.frostedGlass) l10n.tr('settings.frostedGlass'),
+      if (settings.cardFrostMode == kCardFrosted)
+        l10n.tr('settings.cardFrosted'),
+    ];
+    return bits.isEmpty ? l10n.tr('settings.frostedOff') : bits.join(' · ');
+  }
 
   Future<void> _pickDirectory() async {
     // 安卓：改到任意目录前先确保有「所有文件访问」权限；没有就跳系统设置页。

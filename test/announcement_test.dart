@@ -16,6 +16,7 @@ Map<String, Object?> _poll({
   bool multi = false,
   bool open = true,
   bool requireVote = false,
+  bool voted = false,
 }) =>
     <String, Object?>{
       'id': id,
@@ -23,6 +24,7 @@ Map<String, Object?> _poll({
       'multi': multi,
       'open': open,
       'requireVote': requireVote,
+      'voted': voted,
       'options': <Object>[
         <String, Object?>{'id': 'o1', 'label': '甲'},
         <String, Object?>{'id': 'o2', 'label': '乙'},
@@ -167,6 +169,17 @@ void main() {
       expect(list[1].poll!.requireVote, isFalse);
       expect(list[2].poll!.requireVote, isFalse);
     });
+
+    test('poll.voted 只在显式 true 时生效：缺字段按未投处理', () {
+      final list = parseAnnouncements(jsonEncode(<String, Object?>{
+        'announcements': <Object>[
+          <String, Object?>{'id': 'a1', 'poll': _poll(voted: true)},
+          <String, Object?>{'id': 'a2', 'poll': _poll(id: 'p2')},
+        ],
+      }));
+      expect(list[0].poll!.voted, isTrue);
+      expect(list[1].poll!.voted, isFalse);
+    });
   });
 
   group('版本门控', () {
@@ -283,6 +296,21 @@ void main() {
           platform: 'android',
         );
 
+    AnnouncementCenter buildCenterWithIdentity(
+      MockClient client, {
+      String deviceKey = '',
+      String deviceId = '',
+    }) =>
+        AnnouncementCenter(
+          store: store,
+          client: client,
+          baseUrl: 'https://announce.test',
+          version: '2.0.0',
+          platform: 'android',
+          deviceKey: deviceKey,
+          deviceId: deviceId,
+        );
+
     /// `start()` 里那次拉取是「发了不管」的，要拿到内容得自己再等一次。
     Future<AnnouncementCenter> startedWith(AnnouncementCenter center) async {
       await center.start();
@@ -292,8 +320,8 @@ void main() {
 
     test('弹窗队列：不可关闭的排前面；已投 / 已结束的不进队', () async {
       final center = buildCenter(MockClient((_) async => _feed(<Map<String, Object?>>[
-            <String, Object?>{'id': 'normal', 'title': '普通'},
-            <String, Object?>{'id': 'forced', 'title': '强制', 'closable': false},
+        <String, Object?>{'id': 'normal', 'title': '普通'},
+        <String, Object?>{'id': 'forced', 'title': '强制', 'closable': false},
             <String, Object?>{'id': 'polled', 'title': '投票', 'poll': _poll()},
             <String, Object?>{
               'id': 'closedPoll',
@@ -311,6 +339,38 @@ void main() {
       expect(center.takeNextPopup()?.id, 'normal');
       expect(center.takeNextPopup()?.id, 'polled');
       expect(center.takeNextPopup(), isNull);
+      center.dispose();
+    });
+
+    test('服务端回填 voted：本机没投过本地也会记住，不再弹', () async {
+      final client = MockClient((_) async => _feed(<Map<String, Object?>>[
+        <String, Object?>{
+          'id': 'polled',
+          'title': '投票',
+          'poll': _poll(voted: true),
+        },
+      ]));
+      final center = await startedWith(
+        buildCenterWithIdentity(client, deviceKey: 'k1', deviceId: 'd1'),
+      );
+      expect(center.hasVoted('p1'), isTrue);
+      expect(center.votedOptions('p1'), isEmpty);
+      expect(center.takeNextPopup(), isNull);
+      center.dispose();
+    });
+
+    test('拉公告时带上设备指纹与设备号', () async {
+      Uri? seen;
+      final client = MockClient((request) async {
+        seen = request.url;
+        return _feed(const <Map<String, Object?>>[]);
+      });
+      final center = await startedWith(
+        buildCenterWithIdentity(client, deviceKey: 'k1', deviceId: 'd1'),
+      );
+      expect(seen, isNotNull);
+      expect(seen!.queryParameters['deviceKey'], 'k1');
+      expect(seen!.queryParameters['deviceId'], 'd1');
       center.dispose();
     });
 

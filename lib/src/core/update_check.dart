@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'device_identity.dart';
+
 /// 项目主页：关于弹窗的「项目地址」与更新跳转都用它。
 const String kProjectUrl = 'https://github.com/molakesizhanfangguangmang/bilicross';
 
@@ -36,6 +38,9 @@ class UpdateCheckResult {
     this.assets = const <ReleaseAsset>[],
     this.minVersion = '',
     this.forceUpdate = false,
+    this.rollout = false,
+    this.tokenRequired = false,
+    this.file = '',
   });
 
   final UpdateOutcome outcome;
@@ -59,6 +64,15 @@ class UpdateCheckResult {
 
   /// 本次更新是否不可关闭（由 [minVersion] 与当前版本比较得出）。
   final bool forceUpdate;
+
+  /// 本次更新是否来自灰度名单（按设备下发）。
+  final bool rollout;
+
+  /// 灰度内测包下载是否需要填 token。
+  final bool tokenRequired;
+
+  /// 灰度内测包文件名；非空表示走 VPS 下载接口。
+  final String file;
 
   /// 展示用的远端版本号，保证带 `v` 前缀。
   String get latestLabel {
@@ -224,6 +238,9 @@ class UpdateConfig {
     required this.windowsSetupUrl,
     required this.windowsPortableUrl,
     required this.minVersion,
+    required this.rollout,
+    required this.tokenRequired,
+    required this.file,
   });
 
   final String version;
@@ -232,6 +249,9 @@ class UpdateConfig {
   final String windowsSetupUrl;
   final String windowsPortableUrl;
   final String minVersion;
+  final bool rollout;
+  final bool tokenRequired;
+  final String file;
 
   static UpdateConfig? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -244,6 +264,9 @@ class UpdateConfig {
       windowsSetupUrl: '${raw['windowsSetupUrl'] ?? ''}'.trim(),
       windowsPortableUrl: '${raw['windowsPortableUrl'] ?? ''}'.trim(),
       minVersion: '${raw['minVersion'] ?? ''}'.trim(),
+      rollout: raw['rollout'] == true,
+      tokenRequired: raw['tokenRequired'] == true,
+      file: '${raw['file'] ?? ''}'.trim(),
     );
   }
 }
@@ -299,6 +322,9 @@ UpdateCheckResult resultFromUpdateConfig(Object? payload, String currentVersion)
     assets: assets,
     minVersion: minVersion,
     forceUpdate: forceUpdate,
+    rollout: config.rollout,
+    tokenRequired: config.tokenRequired,
+    file: config.file,
   );
 }
 
@@ -328,17 +354,22 @@ Future<String> readPackageName() async {
 Future<UpdateCheckResult> checkForUpdate({
   http.Client? client,
   String? currentVersion,
+  String? deviceKey,
 }) async {
   final local = currentVersion ?? await readCurrentVersion();
   if (local.isEmpty) {
     return const UpdateCheckResult(outcome: UpdateOutcome.failed);
   }
+  final key = deviceKey ?? (await collectDeviceIdentity()).key;
+  final query = key.isEmpty
+      ? ''
+      : '?deviceKey=${Uri.encodeQueryComponent(key)}';
   final owned = client == null;
   final agent = client ?? http.Client();
   try {
     final response = await agent
         .get(
-          Uri.parse(kUpdateConfigApi),
+          Uri.parse('$kUpdateConfigApi$query'),
           headers: <String, String>{
             'Accept': 'application/json',
             'User-Agent': 'Yigui/$local',
