@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show ImageFilter;
 
 // `CupertinoPageTransitionsBuilder` 只在 cupertino 库里，material 不导出它。
 import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/app_state.dart';
@@ -21,8 +21,8 @@ import 'src/i18n/app_localizations_zh.dart';
 import 'src/platform/windows/desktop_shell.dart';
 import 'src/ui/about_dialog.dart';
 import 'src/ui/account_page.dart';
-import 'src/ui/app_nav_bar.dart';
 import 'src/ui/announcement_dialog.dart';
+import 'src/ui/app_nav_bar.dart';
 import 'src/ui/download_page.dart';
 import 'src/ui/settings_page.dart';
 import 'src/ui/splash_screen.dart';
@@ -36,6 +36,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LiquidGlassWidgets.initialize();
   // 先自检再起应用：数据目录写不了、资源读不出来、Windows 缺 WebView2，
   // 这三样任一缺失后面都会以更难看的方式炸开，不如当场说清楚。
   // 只查 Windows，其它平台直接跳过（Android 的路径与依赖不同，不在本次范围）。
@@ -49,7 +50,7 @@ Future<void> main() async {
       return;
     }
   }
-  runApp(const BiliCrossApp());
+  runApp(LiquidGlassWidgets.wrap(child: const BiliCrossApp()));
 }
 
 /// 自检阶段的数据目录：此时 AppState 还没加载，只能按通道约定先算一份。
@@ -300,7 +301,6 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
             (hasBackground || translucentUi)
                 ? scheme.surfaceContainerLow.withValues(alpha: uiOpacity)
                 : null,
-            cardFrostMode: state.settings.cardFrostMode,
             hasBackground: hasBackground,
             uiOpacity: uiOpacity,
           ),
@@ -313,7 +313,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 回落到 M3 默认（`surface` / `surfaceContainer` / `surfaceContainerLow`），
         // 与旧版完全一致。`palette.dart` 一个字都不改。
         // 顶栏 / 底栏 / 宽屏侧栏跟「上下栏」滑杆，卡片跟「卡片」滑杆，互不牵连。
-        appBarTheme: translucentBar || state.settings.frostedGlass
+        appBarTheme: translucentBar
             ? AppBarTheme(
                 backgroundColor: scheme.surface.withValues(alpha: barOpacity),
                 // M3 的滚动态会再盖一层 surfaceTint，把透明效果吃掉。
@@ -323,7 +323,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         // 选中项的指示器用主色（深墨绿）实心填充、图标转白。
         // 默认的 secondaryContainer 太浅，几乎与背景同亮度，看不出选中状态。
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: translucentBar || state.settings.frostedGlass
+          backgroundColor: translucentBar
               ? scheme.surfaceContainer.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
@@ -344,7 +344,7 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         ),
         // 宽屏走 NavigationRail，配色要与底部导航保持一致，否则两端观感不同。
         navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: translucentBar || state.settings.frostedGlass
+          backgroundColor: translucentBar
               ? scheme.surface.withValues(alpha: barOpacity)
               : null,
           indicatorColor: scheme.primary,
@@ -432,6 +432,18 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       errorBuilder: (context, error, stack) => const SizedBox.shrink(),
     );
   }
+}
+
+class _NavItem {
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    required this.filled,
+  });
+
+  final String label;
+  final IconData icon;
+  final Widget filled;
 }
 
 class AppShell extends StatefulWidget {
@@ -599,36 +611,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  List<NavigationDestination> _destinations(AppLocalizations l10n) => [
-        NavigationDestination(
-          icon: const Icon(Icons.add_link),
+  List<_NavItem> _destinations(AppLocalizations l10n) => [
+        _NavItem(
           label: l10n.tr('nav.download'),
+          icon: Icons.add_link,
+          filled: const Icon(Icons.add_link),
         ),
-        NavigationDestination(
-          icon: const Icon(Icons.downloading),
+        _NavItem(
           label: l10n.tr('nav.tasks'),
+          icon: Icons.downloading,
+          filled: const Icon(Icons.downloading),
         ),
-        NavigationDestination(
-          icon: const Icon(Icons.account_circle_outlined),
+        _NavItem(
           label: l10n.tr('nav.account'),
+          icon: Icons.account_circle,
+          filled: const Icon(Icons.account_circle),
         ),
-        NavigationDestination(
-          icon: const Icon(Icons.tune),
+        _NavItem(
           label: l10n.tr('nav.settings'),
+          icon: Icons.tune,
+          filled: const Icon(Icons.tune),
         ),
       ];
-
-  Widget _frostedRail(bool frosted, Widget rail) {
-    if (!frosted) return rail;
-    return ClipRect(
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: rail,
-        ),
-      ),
-    );
-  }
 
   /// 风控 -352：弹一次窗，恢复完全手动 —— 不等冷却、不自动重试。
   /// 点「恢复」从停下的那一集接着走；点「先放着」只关窗，队列保持停手。
@@ -678,6 +682,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final state = widget.state;
+    final scheme = Theme.of(context).colorScheme;
     _maybeShowRiskDialog(state, l10n);
     final pages = <Widget>[
       DownloadPage(state: state),
@@ -698,25 +703,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         // 侧边导航由「原生横屏」开关决定，关掉后横屏也退回底部导航。
         final wide = constraints.maxWidth >= 760 &&
             (!Platform.isAndroid || state.settings.nativeLandscape);
-        final barOpacity = clampBarOpacity(state.settings.barOpacity);
-        final frostedBar = state.settings.frostedGlass;
         return Scaffold(
           appBar: AppBar(
             // ⚠️ 标题显示**当前页名**，不再是应用名 ——
             // 以前是「AppBar 显示应用名 + 内容区再显示一次页名」，
             // 手机上两条标题栏叠着，白占一整行。
             title: Text(_destinations(l10n)[index].label),
-            // 磨砂玻璃：给顶栏加背景模糊，浓度跟「上下栏不透明度」滑杆走。
-            flexibleSpace: frostedBar
-                ? ClipRect(
-                    child: RepaintBoundary(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: const SizedBox.expand(),
-                      ),
-                    ),
-                  )
-                : null,
             actions: [
               // 保存按钮只在设置页出现；没有未保存的改动时置灰不可点。
               if (index == _settingsIndex)
@@ -752,42 +744,57 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           body: Row(
             children: [
               if (wide)
-                _frostedRail(
-                  frostedBar,
-                  NavigationRail(
-                    selectedIndex: index,
-                    labelType: NavigationRailLabelType.all,
-                    onDestinationSelected: (value) =>
-                        setState(() => index = value),
-                    destinations: _destinations(l10n)
-                        .map(
-                          (item) => NavigationRailDestination(
-                            icon: item.icon,
-                            label: Text(item.label),
-                          ),
-                        )
-                        .toList(),
-                  ),
+                NavigationRail(
+                  selectedIndex: index,
+                  labelType: NavigationRailLabelType.all,
+                  onDestinationSelected: (value) =>
+                      setState(() => index = value),
+                  destinations: _destinations(l10n)
+                      .map(
+                        (item) => NavigationRailDestination(
+                          icon: item.filled,
+                          label: Text(item.label),
+                        ),
+                      )
+                      .toList(),
                 ),
               Expanded(child: pages[index]),
             ],
           ),
           bottomNavigationBar: wide
               ? null
-              : buildAppNavBar(
-                  style: state.settings.navStyle,
-                  frosted: frostedBar,
-                  barOpacity: barOpacity,
-                  selectedIndex: index,
-                  onSelect: (value) => setState(() => index = value),
-                  items: [
-                    for (final item in _destinations(l10n))
-                      NavItem(
-                        icon: (item.icon as Icon).icon ?? Icons.circle_outlined,
-                        label: item.label,
-                      ),
-                  ],
-                ),
+              : switch (state.settings.navMode) {
+                  'off' || 'frosted' => buildAppNavBar(
+                      style: state.settings.navStyle,
+                      selectedIndex: index,
+                      items: [
+                        for (final item in _destinations(l10n))
+                          NavItem(icon: item.icon, label: item.label),
+                      ],
+                      onSelect: (value) => setState(() => index = value),
+                      frosted: state.settings.navMode == 'frosted',
+                      barOpacity: clampBarOpacity(state.settings.barOpacity),
+                    ),
+                  _ => GlassTabBar.bottom(
+                      tabs: [
+                        for (final item in _destinations(l10n))
+                          GlassTab(
+                            icon: item.filled,
+                            activeIcon: item.filled,
+                            label: item.label,
+                          ),
+                      ],
+                      selectedIndex: index,
+                      onTabSelected: (value) => setState(() => index = value),
+                      selectedIconColor: scheme.primary,
+                      selectedLabelColor: scheme.primary,
+                      indicatorSettings: AnimatedGlassIndicator
+                          .baseIndicatorSettings
+                          .copyWith(
+                            glassColor: scheme.primary.withValues(alpha: 0.35),
+                          ),
+                    ),
+                },
         );
       },
     );

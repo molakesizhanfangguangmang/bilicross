@@ -516,6 +516,30 @@ class SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                       const SizedBox(height: 16),
+                      Text(
+                        l10n.tr('settings.navMode'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final mode in kNavModes)
+                            ChoiceChip(
+                              label: Text(l10n.tr('settings.navMode.$mode')),
+                              selected: settings.navMode == mode,
+                              onSelected: (_) {
+                                setState(() => settings.navMode = mode);
+                                unawaited(state.saveSettings());
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(l10n.tr('settings.nativeLandscape')),
@@ -527,41 +551,6 @@ class SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    CollapsibleSection(
-                      title: l10n.tr('settings.frostedGroup'),
-                      summary: _frostedSummary(l10n, settings),
-                      expanded: _expanded.contains('frosted'),
-                      onToggle: () => _toggle('frosted'),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(l10n.tr('settings.frostedGlass')),
-                            subtitle: Text(l10n.tr('settings.frostedGlassHint')),
-                            value: settings.frostedGlass,
-                            onChanged: (value) {
-                              setState(() => settings.frostedGlass = value);
-                              unawaited(state.saveSettings());
-                            },
-                          ),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(l10n.tr('settings.cardFrosted')),
-                            subtitle: Text(l10n.tr('settings.cardFrostedHint')),
-                            value: settings.cardFrostMode == kCardFrosted,
-                            onChanged: (value) {
-                              setState(() {
-                                settings.cardFrostMode =
-                                    value ? kCardFrosted : kCardFrostOff;
-                              });
-                              unawaited(state.saveSettings());
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 24),
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
@@ -649,15 +638,6 @@ class SettingsPageState extends State<SettingsPage> {
         kLocaleEnUS => l10n.tr('settings.languageEn'),
         _ => code,
       };
-
-  String _frostedSummary(AppLocalizations l10n, AppSettings settings) {
-    final bits = <String>[
-      if (settings.frostedGlass) l10n.tr('settings.frostedGlass'),
-      if (settings.cardFrostMode == kCardFrosted)
-        l10n.tr('settings.cardFrosted'),
-    ];
-    return bits.isEmpty ? l10n.tr('settings.frostedOff') : bits.join(' · ');
-  }
 
   Future<void> _pickDirectory() async {
     // 安卓：改到任意目录前先确保有「所有文件访问」权限；没有就跳系统设置页。

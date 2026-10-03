@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import '../i18n/app_localizations.dart';
 import '../core/announcement.dart';
@@ -18,26 +16,22 @@ import './palette.dart';
 class PanelFill extends ThemeExtension<PanelFill> {
   const PanelFill(
     this.color, {
-    this.cardFrostMode = kCardFrostOff,
     this.hasBackground = false,
     this.uiOpacity = kUiMaxOpacity,
   });
 
   final Color? color;
-  final String cardFrostMode;
   final bool hasBackground;
   final double uiOpacity;
 
   @override
   PanelFill copyWith({
     Color? color,
-    String? cardFrostMode,
     bool? hasBackground,
     double? uiOpacity,
   }) =>
       PanelFill(
         color ?? this.color,
-        cardFrostMode: cardFrostMode ?? this.cardFrostMode,
         hasBackground: hasBackground ?? this.hasBackground,
         uiOpacity: uiOpacity ?? this.uiOpacity,
       );
@@ -47,7 +41,6 @@ class PanelFill extends ThemeExtension<PanelFill> {
     if (other == null) return this;
     return PanelFill(
       Color.lerp(color, other.color, t),
-      cardFrostMode: other.cardFrostMode,
       hasBackground: other.hasBackground,
       uiOpacity: other.uiOpacity,
     );
@@ -57,25 +50,6 @@ class PanelFill extends ThemeExtension<PanelFill> {
 /// 取「非卡片面」的兜底底色；`null` ＝ 保持该处原本的默认外观。
 Color? panelColor(BuildContext context) =>
     Theme.of(context).extension<PanelFill>()?.color;
-
-/// 磨砂玻璃的统一判定：要不要套磨砂、是不是「透背景」模式。
-///
-/// `overBackground` 只在「开了背景图」时成立 —— 没背景图时透背景模式退化成普通卡片。
-/// `alpha` 是磨砂底色实际用的不透明度，跟随「卡片不透明度」滑杆。
-({bool enabled, bool overBackground, double alpha}) _frostState(BuildContext context) {
-  final fill = Theme.of(context).extension<PanelFill>();
-  final mode = fill?.cardFrostMode ?? kCardFrostOff;
-  final hasBackground = fill?.hasBackground ?? false;
-  final uiOpacity = clampUiOpacity(fill?.uiOpacity ?? kUiMaxOpacity);
-  final frosted = mode == kCardFrosted;
-  // 开关开 = 透背景磨砂；没背景图时退化成普通磨砂（用更实一点的底色）。
-  final overBackground = frosted && hasBackground;
-  // 透背景时给底色降一点浓度，让背后的画面更容易透出来；下限 0.16 防文字糊掉。
-  final alpha = overBackground
-      ? (uiOpacity * 0.38).clamp(0.16, 0.38)
-      : (uiOpacity * 0.42).clamp(0.18, 0.42);
-  return (enabled: frosted, overBackground: overBackground, alpha: alpha);
-}
 
 /// 带磨砂能力的普通卡片壳（无标题栏），供「高级设置」「关于」这类入口和
 /// [CollapsibleSection] 使用。
@@ -89,47 +63,7 @@ class FrostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final frost = _frostState(context);
-    if (!frost.enabled) {
-      return Card(clipBehavior: Clip.antiAlias, child: child);
-    }
-    final scheme = Theme.of(context).colorScheme;
-    final card = Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: scheme.surfaceContainerHighest
-          .withValues(alpha: frost.alpha),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(8)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.55),
-            width: 1,
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: child,
-      ),
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: card,
-        ),
-      ),
-    );
+    return Card(clipBehavior: Clip.antiAlias, child: child);
   }
 }
 
@@ -154,51 +88,18 @@ class PanelBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = panelColor(context);
-    final frost = _frostState(context);
-    final useFrost = frost.enabled;
-    final scheme = Theme.of(context).colorScheme;
 
-    // 默认态（无磨砂且无底色）保持 decoration 为 null，几何与旧版逐像素一致。
-    if (!useFrost && color == null) {
+    // 默认态（无底色）保持 decoration 为 null，几何与旧版逐像素一致。
+    if (color == null) {
       return Container(padding: padding, child: child);
     }
-    final inner = Container(
+    return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: useFrost
-            ? scheme.surfaceContainerHighest
-                .withValues(alpha: frost.alpha)
-            : color,
+        color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: useFrost
-            ? Border.all(
-                color: Colors.white.withValues(alpha: 0.55),
-                width: 1,
-              )
-            : null,
-        boxShadow: useFrost
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
       ),
       child: child,
-    );
-    if (!useFrost) {
-      return inner;
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: inner,
-        ),
-      ),
     );
   }
 }
@@ -267,9 +168,6 @@ class SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 透背景磨砂只在有背景图时生效；没背景图就退化成普通卡片（完全无磨砂效果）。
-    final frost = _frostState(context);
-    final useFrost = frost.enabled;
     final content = Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -288,48 +186,7 @@ class SectionCard extends StatelessWidget {
         ],
       ),
     );
-    if (!useFrost) {
-      return Card(child: content);
-    }
-    final scheme = Theme.of(context).colorScheme;
-    final card = Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      // 磨砂要在白底/纯色底下也看得出：用更实的底色 + 白边 + 阴影兜住轮廓，
-      // 单靠半透明底色会在白底上几乎看不见。
-      color: scheme.surfaceContainerHighest
-          .withValues(alpha: frost.alpha),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(8)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.55),
-            width: 1,
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: content,
-      ),
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: card,
-        ),
-      ),
-    );
+    return Card(child: content);
   }
 }
 
@@ -437,28 +294,12 @@ class EmptyState extends StatelessWidget {
   final String message;
 
   Widget _buildContent(BuildContext context) {
-    final frost = _frostState(context);
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       constraints: const BoxConstraints(minHeight: 240),
       decoration: BoxDecoration(
-        color: frost.enabled
-            ? scheme.surfaceContainerHighest
-                .withValues(alpha: frost.alpha)
-            : panelColor(context),
-        border: frost.enabled
-            ? Border.all(color: Colors.white.withValues(alpha: 0.55), width: 1)
-            : Border.all(color: kBorder),
+        color: panelColor(context),
+        border: Border.all(color: kBorder),
         borderRadius: BorderRadius.circular(8),
-        boxShadow: frost.enabled
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
       ),
       child: Center(
         child: Padding(
@@ -480,16 +321,7 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!_frostState(context).enabled) return _buildContent(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: RepaintBoundary(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: _buildContent(context),
-        ),
-      ),
-    );
+    return _buildContent(context);
   }
 }
 

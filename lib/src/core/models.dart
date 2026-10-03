@@ -965,19 +965,13 @@ const List<String> kNavStyles = <String>['standard', 'q1', 'q2', 'q3', 'q4'];
 String normalizeNavStyle(String? raw) =>
     raw != null && kNavStyles.contains(raw) ? raw : kNavStyleDefault;
 
-/// 卡片磨砂玻璃（Beta）：单开关。开 = 透背景磨砂；没背景图退化为普通卡片磨砂。
-const String kCardFrostOff = 'off';
-const String kCardFrosted = 'frosted';
+/// 底部导航外观模式。默认 `frosted`（磨砂）。
+/// `off` 普通胶囊、`frosted` 普通胶囊 + 磨砂、`glass` 液态玻璃。
+const String kNavModeDefault = 'frosted';
+const List<String> kNavModes = <String>['off', 'frosted', 'glass'];
 
-/// 旧三态里的透背景档，已并入「开」；只在迁移老配置时认。
-const String kCardFrostOverBackgroundLegacy = 'overBackground';
-
-String normalizeCardFrostMode(String? raw) {
-  if (raw == kCardFrosted || raw == kCardFrostOverBackgroundLegacy) {
-    return kCardFrosted;
-  }
-  return kCardFrostOff;
-}
+String normalizeNavMode(String? raw) =>
+    raw != null && kNavModes.contains(raw) ? raw : kNavModeDefault;
 
 class AppSettings {
   AppSettings({
@@ -1012,9 +1006,8 @@ class AppSettings {
     this.uiOpacity = kUiDefaultOpacity,
     this.barOpacity = kBarDefaultOpacity,
     this.backgroundFit = kBackgroundFitDefault,
-    this.frostedGlass = false,
     this.nativeLandscape = true,
-    this.cardFrostMode = kCardFrostOff,
+    this.navMode = kNavModeDefault,
   });
 
   String downloadDir;
@@ -1097,15 +1090,12 @@ class AppSettings {
   /// 背景铺满方式，取值见 [kBackgroundFits]。
   String backgroundFit;
 
-  /// 底栏磨砂玻璃（Beta）。默认关。
-  bool frostedGlass;
-
   /// 移动端横屏是否走桌面式侧边导航。默认开（横屏 = 侧边栏）。
   /// 关掉后 Android 横屏也走底部导航。Windows 桌面不受此开关影响。
   bool nativeLandscape;
 
-  /// 卡片磨砂模式：`off` / `frosted`。默认关。
-  String cardFrostMode;
+  /// 底部导航外观模式，取值见 [kNavModes]。
+  String navMode;
 
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
@@ -1139,9 +1129,8 @@ class AppSettings {
         'ui_opacity': uiOpacity,
         'bar_opacity': barOpacity,
         'background_fit': backgroundFit,
-        'frosted_glass': frostedGlass,
         'native_landscape': nativeLandscape,
-        'card_frost_mode': cardFrostMode,
+        'nav_mode': navMode,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -1187,9 +1176,8 @@ class AppSettings {
           (json['bar_opacity'] as num?)?.toDouble() ?? kBarDefaultOpacity,
         ),
         backgroundFit: normalizeBackgroundFit(json['background_fit'] as String?),
-        frostedGlass: json['frosted_glass'] as bool? ?? false,
         nativeLandscape: json['native_landscape'] as bool? ?? true,
-        cardFrostMode: normalizeCardFrostMode(json['card_frost_mode'] as String?),
+        navMode: normalizeNavMode(json['nav_mode'] as String?),
       );
 }
 

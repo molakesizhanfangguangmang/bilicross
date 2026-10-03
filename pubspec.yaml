@@ -1,7 +1,7 @@
 name: bilicross
 description: 逸轨（BiliCross）：B 站媒体本地下载与整理客户端。
 publish_to: none
-version: 2.3.6+78
+version: 2.4.0+84
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -34,6 +34,8 @@ dependencies:
   win32: ^6.4.0
   # Windows 网页登录用：flutter_inappwebview（WebView2）。Android 继续用 webview_flutter，不替换。
   flutter_inappwebview: ^6.1.5
+  # 液态玻璃底栏：底部导航外观「液态玻璃（beta）」档使用。
+  liquid_glass_widgets: ^1.8.1
 
 dev_dependencies:
   # 设备上的集成测试（跑在真机/模拟器里）。备份的导出路径依赖
