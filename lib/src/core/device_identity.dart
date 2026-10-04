@@ -50,6 +50,10 @@ Future<DeviceIdentity> collectDeviceIdentity({DeviceInfoPlugin? plugin}) async {
         'device': android.device,
         'hardware': android.hardware,
         'fingerprint': android.fingerprint,
+        'osVersion': android.version.release,
+        'sdkInt': android.version.sdkInt,
+        'rom': android.display,
+        'incremental': android.version.incremental,
         'physical': android.isPhysicalDevice,
       });
     }

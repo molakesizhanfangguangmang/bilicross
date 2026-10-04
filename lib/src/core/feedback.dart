@@ -25,6 +25,7 @@ Future<FeedbackStatus> submitFeedback({
   String nonce = '',
   Map<String, Object>? deviceInfo,
   String pkg = '',
+  String version = '',
   http.Client? client,
   String baseUrl = kAnnouncementsBaseUrl,
   Duration timeout = kAnnouncementTimeout,
@@ -51,6 +52,7 @@ Future<FeedbackStatus> submitFeedback({
             if (deviceInfo != null && deviceInfo.isNotEmpty)
               'device_info': deviceInfo,
             if (pkg.isNotEmpty) 'pkg': pkg,
+            if (version.isNotEmpty) 'version': version,
           }),
         )
         .timeout(timeout);

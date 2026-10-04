@@ -539,6 +539,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       deviceKey: center.deviceKey,
       deviceInfo: center.deviceInfo,
       pkg: pkg,
+      version: await readCurrentVersion(),
     );
     unawaited(_deviceRegistrar!.report());
   }
@@ -788,11 +789,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                       onTabSelected: (value) => setState(() => index = value),
                       selectedIconColor: scheme.primary,
                       selectedLabelColor: scheme.primary,
-                      indicatorSettings: AnimatedGlassIndicator
-                          .baseIndicatorSettings
-                          .copyWith(
-                            glassColor: scheme.primary.withValues(alpha: 0.35),
-                          ),
+                      // 指示块下方不叠变色胶囊，玻璃只折射背景。
+                      indicatorColor: Colors.transparent,
+                      // 指示块只做折射透镜，玻璃本身不带色（参考酷安）。
+                      indicatorSettings:
+                          AnimatedGlassIndicator.baseIndicatorSettings,
                     ),
                 },
         );

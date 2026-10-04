@@ -355,15 +355,19 @@ Future<UpdateCheckResult> checkForUpdate({
   http.Client? client,
   String? currentVersion,
   String? deviceKey,
+  String? packageName,
 }) async {
   final local = currentVersion ?? await readCurrentVersion();
   if (local.isEmpty) {
     return const UpdateCheckResult(outcome: UpdateOutcome.failed);
   }
   final key = deviceKey ?? (await collectDeviceIdentity()).key;
-  final query = key.isEmpty
-      ? ''
-      : '?deviceKey=${Uri.encodeQueryComponent(key)}';
+  final pkg = packageName ?? await readPackageName();
+  final params = <String>[
+    if (key.isNotEmpty) 'deviceKey=${Uri.encodeQueryComponent(key)}',
+    if (pkg.isNotEmpty) 'pkg=${Uri.encodeQueryComponent(pkg)}',
+  ];
+  final query = params.isEmpty ? '' : '?${params.join('&')}';
   final owned = client == null;
   final agent = client ?? http.Client();
   try {

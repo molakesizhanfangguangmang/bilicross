@@ -46,6 +46,7 @@ Future<VoteStatus> submitVote({
   String nonce = '',
   Map<String, Object>? deviceInfo,
   String pkg = '',
+  String version = '',
   http.Client? client,
   String baseUrl = kAnnouncementsBaseUrl,
   Duration timeout = kAnnouncementTimeout,
@@ -74,6 +75,7 @@ Future<VoteStatus> submitVote({
             if (deviceInfo != null && deviceInfo.isNotEmpty)
               'device_info': deviceInfo,
             if (pkg.isNotEmpty) 'pkg': pkg,
+            if (version.isNotEmpty) 'version': version,
             'options': options,
           }),
         )

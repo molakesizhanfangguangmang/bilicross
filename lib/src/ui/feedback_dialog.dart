@@ -75,6 +75,7 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
       deviceInfo: identity.info,
       nonce: nonce,
       pkg: pkg,
+      version: await readCurrentVersion(),
     );
   }
 

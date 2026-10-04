@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'update_check.dart' show readPackageName;
+
 /// 流空闲超过此时长没有新数据就判下载失败，避免极慢网络下进度走满却一直卡在
 /// 「正在下载」。
 const Duration kRolloutIdleTimeout = Duration(seconds: 30);
@@ -36,9 +38,12 @@ Future<(RolloutDownloadStatus, String?)> downloadRolloutApk({
   final owned = client == null;
   final agent = client ?? http.Client();
   try {
+    final pkg = await readPackageName();
     final uri = Uri.parse(
       '$baseUrl/v1/rollout/download?deviceKey='
-      '${Uri.encodeQueryComponent(deviceKey)}&token=${Uri.encodeQueryComponent(token)}',
+      '${Uri.encodeQueryComponent(deviceKey)}'
+      '&pkg=${Uri.encodeQueryComponent(pkg)}'
+      '&token=${Uri.encodeQueryComponent(token)}',
     );
     final response = await agent.send(http.Request('GET', uri));
     if (response.statusCode == 403) {

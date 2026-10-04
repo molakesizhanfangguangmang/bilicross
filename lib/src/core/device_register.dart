@@ -13,6 +13,7 @@ class DeviceRegistrar {
     required this.deviceKey,
     required this.deviceInfo,
     required this.pkg,
+    required this.version,
     this.baseUrl = 'https://bili.culture-see.de5.net',
     this.retryInterval = const Duration(minutes: 1),
     http.Client? client,
@@ -22,6 +23,7 @@ class DeviceRegistrar {
   final String deviceKey;
   final Map<String, Object> deviceInfo;
   final String pkg;
+  final String version;
   final String baseUrl;
   final Duration retryInterval;
   final http.Client _client;
@@ -54,6 +56,7 @@ class DeviceRegistrar {
               if (deviceKey.isNotEmpty) 'device_key': deviceKey,
               if (deviceInfo.isNotEmpty) 'device_info': deviceInfo,
               if (pkg.isNotEmpty) 'pkg': pkg,
+              if (version.isNotEmpty) 'version': version,
             }),
           )
           .timeout(const Duration(seconds: 8));
