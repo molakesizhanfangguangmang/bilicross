@@ -973,6 +973,42 @@ const List<String> kNavModes = <String>['off', 'frosted', 'glass'];
 String normalizeNavMode(String? raw) =>
     raw != null && kNavModes.contains(raw) ? raw : kNavModeDefault;
 
+/// 底部导航的外观档位（原「导航栏效果（γ）」，2026-10-14 定稿为两档）。
+///
+/// - `original`：上游原版液态玻璃；
+/// - `translucent`：酷安式半透（淡底 + blur 8 + 折射 24 + 1px 细描边，
+///   折射恒定；按压时只有指示块上浮，本体不变）。
+///
+/// ⚠️ 旧的 `press` 档已砍（它和 `translucent` 只在按住时才有差别，
+/// 静止时观感完全一致，没有存在的意义）——历史配置读到时并入 `translucent`。
+const String kNavGammaDefault = 'original';
+const List<String> kNavGammaModes = <String>[
+  'original',
+  'translucent',
+];
+
+String normalizeNavGamma(String? raw) =>
+    raw == 'press'
+        ? 'translucent'
+        : (raw != null && kNavGammaModes.contains(raw)
+            ? raw
+            : kNavGammaDefault);
+
+/// 卡片高级材质（beta）开关。默认 `off`（与旧版逐像素一致）。
+///
+/// - `off`：普通卡片、原样不动（含安卓的弹性拉伸回弹）；
+/// - `glass`：卡片换成液态玻璃材质（采样背景层，不随内容滚动）；
+///   同时会把安卓的越界回弹换成不拉伸内容的那种 —— 拉伸的那层 `ImageFilter`
+///   会让玻璃的实时模糊失效（拉到顶/底时整片透明）。
+///
+/// ⚠️ 只有**开了背景图**时才有意义：没有背景图时玻璃背后是纯色，
+/// 磨出来只是一层灰雾，观感反而更差。
+const String kCardGlassDefault = 'off';
+const List<String> kCardGlassModes = <String>['off', 'glass'];
+
+String normalizeCardGlass(String? raw) =>
+    raw != null && kCardGlassModes.contains(raw) ? raw : kCardGlassDefault;
+
 class AppSettings {
   AppSettings({
     this.downloadDir = '',
@@ -1008,6 +1044,8 @@ class AppSettings {
     this.backgroundFit = kBackgroundFitDefault,
     this.nativeLandscape = true,
     this.navMode = kNavModeDefault,
+    this.cardGlass = kCardGlassDefault,
+    this.navGammaMode = kNavGammaDefault,
   });
 
   String downloadDir;
@@ -1097,6 +1135,15 @@ class AppSettings {
   /// 底部导航外观模式，取值见 [kNavModes]。
   String navMode;
 
+  /// 卡片液态玻璃模式，取值见 [kCardGlassModes]。默认关。
+  String cardGlass;
+
+  /// 底部导航外观档位（原名「导航栏效果（γ）」）：
+  ///
+  /// - `original`：原版液态玻璃（默认，与旧版逐像素一致）；
+  /// - `translucent`：酷安式半透 —— 淡底 + 轻模糊 + 折射，背后内容始终透出来。
+  String navGammaMode;
+
   Map<String, dynamic> toJson() => {
         'download_dir': downloadDir,
         'preferred_quality': preferredQuality,
@@ -1131,6 +1178,8 @@ class AppSettings {
         'background_fit': backgroundFit,
         'native_landscape': nativeLandscape,
         'nav_mode': navMode,
+        'card_glass': cardGlass,
+        'nav_gamma_mode': navGammaMode,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) => AppSettings(
@@ -1178,6 +1227,8 @@ class AppSettings {
         backgroundFit: normalizeBackgroundFit(json['background_fit'] as String?),
         nativeLandscape: json['native_landscape'] as bool? ?? true,
         navMode: normalizeNavMode(json['nav_mode'] as String?),
+        cardGlass: normalizeCardGlass(json['card_glass'] as String?),
+        navGammaMode: normalizeNavGamma(json['nav_gamma_mode'] as String?),
       );
 }
 

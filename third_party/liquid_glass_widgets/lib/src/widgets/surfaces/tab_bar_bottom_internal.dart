@@ -483,6 +483,7 @@ class TabIndicator extends StatefulWidget {
     this.interactionScale = 1.0,
     this.platformViewBackdrop = false,
     this.springDescription,
+    this.onPressProgressChanged,
     super.key,
   });
 
@@ -528,6 +529,14 @@ class TabIndicator extends StatefulWidget {
   /// Pass `1.0` to disable scaling. Resolved by the parent widget from
   /// [GlassInteractionBehavior] before being forwarded here.
   final double interactionScale;
+
+  /// 指示块按压进度（0 = 静止，1 = 完全按下）回调（fork 新增）。
+  ///
+  /// ⚠️ 是**连续值**不是布尔：酷安 `LiquidBottomTabs` 的按压层折射是
+  /// `lens(24dp * pressProgress)` 连续生长的，用布尔切换会变成硬切、观感卡顿
+  /// （2026-10-14 踩过）。这里直接复用指示块已有的弹簧厚度值 —— 它本来就是
+  /// 0→1 连续插值的。不传时行为与上游一致。
+  final ValueChanged<double>? onPressProgressChanged;
 
   /// When true, forces BackdropFilter rendering and refracts the icon layer
   /// instead of the backdrop — needed over iOS PlatformViews.
@@ -663,6 +672,17 @@ class TabIndicatorState extends State<TabIndicator>
                           ? 1.0
                           : 0.0,
                       builder: (context, thickness, child) {
+                        // 把按压进度（弹簧厚度，连续 0→1）报给底栏本体：
+                        // 本体按它连续插值折射 / 高光，对齐酷安
+                        // `lens(24dp * pressProgress)`（fork 新增，2026-10-14）。
+                        final onPressProgressChanged =
+                            widget.onPressProgressChanged;
+                        if (onPressProgressChanged != null) {
+                          final progress = thickness.clamp(0.0, 1.0);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) onPressProgressChanged(progress);
+                          });
+                        }
                         // Lazy evaluation optimization: skip expensive calculations when hidden
                         if (thickness < 0.01 &&
                             !widget.visible &&

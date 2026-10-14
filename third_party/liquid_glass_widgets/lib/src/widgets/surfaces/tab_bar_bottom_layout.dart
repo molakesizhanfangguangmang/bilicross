@@ -55,6 +55,7 @@ class TabBarBottomLayout extends StatefulWidget {
     this.enableBlend = true,
     this.blendAmount = 10,
     this.settings,
+    this.settingsOnPress,
     this.showIndicator = true,
     this.indicatorColor,
     this.indicatorSettings,
@@ -113,6 +114,13 @@ class TabBarBottomLayout extends StatefulWidget {
   final bool enableBlend;
   final double blendAmount;
   final LiquidGlassSettings? settings;
+
+  /// 按压 / 拖动时套在本体玻璃上的参数（frok 新增，对齐酷安
+  /// `LiquidBottomTabs` 的 `lens(... * pressProgress)` + 高光随按压淡入）。
+  ///
+  /// 为 null 时行为与上游完全一致：本体玻璃恒定用 [settings]，不随按压变化。
+  /// 给了值就在指示块按下 / 拖动 / 归位动画期间用它，松开后回落到 [settings]。
+  final LiquidGlassSettings? settingsOnPress;
   final bool showIndicator;
   final Color? indicatorColor;
   final LiquidGlassSettings? indicatorSettings;
@@ -166,6 +174,10 @@ class _TabBarBottomLayoutState extends State<TabBarBottomLayout>
   static const _kGestureRegionKey = ValueKey<String>(
     'glass_tab_bar_gesture_region',
   );
+
+  /// 指示块按压进度（连续 0→1），由 [TabIndicator.onPressProgressChanged] 回填。
+  /// 驱动本体玻璃连续插值（fork 新增，对齐酷安 `lens(24dp * pressProgress)`）。
+  double _pressProgress = 0.0;
 
   /// Lays out the tab [Row] in physical (LTR) order regardless of the ambient
   /// direction, so the first child is on the left — matching the indicator and
@@ -255,6 +267,20 @@ class _TabBarBottomLayoutState extends State<TabBarBottomLayout>
 
     final effectiveSettings = widget.settings ?? _defaultGlassSettings;
 
+    /// 本体玻璃当前该用的参数：按压期间在 [effectiveSettings] 与
+    /// [settingsOnPress] 之间**连续插值**（fork 新增）。
+    ///
+    /// ⚠️ 必须插值、不能布尔切换 —— 酷安是 `lens(24dp * pressProgress)`
+    /// 连续生长；直接换整组参数会变成硬切，观感卡顿（2026-10-14 踩过）。
+    /// 未提供 `settingsOnPress` 时恒为 [effectiveSettings]，与上游一致。
+    final LiquidGlassSettings barSettings = widget.settingsOnPress == null
+        ? effectiveSettings
+        : LiquidGlassSettings.lerp(
+            effectiveSettings,
+            widget.settingsOnPress!,
+            _pressProgress,
+          );
+
     // RTL support.
     //
     // The indicator/gesture coordinate system and the [AnimatedGlassIndicator]
@@ -289,7 +315,7 @@ class _TabBarBottomLayoutState extends State<TabBarBottomLayout>
     final pillLayer = AdaptiveLiquidGlassLayer(
       clipExpansion:
           const EdgeInsets.symmetric(horizontal: 20.0, vertical: 15.0),
-      settings: effectiveSettings,
+      settings: barSettings,
       quality: effectiveQuality,
       platformViewBackdrop: widget.platformViewBackdrop,
       blendAmount: widget.enableBlend ? widget.blendAmount : 0,
@@ -364,6 +390,15 @@ class _TabBarBottomLayoutState extends State<TabBarBottomLayout>
                       child: TabIndicator(
                         quality: effectiveQuality,
                         backgroundQuality: effectiveBackgroundQuality,
+                        onPressProgressChanged: widget.settingsOnPress == null
+                            ? null
+                            : (progress) {
+                                if (!mounted ||
+                                    (progress - _pressProgress).abs() < 0.001) {
+                                  return;
+                                }
+                                setState(() => _pressProgress = progress);
+                              },
                         springDescription: widget.springDescription,
                         visible: widget.showIndicator,
                         tabIndex: selectedIndex,

@@ -361,7 +361,15 @@ class AppLocalizationsEn extends AppLocalizations {
     'settings.navMode': 'Bottom bar style',
     'settings.navMode.off': 'Off',
     'settings.navMode.frosted': 'Frosted',
-    'settings.navMode.glass': 'Liquid glass (beta)',
+    'settings.navMode.glass': 'Liquid glass',
+    'settings.cardGlass': 'Card advanced material (beta)',
+    'settings.cardGlassHint': 'Turns cards into liquid glass. Requires a '
+        'background image; without one it has no effect.',
+    'settings.navGamma': 'Bottom bar effect',
+    'settings.navGamma.original': 'Original',
+    'settings.navGamma.translucent': 'Translucent',
+    'settings.navGammaHint':
+        'Translucent: light tint + light blur + refraction; the body stays constant.',
     'settings.nativeLandscape': 'Native landscape mode',
     'settings.nativeLandscapeHint':
         'Use desktop-style side navigation in landscape; when off, landscape uses the bottom bar',

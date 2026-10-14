@@ -13,6 +13,24 @@ import '../../theme/glass_theme.dart';
 
 import 'inherited_liquid_glass.dart';
 
+/// 共享背景纹理的一条缓存记录（见 [LightweightLiquidGlass] 里的 `_backgroundCache`）。
+///
+/// ⚠️ 用引用计数是因为同一张纹理会被多个玻璃实例同时使用（一页多张卡片、
+/// 切页时新旧实例短暂共存），先释放的那个不能把别人正在画的图销毁掉。
+class _SharedGlassBackground {
+  _SharedGlassBackground(this.image, this.size, this.position);
+
+  ui.Image? image;
+  final Size size;
+  final Offset position;
+
+  /// 正在引用这张纹理的玻璃实例数。
+  int refs = 0;
+
+  /// 是否已被更新的捕获替换；替换后等引用归零才销毁。
+  bool replaced = false;
+}
+
 /// Returns the [RenderRepaintBoundary] for [key] only when it is fully safe
 /// to use — the element must be *active* and the render object *attached*.
 ///
@@ -131,6 +149,56 @@ class LightweightLiquidGlass extends StatefulWidget {
   // during preWarm() or initialize() before runApp().
   static ui.Image? _dummyImage;
 
+  /// ⚠️ 跨实例共享的背景纹理缓存（fork 新增）。
+  ///
+  /// 卡片玻璃在切换页面时会整片重建：没有这份缓存的话，每个新实例都得先
+  /// 无纹理渲染一帧、等 `toImage` 异步捕获回来才变成玻璃 —— 观感就是
+  /// 「先闪一下没开的，不到一秒后才变成液态玻璃」（2026-10-13 用户反馈）。
+  /// 捕获成功后按 `backgroundKey` 缓存，新实例在 `initState` 里同步取用，
+  /// 切页零等待。纹理随应用会话存活（背景层只有一个，不会堆积）。
+  static final Map<GlobalKey, _SharedGlassBackground> _backgroundCache =
+      <GlobalKey, _SharedGlassBackground>{};
+
+  /// 借一张缓存的背景纹理（引用计数 +1）。没有可用纹理时返回 null。
+  static _SharedGlassBackground? _acquireCachedBackground(GlobalKey key) {
+    final entry = _backgroundCache[key];
+    if (entry == null || entry.image == null) return null;
+    entry.refs += 1;
+    return entry;
+  }
+
+  /// 归还一次引用。
+  ///
+  /// ⚠️ 同一张纹理会被多个玻璃实例同时使用（一页多张卡片，切页时新旧实例
+  /// 还会短暂共存），所以**只能引用计数**：被替换掉且已无人引用的旧图才真正
+  /// 销毁，否则会把别人正在画的那张销毁掉（2026-10-13 修这个坑）。
+  static void _releaseCachedBackground(_SharedGlassBackground entry) {
+    entry.refs -= 1;
+    if (entry.refs > 0 || !entry.replaced) return;
+    entry.image?.dispose();
+    entry.image = null;
+  }
+
+  /// 把刚捕获到的纹理写进缓存（替换旧的）。返回新条目，调用方持有 1 次引用。
+  static _SharedGlassBackground _storeCachedBackground(
+    GlobalKey key,
+    ui.Image image,
+    Size size,
+    Offset position,
+  ) {
+    final old = _backgroundCache[key];
+    if (old != null) {
+      old.replaced = true;
+      if (old.refs <= 0) {
+        old.image?.dispose();
+        old.image = null;
+      }
+    }
+    final entry = _SharedGlassBackground(image, size, position)..refs = 1;
+    _backgroundCache[key] = entry;
+    return entry;
+  }
+
   /// Returns the cached 1×1 transparent dummy image, creating it lazily on demand.
   static ui.Image get dummyImage => _dummyImage ??= _createDummyImage();
 
@@ -192,6 +260,8 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
   bool _isDisposed = false;
   bool _loggedCreation = false;
   ui.Image? _backgroundImage;
+  /// 我当前持有的那条共享缓存（dispose / 换图时要还引用）。
+  _SharedGlassBackground? _heldEntry;
 
   // Ticker-driven background refresh (same proven pattern as GlassEffect).
   // Fires every frame while a backgroundKey is active; stops automatically
@@ -205,6 +275,18 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initShader();
+    // ⚠️ fork 新增：同步吃共享缓存 —— 切页时新实例第一帧就有纹理，
+    // 不会再「先闪一下无纹理、再变玻璃」（2026-10-13 用户反馈）。
+    final key = widget.backgroundKey;
+    if (key != null) {
+      final cached = LightweightLiquidGlass._acquireCachedBackground(key);
+      if (cached != null) {
+        _heldEntry = cached;
+        _backgroundImage = cached.image;
+        _lastCaptureSize = cached.size;
+        _lastCapturePosition = cached.position;
+      }
+    }
     _ticker = createTicker(_handleTick);
     // Defer ticker start until after first frame so the RepaintBoundary is laid out.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -216,6 +298,15 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
   ///
   /// Checks the key's context directly so that a non-null key with no
   /// attached [RepaintBoundary] does NOT start the ticker.
+  /// 归还当前持有的共享缓存引用（若有）。真正的销毁由引用计数决定 ——
+  /// 这里**绝不能**直接 dispose 纹理，图可能还被别的实例用着。
+  void _dropHeldBackground() {
+    final held = _heldEntry;
+    if (held == null) return;
+    LightweightLiquidGlass._releaseCachedBackground(held);
+    _heldEntry = null;
+  }
+
   void _updateTicker() {
     // A key that exists but has no attached RepaintBoundary (enabled:false)
     // must not start the ticker — treat it the same as a null key.
@@ -227,7 +318,7 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
     } else if (!hasBoundary && _ticker.isActive) {
       _ticker.stop();
       _stableFrameCount = 0;
-      _backgroundImage?.dispose();
+      _dropHeldBackground();
       _backgroundImage = null;
       // Propagate null to the render object immediately so it doesn't paint
       // with a disposed image if a repaint is triggered before the next tick.
@@ -263,7 +354,7 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
       // runtime). Stop the ticker immediately — zero cost from this point on.
       if (_ticker.isActive) {
         _ticker.stop();
-        _backgroundImage?.dispose();
+        _dropHeldBackground();
         _backgroundImage = null;
         _stableFrameCount = 0;
         // Propagate null to the render object immediately — prevents the
@@ -331,8 +422,24 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
         _capturePending = false;
         return;
       }
-      _backgroundImage?.dispose();
+      // ⚠️ 不要在这里 dispose 旧图：它可能正被别的实例共用（共享缓存）。
+      // 归还引用的动作交给 [_heldEntry] 那条链处理。
       _backgroundImage = image;
+      // ⚠️ fork 新增：把新纹理写进共享缓存，供后续新建的实例（切页）同步复用。
+      final cacheKey = widget.backgroundKey;
+      if (cacheKey != null) {
+        // 先还掉上一份引用（旧图若已被替换且无人引用，会在这里被销毁）。
+        final held = _heldEntry;
+        if (held != null) {
+          LightweightLiquidGlass._releaseCachedBackground(held);
+        }
+        _heldEntry = LightweightLiquidGlass._storeCachedBackground(
+          cacheKey,
+          image,
+          size,
+          pos,
+        );
+      }
       _lastCaptureSize = size;
       _lastCapturePosition = pos;
       _capturePending = false;
@@ -347,7 +454,24 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
   @override
   void didUpdateWidget(LightweightLiquidGlass oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 采样源换了：旧引用必须还掉，再按新 key 借一次（否则旧图永远不释放、
+    // 新 key 又拿不到已缓存的纹理）。
     if (widget.backgroundKey != oldWidget.backgroundKey) {
+      _dropHeldBackground();
+      _backgroundImage = null;
+      final key = widget.backgroundKey;
+      if (key != null) {
+        final cached = LightweightLiquidGlass._acquireCachedBackground(key);
+        if (cached != null) {
+          _heldEntry = cached;
+          _backgroundImage = cached.image;
+          _lastCaptureSize = cached.size;
+          _lastCapturePosition = cached.position;
+        } else {
+          _lastCaptureSize = null;
+          _lastCapturePosition = null;
+        }
+      }
       // Key object changed — update immediately.
       _updateTicker();
     } else if (widget.backgroundKey != null && !_ticker.isActive) {
@@ -415,9 +539,10 @@ class _LightweightLiquidGlassState extends State<LightweightLiquidGlass>
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
-    // Null backgroundImage BEFORE disposing the shader to break the GPU
-    // texture retention chain during isolate shutdown on Mali GPUs.
-    _backgroundImage?.dispose();
+    // ⚠️ fork 修改：不再在这里销毁纹理 —— 图可能还挂在共享缓存上、被别的
+    // 实例（同页其它卡片 / 切页中尚未完成过渡的旧实例）使用。只归还引用，
+    // 真正的销毁由缓存的引用计数决定。
+    _dropHeldBackground();
     _backgroundImage = null;
     // On web, dispose this widget's shader instance
     if (kIsWeb && _webShader != null) {

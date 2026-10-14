@@ -68,6 +68,12 @@ class BiliCrossApp extends StatefulWidget {
 }
 
 class _BiliCrossAppState extends State<BiliCrossApp> {
+  /// 卡片玻璃的采样源 —— 指向**不滚动**的背景层。
+  ///
+  /// ⚠️ 这个 key 必须挂在背景层上（而不是页面上）：卡片是列表里会滚动的元素，
+  /// 采样滚动中的内容会在滚动期间失效（2026-10-03 实验结论）。
+  final GlobalKey _glassBackgroundKey = GlobalKey();
+
   final Future<AppState> _loading = AppState.load();
 
   /// 开屏是否已经放完。null 表示还没判断（设置还没读出来）。
@@ -261,9 +267,16 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
     // 会把背景图整块盖掉（看起来就是突兀的一片白）。这里改成跟卡片浓度同步：
     // 卡片不透时与旧版一样是近白，卡片透多少垫底就透多少。
     final transitionBackground = scheme.surface.withValues(alpha: uiOpacity);
-    return MaterialApp(
+    final app = MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
+      // ⚠️ 只在「卡片高级材质」**开启**时才换掉安卓的拉伸回弹：
+      // 默认那种（StretchingOverscrollIndicator）会给滚动内容套一层 ImageFilter，
+      // 和卡片玻璃的实时模糊打架 —— 拉到顶/底继续拽时玻璃整片变透明。
+      // 关掉材质时不涉及玻璃，回弹恢复成原来的弹性拉伸（2026-10-13 用户定）。
+      scrollBehavior: state.settings.cardGlass == 'off'
+          ? null
+          : const _NoStretchScrollBehavior(),
       title: l10n.tr('app.name'),
       // 'system' 交给框架按系统语言挑，其余按设置锁定。
       locale: state.settings.localeCode == kLocaleSystem ? null : l10n.locale,
@@ -284,10 +297,15 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
         children: <Widget>[
           const ColoredBox(color: kSurfacePage),
           if (hasBackground)
-            _backgroundImage(
-              file: backgroundFile,
-              opacity: backgroundOpacity,
-              fit: backgroundFit,
+            // ⚠️ 这层背景同时是卡片玻璃的采样源：它**不随页面滚动**，
+            // 卡片只是在它上面开窗，滚动期间玻璃才不会失效。
+            RepaintBoundary(
+              key: _glassBackgroundKey,
+              child: _backgroundImage(
+                file: backgroundFile,
+                opacity: backgroundOpacity,
+                fit: backgroundFit,
+              ),
             ),
           ?child,
         ],
@@ -403,6 +421,15 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       ),
       home: AppShell(state: state),
     );
+    // ⚠️ 卡片玻璃的作用域包在 **MaterialApp 外层**：玻璃要盖到所有路由与弹层，
+    // 放 `home` 里盖不到后面的页面。注意别把它塞进上面的 `builder` ——
+    // 内测注入脚本锚定那里的 `?child,`，缩进一改注入就失效（已踩）。
+    return CardGlassScope(
+      mode: state.settings.cardGlass,
+      hasBackground: hasBackground,
+      backgroundKey: _glassBackgroundKey,
+      child: app,
+    );
   }
 
   /// 背景图。
@@ -430,6 +457,29 @@ class _BiliCrossAppState extends State<BiliCrossApp> {
       repeat: tile ? ImageRepeat.repeat : ImageRepeat.noRepeat,
       // 图有可能在读出与绘制之间被外部删掉，别让异常冒到渲染层。
       errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// 安卓不用「拉伸内容」的越界回弹。
+///
+/// ⚠️ 默认的 [StretchingOverscrollIndicator] 会给整块滚动内容套一层
+/// `ImageFilter` 做变形；这层 filter 会让卡片玻璃的实时模糊失效 ——
+/// 拉到顶/底继续拽时玻璃整片变透明，松手才恢复（2026-10-13 用户反馈）。
+/// 换成 [GlowingOverscrollIndicator]（只画弧光、不动内容）即可共存。
+class _NoStretchScrollBehavior extends MaterialScrollBehavior {
+  const _NoStretchScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return GlowingOverscrollIndicator(
+      axisDirection: details.direction,
+      color: Theme.of(context).colorScheme.secondary,
+      child: child,
     );
   }
 }
@@ -789,11 +839,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                       onTabSelected: (value) => setState(() => index = value),
                       selectedIconColor: scheme.primary,
                       selectedLabelColor: scheme.primary,
-                      // 指示块下方不叠变色胶囊，玻璃只折射背景。
-                      indicatorColor: Colors.transparent,
+                      // ⚠️ 指示块静止时那层「灰椭圆」（酷安同款）就走这里：
+                      // 库内 `backgroundOpacity = 1 - thickness/0.15` 让它随按压淡出、
+                      // 玻璃同期淡入。传透明＝把这层抹掉，观感就不像酷安了（2026-10-14 修正）。
+                      // 半透档用酷安浅色主题的 Black@10% / 深色主题的 White@10%。
+                      indicatorColor: switch (state.settings.navGammaMode) {
+                        'original' => Colors.transparent,
+                        _ => scheme.brightness == Brightness.dark
+                            ? const Color(0x1AFFFFFF)
+                            : const Color(0x1A000000),
+                      },
                       // 指示块只做折射透镜，玻璃本身不带色（参考酷安）。
                       indicatorSettings:
                           AnimatedGlassIndicator.baseIndicatorSettings,
+                      // 底栏档位（2026-10-14 定稿两档）：
+                      // - original：不传参数，走上游原版液态玻璃；
+                      // - translucent：酷安式半透（40% 淡底 + blur 8 + 折射 24）。
+                      //   本体折射**恒定**，不接 settingsOnPress —— 酷安那层
+                      //   随按压生长的是隐藏图层，不是本体。
+                      settings: switch (state.settings.navGammaMode) {
+                        'translucent' => navGammaSettingsFor(scheme.brightness),
+                        _ => null,
+                      },
                     ),
                 },
         );

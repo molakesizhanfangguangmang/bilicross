@@ -76,23 +76,11 @@ class Muxer {
     if (!File(audioPath).existsSync()) {
       throw BiliException('音频分片不存在：$audioPath');
     }
-    final process = await Process.start(ffmpeg, [
-      '-y',
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-i',
-      videoPath,
-      '-i',
-      audioPath,
-      '-map',
-      '0:v:0',
-      '-map',
-      '1:a:0',
-      '-c',
-      'copy',
-      outputPath,
-    ]);
+    final process = await Process.start(ffmpeg, remuxArgs(
+      videoPath: videoPath,
+      audioPath: audioPath,
+      outputPath: outputPath,
+    ));
     final stderrText = process.stderr.transform(utf8.decoder).join();
     final stdoutDrain = process.stdout.drain<void>();
     control?.bind(() => process.kill());
@@ -113,6 +101,37 @@ class Muxer {
       throw BiliException('合并后没有生成文件');
     }
   }
+
+  /// ffmpeg 的合并参数。抽出来是为了让测试能锁住 `-strict -2`。
+  ///
+  /// ⚠️ 不能去掉 `-strict -2`：ffmpeg 的 mp4 muxer 默认 strict 级别会把
+  /// 杜比视界的 dvcC/dvvC 配置盒当「非标准」内容丢掉，播放器就认不出
+  /// Profile 5（issue #2）。`-strict -2` 走 unofficial 级别才会写出来。
+  /// 只用 `-tag:v dvh1` 不够 —— 实测仍会丢 dvcC。
+  static List<String> remuxArgs({
+    required String videoPath,
+    required String audioPath,
+    required String outputPath,
+  }) =>
+      <String>[
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      videoPath,
+      '-i',
+      audioPath,
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+      '-c',
+      'copy',
+      '-strict',
+      '-2',
+      outputPath,
+    ];
 
   /// 合并音视频。默认先试 ffmpeg（输出标准 MP4，兼容性最好），
   /// 没有 ffmpeg 或 ffmpeg 失败时改用内置分片合并；两条都失败才报错。

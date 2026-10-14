@@ -64,4 +64,21 @@ void main() {
       expect(builtin.durationSeconds, 1.5);
     });
   });
+
+  group('Muxer.remuxArgs', () {
+    test('必须带 -strict -2，否则杜比视界配置盒会被 ffmpeg 丢掉（issue #2）', () {
+      final args = Muxer.remuxArgs(
+        videoPath: 'v.m4s',
+        audioPath: 'a.m4s',
+        outputPath: 'out.mp4',
+      );
+      final index = args.indexOf('-strict');
+      expect(index, greaterThanOrEqualTo(0),
+          reason: '缺 -strict 会让 mp4 muxer 丢弃 dvcC/dvvC，播放器认不出 Profile 5');
+      expect(args[index + 1], '-2',
+          reason: '-strict 的值必须是 -2（unofficial），否则 dvcC 仍会被丢');
+      expect(args.last, 'out.mp4');
+      expect(args, containsAllInOrder(<String>['-map', '0:v:0', '-map', '1:a:0']));
+    });
+  });
 }

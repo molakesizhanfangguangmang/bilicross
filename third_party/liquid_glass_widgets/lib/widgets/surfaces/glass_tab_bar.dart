@@ -201,6 +201,7 @@ class GlassTabBar extends StatefulWidget with GlassDynamicPreferredSize {
     bool enableBlend = true,
     double blendAmount = 10,
     LiquidGlassSettings? settings,
+    LiquidGlassSettings? settingsOnPress,
     bool showIndicator = true,
     Color? indicatorColor,
     LiquidGlassSettings? indicatorSettings,
@@ -259,6 +260,7 @@ class GlassTabBar extends StatefulWidget with GlassDynamicPreferredSize {
           enableBlend: enableBlend,
           blendAmount: blendAmount,
           settings: settings,
+          settingsOnPress: settingsOnPress,
           showIndicator: showIndicator,
           indicatorColor: indicatorColor,
           indicatorSettings: indicatorSettings,
@@ -796,6 +798,7 @@ class GlassTabBar extends StatefulWidget with GlassDynamicPreferredSize {
       this.unselectedLabelStyle,
       this.iconSize = 24.0,
       this.settings,
+      this.settingsOnPress,
       this.quality,
       this.backgroundQuality,
       this.indicatorSettings,
@@ -911,6 +914,12 @@ class GlassTabBar extends StatefulWidget with GlassDynamicPreferredSize {
 
   /// Glass effect settings.
   final LiquidGlassSettings? settings;
+
+  /// 按压 / 拖动期间套在本体玻璃上的参数（frok 新增，仅 bottom 形态使用）。
+  ///
+  /// 对齐酷安 `LiquidBottomTabs`：常态用 [settings]（半透 + 轻折射），
+  /// 按压时折射加深、高光淡入。为 null 时本体玻璃恒定，不随按压变化。
+  final LiquidGlassSettings? settingsOnPress;
 
   /// Rendering quality for the glass effect.
   ///
@@ -1303,6 +1312,7 @@ class _GlassTabBarState extends State<GlassTabBar> {
       enableBlend: widget.enableBlend,
       blendAmount: widget.blendAmount,
       settings: widget.settings,
+      settingsOnPress: widget.settingsOnPress,
       showIndicator: widget.showIndicator,
       indicatorColor: widget.indicatorColor,
       indicatorSettings: widget.indicatorSettings,

@@ -539,6 +539,42 @@ class SettingsPageState extends State<SettingsPage> {
                             ),
                         ],
                       ),
+                      // ⚠️ 底栏效果只在「底栏外观 = 液态玻璃」时才有意义：
+                      // 关闭 / 磨砂走的是另一条 nav bar 实现，根本不读这个值，
+                      // 常驻显示会让用户以为它没生效。紧跟「底栏外观」放
+                      // （2026-10-14 用户要求上移 + 条件显示）。
+                      if (settings.navMode == 'glass') ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          l10n.tr('settings.navGamma'),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            for (final mode in kNavGammaModes)
+                              ChoiceChip(
+                                label: Text(l10n.tr('settings.navGamma.$mode')),
+                                selected: settings.navGammaMode == mode,
+                                onSelected: (_) {
+                                  setState(() => settings.navGammaMode = mode);
+                                  unawaited(state.saveSettings());
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          l10n.tr('settings.navGammaHint'),
+                          style:
+                              const TextStyle(fontSize: 12, color: kTextMuted),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -551,6 +587,19 @@ class SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    // 卡片液态玻璃（全平台）：和「底栏外观」同组，都是「点了就想看效果」。
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l10n.tr('settings.cardGlass')),
+                      subtitle: Text(l10n.tr('settings.cardGlassHint')),
+                      value: settings.cardGlass != 'off',
+                      onChanged: (value) {
+                        setState(() => settings.cardGlass =
+                            value ? 'glass' : kCardGlassDefault);
+                        unawaited(state.saveSettings());
+                      },
+                    ),
                     const SizedBox(height: 24),
                     // 背景与主题色同类（「点了就想看效果」），所以同组；
                     // 与主题色不同的是它有个滑杆 —— 拖动中只做实时预览，松手才落盘。
